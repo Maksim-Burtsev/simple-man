@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Simple Man icon" width="160">
+</p>
+
 # Simple Man
 
 Ultra-low-noise professional communication mode for coding agents.
