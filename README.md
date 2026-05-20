@@ -38,36 +38,30 @@ It must not reduce:
 
 ## Agent support
 
-This repo ships both a canonical `SKILL.md` package and native instruction files for popular coding agents.
+This repo ships one canonical skill plus lightweight project instruction files.
 
-| Agent/tool | Supported path |
+| Agent/tool | Path |
 | --- | --- |
 | OpenAI Codex / Agent Skills | `skills/simple-man/SKILL.md`, `AGENTS.md`, `AGENTS.md.snippet` |
-| Claude Code | `.claude/skills/simple-man/SKILL.md`, `CLAUDE.md` |
-| Qwen Code | `.qwen/skills/simple-man/SKILL.md`, `QWEN.md`, `AGENTS.md` |
-| Cursor | `.cursor/rules/simple-man.mdc`, `AGENTS.md` |
-| Windsurf Cascade | `.windsurf/rules/simple-man.md`, `AGENTS.md` |
-| GitHub Copilot | `.github/copilot-instructions.md`, `AGENTS.md` where supported |
-| Cline | `.clinerules/simple-man.md`, `AGENTS.md` |
-| Continue | `.continue/rules/simple-man.md` |
-| Zed Agent | `.rules`, `AGENTS.md` |
-| JetBrains AI / Junie | `.junie/guidelines.md`, `.junie/AGENTS.md`, `AGENTS.md` |
-| Amp / OpenCode / Kilo and other AGENTS.md agents | `AGENTS.md` |
-| Aider | `CONVENTIONS.md` with `aider --read CONVENTIONS.md` or `/read CONVENTIONS.md` |
+| Claude Code | `CLAUDE.md`, optional global skill copy |
+| Gemini CLI | `GEMINI.md`, or configure Gemini to read `AGENTS.md` |
+| Qwen Code | `AGENTS.md`, optional global skill copy |
+| Cursor / Windsurf / Cline / Copilot / Continue / Zed / Junie | `AGENTS.md`, or copy `AGENTS.md.snippet` into that agent's native rule file |
+| Amp / OpenCode / Kilo / Roo / Aider / other AGENTS.md agents | `AGENTS.md` |
+
+Agent-specific dotdir rule files are not committed here by default. They are target-project activation files, not the source of the skill.
+
+See [INSTALL.md](./INSTALL.md) for per-agent setup notes.
 
 ## Install as a global skill
 
-Copy the canonical skill directory to the agent you use:
+Copy the canonical skill directory:
 
 ```bash
 cp -R skills/simple-man ~/.codex/skills/simple-man
 cp -R skills/simple-man ~/.claude/skills/simple-man
 cp -R skills/simple-man ~/.qwen/skills/simple-man
 ```
-
-For agents that use instruction files instead of skills, copy the matching file or directory from the table above into your project or global config.
-
-For global AGENTS.md-style installs, add `AGENTS.md.snippet` to your global or repo-level `AGENTS.md`.
 
 ## Recommended usage
 
