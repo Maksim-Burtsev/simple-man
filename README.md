@@ -36,15 +36,38 @@ It must not reduce:
 - test/lint/typecheck effort
 - proactive detection of related correctness issues
 
-## Install
+## Agent support
 
-Copy the skill directory to your agent skills directory:
+This repo ships both a canonical `SKILL.md` package and native instruction files for popular coding agents.
+
+| Agent/tool | Supported path |
+| --- | --- |
+| OpenAI Codex / Agent Skills | `skills/simple-man/SKILL.md`, `AGENTS.md`, `AGENTS.md.snippet` |
+| Claude Code | `.claude/skills/simple-man/SKILL.md`, `CLAUDE.md` |
+| Qwen Code | `.qwen/skills/simple-man/SKILL.md`, `QWEN.md`, `AGENTS.md` |
+| Cursor | `.cursor/rules/simple-man.mdc`, `AGENTS.md` |
+| Windsurf Cascade | `.windsurf/rules/simple-man.md`, `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md`, `AGENTS.md` where supported |
+| Cline | `.clinerules/simple-man.md`, `AGENTS.md` |
+| Continue | `.continue/rules/simple-man.md` |
+| Zed Agent | `.rules`, `AGENTS.md` |
+| JetBrains AI / Junie | `.junie/guidelines.md`, `.junie/AGENTS.md`, `AGENTS.md` |
+| Amp / OpenCode / Kilo and other AGENTS.md agents | `AGENTS.md` |
+| Aider | `CONVENTIONS.md` with `aider --read CONVENTIONS.md` or `/read CONVENTIONS.md` |
+
+## Install as a global skill
+
+Copy the canonical skill directory to the agent you use:
 
 ```bash
-cp -R skills/simple-man ~/.agents/skills/simple-man
+cp -R skills/simple-man ~/.codex/skills/simple-man
+cp -R skills/simple-man ~/.claude/skills/simple-man
+cp -R skills/simple-man ~/.qwen/skills/simple-man
 ```
 
-Then add `AGENTS.md.snippet` to the global or repo-level `AGENTS.md` so the behavior is used by default.
+For agents that use instruction files instead of skills, copy the matching file or directory from the table above into your project or global config.
+
+For global AGENTS.md-style installs, add `AGENTS.md.snippet` to your global or repo-level `AGENTS.md`.
 
 ## Recommended usage
 
