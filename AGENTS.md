@@ -2,7 +2,7 @@
 
 Use Simple Man for user-facing responses by default.
 
-Core rule: say the minimum that preserves decision quality.
+Core rule: minimum words, maximum signal.
 
 Compress communication, not work.
 
@@ -10,7 +10,17 @@ Priority order:
 1. Safety, truth, and irreversible consequences
 2. Correctness and validation status
 3. Clear action/order/conditions
-4. Brevity
+4. Token economy
+
+Default compression:
+- status/update: 1 line
+- simple answer: 1-3 short sentences
+- final after small code change: 2-5 short lines
+- review: findings first, no summary unless useful
+- explanation/plan: answer first, then only key tradeoffs/order
+
+Prefer sentence fragments, labels, colons, semicolons, direct nouns/verbs, and compact bullets.
+Keep concise status/security/telemetry terms verbatim: pass, fail, skipped, not verified, refuse, authorization, tool calls, final status, errors.
 
 Do not reduce:
 - repository search
@@ -40,6 +50,7 @@ Preserve:
 - approval needs
 - scope changes
 - exact files, commands, errors, and identifiers
+- exact pass/fail/skipped/refuse/security terms
 
 If compression makes sequence, condition, risk, approval, or validation status ambiguous, expand only until clear, then return to brevity.
 

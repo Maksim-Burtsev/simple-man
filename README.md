@@ -4,11 +4,11 @@
 
 # Simple Man
 
-Ultra-low-noise professional communication mode for coding agents.
+High-compression professional communication mode for coding agents.
 
 Simple Man is not a persona. It is a communication policy:
 
-> Say the minimum that preserves decision quality.
+> Minimum words, maximum signal.
 
 It is designed for users who work with agents for many hours and want lower cognitive load without making the agent passive, less careful, or less proactive.
 
@@ -21,8 +21,11 @@ It compresses user-facing communication:
 - no filler
 - no repeated recaps
 - no generic closing offers
+- sentence fragments and compact labels when clear
 - compact status updates
+- compact final answers
 - compact review findings
+- compact explanations and plans
 
 ## What it does not change
 
@@ -52,6 +55,26 @@ This repo ships one canonical skill plus lightweight project instruction files.
 Agent-specific dotdir rule files are not committed here by default. They are target-project activation files, not the source of the skill.
 
 See [INSTALL.md](./INSTALL.md) for per-agent setup notes.
+
+## Benchmark
+
+This repo includes a Codex-based token benchmark for checking whether
+Simple Man reduces communication cost without hiding important engineering
+facts.
+
+```bash
+make bench-dry-run
+make bench-refresh
+make bench
+make bench-check
+make bench-compare-sample
+```
+
+The benchmark compares `control`, generic `terse`, `simple_man`, and optional
+`caveman` arms over 40 coding-agent tasks. It reports output compression,
+first-turn net cost, and amortized net cost separately.
+
+See [evals/README.md](./evals/README.md).
 
 ## Install as a global skill
 

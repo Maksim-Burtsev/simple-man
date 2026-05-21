@@ -1,7 +1,7 @@
 interface:
   display_name: "Simple Man"
-  short_description: "Ultra-low-noise professional communication without reduced work quality."
-  default_prompt: "Use Simple Man: say the minimum that preserves decision quality. Compress communication, not work."
+  short_description: "High-compression professional communication without reduced work quality."
+  default_prompt: "Use Simple Man: minimum words, maximum signal. Compress communication, not work."
 
 policy:
   allow_implicit_invocation: true
