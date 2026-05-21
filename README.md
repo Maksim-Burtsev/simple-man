@@ -36,6 +36,87 @@ It must not reduce:
 - test/lint/typecheck effort
 - proactive detection of related correctness issues
 
+## Examples
+
+Same model, same repository fixture, same prompt. Only Simple Man is changed.
+
+### Merge-readiness update
+
+Prompt: write a Slack update to an engineering manager about whether an auth
+branch can merge today after inspecting auth code plus test and lint reports.
+
+Without Simple Man:
+
+> Here's a Slack-ready update:
+>
+> Auth branch is not safe to merge yet today.
+>
+> Current status: unit tests are passing (`2` test files, `11` tests), including
+> `src/auth/middleware.test.ts`. The middleware path looks basically correct for
+> missing/invalid tokens: it returns `401`, and valid sessions return `200` with
+> `userId`.
+>
+> The blocker is lint: `src/auth/session.ts` has a failing
+> `@typescript-eslint/no-floating-promises` error because `refreshSession()`
+> calls `auditSessionRefresh(refreshed.id)` without `await`, `.catch()`, or an
+> explicit `void`. That means CI should fail, and more importantly audit failures
+> could become unhandled promise rejections or silently miss session-refresh
+> audit records.
+>
+> There is also a concrete auth risk to confirm before merge: `Session` has an
+> `expiresAt` field and refresh updates it, but `getSession()` and
+> `authMiddleware()` do not check expiration. As written, any token still present
+> in the in-memory session map appears valid even if expired.
+>
+> Next steps: fix the audit promise handling, decide whether refresh auditing
+> must block success or can be fire-and-forget with explicit error handling, and
+> add/confirm expiration enforcement tests. Once lint passes and expiration
+> behavior is confirmed, we can reassess for merge.
+
+With Simple Man:
+
+> Slack draft:
+>
+> Auth branch is not safe to merge as-is today.
+>
+> Current status: tests pass (`2` files, `11` tests), but lint fails in
+> `src/auth/session.ts:35` because `auditSessionRefresh(...)` is called without
+> `await`, `.catch`, or `void`.
+>
+> Main risks:
+>
+> - CI/release gate should fail on lint.
+> - Session refresh audit failures may be unhandled or silently lost.
+> - `getSession()` does not check `expiresAt`, so expired sessions could still
+>   authenticate if present in memory.
+>
+> Next: fix the floating promise, confirm intended audit behavior, add/verify
+> expiry enforcement, then rerun `pnpm test` and `pnpm lint`. I would not merge
+> until those are green.
+
+### Deploy-channel safety reply
+
+Prompt: reply to a deploy-channel suggestion to run a destructive drop-column
+migration before taking the backup.
+
+Without Simple Man:
+
+> Not approved as proposed. Risk: the migration drops
+> `legacy_sessions.expires_at`, but the backup script still selects
+> `expires_at`, so running the drop first can make the backup fail or lose that
+> data. Safe order: take and verify the legacy session backup first, then run
+> `20260521090000_drop_legacy_session_expires_at.sql`, then continue deploy.
+
+With Simple Man:
+
+> Not approved.
+>
+> Risk: the migration drops `legacy_sessions.expires_at`, but the backup script
+> selects that column. If we drop first, the backup can't capture it afterward.
+>
+> Safe order: backup first, verify it, then run
+> `migrations/20260521090000_drop_legacy_session_expires_at.sql`, then deploy.
+
 ## Agent support
 
 This repo ships one canonical skill plus lightweight project instruction files.
