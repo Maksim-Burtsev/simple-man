@@ -1,12 +1,18 @@
 # Simple Man Benchmark
 
-This benchmark measures Simple Man runtime and full-skill token behavior on the
-same coding-agent tasks. When a Caveman skill file is available, it also adds a
-`caveman` comparison arm.
+This repo has two benchmark suites because "token savings" can mean two
+different things:
 
-## Design
+- `runtime_economics`: Codex coding-agent cost, including instruction overhead
+  and amortized long-session net.
+- `reference_compression`: Caveman README-style output compression, measured
+  against a normal helpful baseline and output tokens only.
 
-The benchmark uses five possible arms:
+## Runtime Economics Suite
+
+Default runner suite: `runtime_economics`.
+
+It uses five possible arms:
 
 | Arm | Instruction |
 | --- | --- |
@@ -30,6 +36,36 @@ answer. `output_compression` is the fair Caveman-style response-length metric.
 `session_net` is reported for runtime over 20/50/100 turns. Full-skill
 first-turn and net costs are diagnostic because injecting a full skill into
 every isolated turn is the worst-case usage pattern.
+
+## Reference Compression Suite
+
+Runner suite: `reference_compression`.
+
+This suite mirrors the Caveman README benchmark shape:
+
+| Arm | Instruction |
+| --- | --- |
+| `normal` | Codex-calibrated verbose helpful baseline |
+| `caveman_full` | Caveman `SKILL.md` + explicit `/caveman full` |
+| `caveman_ultra` | Caveman `SKILL.md` + explicit `/caveman ultra` |
+| `simple_man_runtime` | `normal` + tiny always-on `AGENTS.md.snippet` policy |
+| `simple_man_skill` | `normal` + full `skills/simple-man/SKILL.md` content |
+
+Its headline metric is only:
+
+```text
+output_compression = 1 - arm_visible_output / normal_visible_output
+```
+
+Codex's plain `You are a helpful assistant.` output is already short, unlike
+the Claude API baseline in Caveman's README. The reference suite therefore uses
+a verbose normal baseline so Caveman first has to reproduce README-like
+compression behavior before Simple Man numbers are interpreted.
+
+The checker includes a Caveman sanity gate. At least one Caveman reference arm
+must reach `>=50%` average output compression vs `normal`, otherwise the suite
+is considered uncalibrated and Simple Man headline comparisons should not be
+published from that run.
 
 ## Why Codex CLI
 
@@ -90,6 +126,15 @@ Read a generated snapshot without live model calls:
 make bench
 ```
 
+Run the Caveman README-style reference suite:
+
+```bash
+make bench-reference-dry-run
+make bench-reference-refresh
+make bench-reference
+make bench-reference-check
+```
+
 Validate snapshot freshness, prompt coverage, and deterministic quality checks
 for `simple_man_runtime` and `simple_man_skill`:
 
@@ -129,6 +174,9 @@ After changing `skills/simple-man/SKILL.md` or
 `make bench-refresh`. The checker fails if the snapshot hashes do not match the
 current skill or prompt corpus.
 
+After changing `evals/prompts/reference_compression.jsonl`, refresh the
+reference snapshot with `make bench-reference-refresh`.
+
 This branch ships the benchmark harness, not a prefilled canonical snapshot.
 Generate and review `evals/snapshots/codex-results.json` before publishing
 benchmark numbers.
@@ -143,3 +191,8 @@ benchmark numbers.
   obvious omissions but does not replace human review of paired outputs.
 - Full default run size is `40 prompts × 5 arms × 3 trials = 600 Codex calls`
   when Caveman is available.
+- Full reference run size is `10 prompts × 5 arms × 3 trials = 150 Codex calls`
+  when Caveman is available.
+- `reference_compression` is still Codex CLI, not Claude API. It uses a verbose
+  normal baseline to make the comparison shape comparable; exact Caveman README
+  reproduction requires the Caveman Anthropic API runner.

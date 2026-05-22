@@ -223,6 +223,9 @@ class BenchmarkLibTests(unittest.TestCase):
                     ["tool calls"],
                     ["builder"],
                     ["table drop"],
+                    ["object"],
+                    ["reference"],
+                    ["fallback"],
                 ],
             },
         }
@@ -231,7 +234,9 @@ class BenchmarkLibTests(unittest.TestCase):
             "arm": "simple_man",
             "text": (
                 "Unit tests: pass. Integration tests: fail. "
-                "tool_call_id recorded. AS build. before dropping any table."
+                "tool_call_id recorded. AS build. before dropping any table. "
+                "Inline obj prop creates new ref by identity. "
+                "Shows Something went wrong inside role alert."
             ),
         }
 
@@ -300,6 +305,16 @@ class BenchmarkLibTests(unittest.TestCase):
         prompts = bench.load_prompts(ROOT / "evals" / "prompts" / "coding_tasks.jsonl")
 
         self.assertEqual(len(prompts), 40)
+        self.assertTrue(all(prompt.get("checks") for prompt in prompts))
+
+    def test_reference_prompt_corpus_matches_caveman_readme_suite(self):
+        prompts = bench.load_prompts(
+            ROOT / "evals" / "prompts" / "reference_compression.jsonl"
+        )
+
+        self.assertEqual(len(prompts), 10)
+        self.assertEqual(prompts[0]["id"], "react-rerender")
+        self.assertEqual(prompts[-1]["id"], "error-boundary")
         self.assertTrue(all(prompt.get("checks") for prompt in prompts))
 
     def test_snapshot_age_warning_uses_generated_at(self):
@@ -381,6 +396,24 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertIn("simple_man_runtime", arms)
         self.assertIn("simple_man_skill", arms)
 
+    def test_reference_default_arms_use_normal_and_explicit_caveman_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            caveman = Path(tmp) / "caveman.md"
+            caveman.write_text("cave skill")
+
+            arms = run_codex.default_arms(caveman, suite=bench.SUITE_REFERENCE)
+
+        self.assertEqual(
+            arms,
+            [
+                "normal",
+                "caveman_full",
+                "caveman_ultra",
+                "simple_man_runtime",
+                "simple_man_skill",
+            ],
+        )
+
     def test_runtime_policy_has_no_skill_reference(self):
         snippet = (ROOT / "AGENTS.md.snippet").read_text()
 
@@ -401,6 +434,141 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertNotIn("full skill rules", runtime)
         self.assertIn("<simple_man_skill>", full_skill)
         self.assertIn("full skill rules", full_skill)
+
+    def test_reference_instructions_compare_against_normal_not_terse(self):
+        skill_texts = {
+            "simple_man_runtime": "runtime rules",
+            "simple_man_skill": "full skill rules",
+            "caveman_full": "cave rules",
+            "caveman_ultra": "cave rules",
+        }
+
+        normal = run_codex.arm_instructions("normal", skill_texts, suite=bench.SUITE_REFERENCE)
+        runtime = run_codex.arm_instructions(
+            "simple_man_runtime", skill_texts, suite=bench.SUITE_REFERENCE
+        )
+        caveman_ultra = run_codex.arm_instructions(
+            "caveman_ultra", skill_texts, suite=bench.SUITE_REFERENCE
+        )
+
+        self.assertIn("You are a helpful assistant.", normal)
+        self.assertIn("Answer thoroughly", normal)
+        self.assertIn("You are a helpful assistant.", runtime)
+        self.assertIn("Answer thoroughly", runtime)
+        self.assertIn("<simple_man_runtime_policy>", runtime)
+        self.assertNotIn("Be concise.", runtime)
+        self.assertIn("<caveman_skill>", caveman_ultra)
+        self.assertIn("Use /caveman ultra", caveman_ultra)
+
+    def test_reference_prompt_wrapper_forces_standalone_q_and_a(self):
+        prompt = run_codex.build_prompt(
+            {"id": "p1", "category": "x", "prompt": "Implement a React component."},
+            "instructions",
+            suite=bench.SUITE_REFERENCE,
+        )
+
+        self.assertIn("standalone Q&A benchmark", prompt)
+        self.assertIn("Do not inspect, modify, or mention", prompt)
+        self.assertIn("<question id=\"p1\" category=\"x\">", prompt)
+        self.assertNotIn("<task id=\"p1\"", prompt)
+
+    def test_reference_report_uses_output_only_vs_normal(self):
+        import measure
+
+        snapshot = {
+            "metadata": {
+                "suite": "reference_compression",
+                "generated_at": "2026-05-22T00:00:00+00:00",
+                "runner": "codex exec",
+                "codex_cli_version": "codex-test",
+                "model": "test",
+                "prompt_count": 1,
+                "trials": 1,
+                "arms": ["normal", "caveman_ultra", "simple_man_runtime"],
+            },
+            "prompts": [{"id": "p1", "category": "x", "prompt": "P"}],
+            "runs": [
+                {
+                    "prompt_id": "p1",
+                    "category": "x",
+                    "arm": "normal",
+                    "trial": 1,
+                    "visible_input_tokens": 20,
+                    "visible_output_tokens": 100,
+                    "visible_total_tokens": 120,
+                    "usage": {},
+                    "text": "normal",
+                },
+                {
+                    "prompt_id": "p1",
+                    "category": "x",
+                    "arm": "caveman_ultra",
+                    "trial": 1,
+                    "visible_input_tokens": 200,
+                    "visible_output_tokens": 35,
+                    "visible_total_tokens": 235,
+                    "usage": {},
+                    "text": "cave",
+                },
+                {
+                    "prompt_id": "p1",
+                    "category": "x",
+                    "arm": "simple_man_runtime",
+                    "trial": 1,
+                    "visible_input_tokens": 60,
+                    "visible_output_tokens": 50,
+                    "visible_total_tokens": 110,
+                    "usage": {},
+                    "text": "simple",
+                },
+            ],
+        }
+
+        report = measure.render_report(snapshot)
+
+        self.assertIn("Reference Output Compression", report)
+        self.assertIn("| Caveman ultra | +65.0% | 35 |", report)
+        self.assertIn("| Simple Man runtime | +50.0% | 50 |", report)
+        self.assertNotIn("First-turn net", report)
+
+    def test_reference_sanity_requires_caveman_to_compress_like_readme(self):
+        import measure
+
+        snapshot = {
+            "metadata": {"suite": "reference_compression"},
+            "prompts": [{"id": "p1", "category": "x", "prompt": "P"}],
+            "runs": [
+                {
+                    "prompt_id": "p1",
+                    "arm": "normal",
+                    "trial": 1,
+                    "visible_output_tokens": 100,
+                    "usage": {},
+                    "text": "normal",
+                },
+                {
+                    "prompt_id": "p1",
+                    "arm": "caveman_full",
+                    "trial": 1,
+                    "visible_output_tokens": 70,
+                    "usage": {},
+                    "text": "cave",
+                },
+                {
+                    "prompt_id": "p1",
+                    "arm": "caveman_ultra",
+                    "trial": 1,
+                    "visible_output_tokens": 65,
+                    "usage": {},
+                    "text": "cave",
+                },
+            ],
+        }
+
+        failures = measure.reference_sanity_failures(snapshot, min_savings=0.50)
+
+        self.assertEqual(len(failures), 1)
+        self.assertIn("Caveman reference sanity failed", failures[0])
 
     def test_snapshot_hash_validation_checks_runtime_policy(self):
         with tempfile.TemporaryDirectory() as tmp:

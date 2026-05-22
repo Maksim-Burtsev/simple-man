@@ -10,22 +10,40 @@ from pathlib import Path
 from typing import Any
 
 
+SUITE_RUNTIME = "runtime_economics"
+SUITE_REFERENCE = "reference_compression"
+
+NORMAL_ARM = "normal"
 CONTROL_ARM = "control"
 TERSE_ARM = "terse"
 SIMPLE_MAN_RUNTIME_ARM = "simple_man_runtime"
 SIMPLE_MAN_SKILL_ARM = "simple_man_skill"
 CAVEMAN_ARM = "caveman"
-ARMS = (
+CAVEMAN_FULL_ARM = "caveman_full"
+CAVEMAN_ULTRA_ARM = "caveman_ultra"
+CAVEMAN_ARMS = (CAVEMAN_ARM, CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM)
+RUNTIME_ARMS = (
     CONTROL_ARM,
     TERSE_ARM,
     SIMPLE_MAN_RUNTIME_ARM,
     SIMPLE_MAN_SKILL_ARM,
     CAVEMAN_ARM,
 )
+REFERENCE_ARMS = (
+    NORMAL_ARM,
+    CAVEMAN_FULL_ARM,
+    CAVEMAN_ULTRA_ARM,
+    SIMPLE_MAN_RUNTIME_ARM,
+    SIMPLE_MAN_SKILL_ARM,
+)
+ARMS = tuple(dict.fromkeys((*RUNTIME_ARMS, *REFERENCE_ARMS)))
 ARM_LABELS = {
+    NORMAL_ARM: "Normal",
     SIMPLE_MAN_RUNTIME_ARM: "Simple Man runtime",
     SIMPLE_MAN_SKILL_ARM: "Simple Man skill",
     CAVEMAN_ARM: "Caveman",
+    CAVEMAN_FULL_ARM: "Caveman full",
+    CAVEMAN_ULTRA_ARM: "Caveman ultra",
 }
 
 
@@ -294,6 +312,13 @@ def _quality_term_matches(term: str, text: str, normalized_text: str) -> bool:
     normalized_term = _normalize_quality_text(term)
     if not normalized_term:
         return False
+    aliases = {
+        "object": ("obj",),
+        "reference": ("ref", "identity"),
+        "fallback": ("fallback ui", "something went wrong", "role alert"),
+    }
+    if any(alias in normalized_text for alias in aliases.get(normalized_term, ())):
+        return True
     if normalized_term in normalized_text:
         return True
     term_tokens = normalized_term.split()

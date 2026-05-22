@@ -33,7 +33,9 @@ Current hashes:
 
 ## Harness
 
-Arms:
+The PR now has two benchmark suites.
+
+Runtime economics suite arms:
 
 - `control`
 - `terse`
@@ -41,13 +43,30 @@ Arms:
 - `simple_man_skill`
 - `caveman`
 
+Reference compression suite arms:
+
+- `normal`
+- `caveman_full`
+- `caveman_ultra`
+- `simple_man_runtime`
+- `simple_man_skill`
+
 Metrics:
 
 - `output_compression`: answer length only
 - `first_turn_net`: isolated turn with full instruction overhead
 - `session_net`: instruction overhead amortized over 20/50/100 turns
+- `reference_compression`: output-only compression vs `normal`
 
-Default full run size with Caveman: `40 prompts x 5 arms x 3 trials = 600 Codex calls`.
+Default runtime run size with Caveman: `40 prompts x 5 arms x 3 trials = 600 Codex calls`.
+Default reference run size with Caveman: `10 prompts x 5 arms x 3 trials = 150 Codex calls`.
+
+Reference suite calibration:
+
+- prompts are the 10 Caveman README benchmark prompts
+- baseline is Codex-calibrated verbose normal, because plain Codex `You are a helpful assistant.` is already concise
+- Caveman modes are explicit: `/caveman full` and `/caveman ultra`
+- check fails if neither Caveman arm reaches `>=50%` average output compression vs `normal`
 
 Quality gate:
 
@@ -100,11 +119,21 @@ python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json
 python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check
 ```
 
+Reference suite:
+
+```bash
+make bench-reference-dry-run
+make bench-reference-refresh TRIALS=1
+make bench-reference
+make bench-reference-check
+```
+
 ## Results
 
 All live numbers below are Codex CLI default model, `trials=1`, visible token
-counts, generated on 2026-05-22. Treat as smoke/focused evidence; public claims
-still need the full `40 x 5 x 3` run.
+counts, generated on 2026-05-22. Runtime results are smoke/focused evidence;
+public runtime claims still need the full `40 x 5 x 3` run. Reference results
+use all 10 Caveman README prompts with `trials=1`.
 
 ### Focused 10 Prompt Set
 
@@ -154,6 +183,41 @@ First-10 quality:
 - `python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check` passed
 - Caveman-inclusive quality check also passed
 
+### Reference Compression Sample
+
+Snapshot: `/tmp/simple-man-reference-results.json`
+
+Codex-calibrated verbose normal baseline; output-only tokens; 10 Caveman README
+prompts; `trials=1`.
+
+Check:
+
+- `python3 evals/measure.py --snapshot /tmp/simple-man-reference-results.json --check` passed
+
+Headline:
+
+| Arm | Output compression vs normal | Mean output tokens |
+| --- | ---: | ---: |
+| Caveman full | +79.9% | 235.6 |
+| Caveman ultra | +81.1% | 220.0 |
+| Simple Man runtime | +63.0% | 410.4 |
+| Simple Man skill | +62.6% | 486.7 |
+
+Per prompt:
+
+| Prompt | Normal out | Caveman ultra | Simple Man runtime |
+| --- | ---: | ---: | ---: |
+| async-refactor | 315 | +58.7% | +42.9% |
+| auth-middleware-fix | 1069 | +86.3% | +74.4% |
+| docker-multi-stage | 673 | +72.2% | +53.2% |
+| error-boundary | 943 | +66.9% | +40.9% |
+| git-rebase-merge | 3497 | +93.5% | +91.3% |
+| microservices-monolith | 4127 | +93.9% | +85.7% |
+| postgres-pool | 2650 | +78.7% | +70.5% |
+| pr-security-review | 676 | +88.0% | +54.0% |
+| race-condition-debug | 1811 | +88.6% | +75.6% |
+| react-rerender | 592 | +84.3% | +41.0% |
+
 ## Interpretation
 
 The GPT review was directionally right: the full skill should not be treated as
@@ -169,6 +233,12 @@ The runtime arm is also shorter than Caveman on both live samples:
 The full skill still compresses output on some prompts, but its input overhead
 is too large for headline economics. Keep it as explicit install/use surface,
 not always-on project runtime.
+
+The new reference suite fixes the earlier Caveman mismatch: on README-like
+tasks Caveman ultra now shows `+81.1%` output compression, so Simple Man can be
+compared on a calibrated output-compression benchmark. In that calibrated
+suite, Simple Man runtime cuts `+63.0%` output vs verbose normal, but remains
+less compressed than Caveman ultra by about `18.1` percentage points.
 
 ## Open Questions
 

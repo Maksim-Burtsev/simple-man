@@ -11,19 +11,29 @@ import time
 from pathlib import Path
 from typing import Any
 
-from benchmark_lib import ARMS, CAVEMAN_ARM, CONTROL_ARM, SIMPLE_MAN_RUNTIME_ARM
-from benchmark_lib import SIMPLE_MAN_SKILL_ARM, TERSE_ARM
+from benchmark_lib import ARMS, CAVEMAN_ARM, CAVEMAN_ARMS, CAVEMAN_FULL_ARM
+from benchmark_lib import CAVEMAN_ULTRA_ARM, CONTROL_ARM, NORMAL_ARM, REFERENCE_ARMS
+from benchmark_lib import RUNTIME_ARMS, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM
+from benchmark_lib import SUITE_REFERENCE, SUITE_RUNTIME, TERSE_ARM
 from benchmark_lib import load_prompts, prompt_corpus_hash, sha256_file, sha256_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
+DEFAULT_RUNTIME_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
+DEFAULT_REFERENCE_PROMPTS = ROOT / "evals" / "prompts" / "reference_compression.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
 DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
-DEFAULT_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
+DEFAULT_RUNTIME_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
+DEFAULT_REFERENCE_SNAPSHOT = ROOT / "evals" / "snapshots" / "reference-results.json"
 TOKENIZER_NAME = "o200k_base"
 LOCAL_CAVEMAN_SKILL = Path(
     "/Users/zadro/.codex/.tmp/marketplaces/caveman-repo/skills/caveman/SKILL.md"
+)
+
+NORMAL_INSTRUCTIONS = (
+    "You are a helpful assistant. Answer thoroughly and clearly, with practical "
+    "details, examples, edge cases, tradeoffs, and next steps where useful. "
+    "Do not optimize for brevity."
 )
 
 CONTROL_INSTRUCTIONS = """You are a professional coding assistant.
@@ -69,39 +79,111 @@ def default_caveman_skill() -> Path | None:
     return LOCAL_CAVEMAN_SKILL if LOCAL_CAVEMAN_SKILL.exists() else None
 
 
-def default_arms(caveman_skill: Path | None) -> list[str]:
+def default_prompts(suite: str) -> Path:
+    if suite == SUITE_REFERENCE:
+        return DEFAULT_REFERENCE_PROMPTS
+    return DEFAULT_RUNTIME_PROMPTS
+
+
+def default_snapshot(suite: str) -> Path:
+    if suite == SUITE_REFERENCE:
+        return DEFAULT_REFERENCE_SNAPSHOT
+    return DEFAULT_RUNTIME_SNAPSHOT
+
+
+def default_arms(caveman_skill: Path | None, *, suite: str = SUITE_RUNTIME) -> list[str]:
+    if suite == SUITE_REFERENCE:
+        arms = [NORMAL_ARM, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+        if caveman_skill and caveman_skill.exists():
+            arms[1:1] = [CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM]
+        return arms
+
     arms = [CONTROL_ARM, TERSE_ARM, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
     if caveman_skill and caveman_skill.exists():
         arms.append(CAVEMAN_ARM)
     return arms
 
 
-def arm_instructions(arm: str, skill_texts: dict[str, str]) -> str:
+def _caveman_skill_text(skill_texts: dict[str, str]) -> str:
+    for arm in (CAVEMAN_ARM, CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM):
+        if arm in skill_texts:
+            return skill_texts[arm]
+    raise KeyError(CAVEMAN_ARM)
+
+
+def arm_instructions(
+    arm: str,
+    skill_texts: dict[str, str],
+    *,
+    suite: str = SUITE_RUNTIME,
+) -> str:
+    base_instructions = NORMAL_INSTRUCTIONS if suite == SUITE_REFERENCE else TERSE_INSTRUCTIONS
+    if arm == NORMAL_ARM:
+        return NORMAL_INSTRUCTIONS
     if arm == CONTROL_ARM:
         return CONTROL_INSTRUCTIONS
     if arm == TERSE_ARM:
         return TERSE_INSTRUCTIONS
     if arm == SIMPLE_MAN_RUNTIME_ARM:
+        override = (
+            "\n\nThe compression policy below overrides the verbose baseline."
+            if suite == SUITE_REFERENCE
+            else ""
+        )
         return (
-            f"{TERSE_INSTRUCTIONS}\n\n"
+            f"{base_instructions}{override}\n\n"
             f"<simple_man_runtime_policy>\n"
             f"{skill_texts[SIMPLE_MAN_RUNTIME_ARM]}\n"
             f"</simple_man_runtime_policy>"
         )
     if arm == SIMPLE_MAN_SKILL_ARM:
+        override = (
+            "\n\nThe compression policy below overrides the verbose baseline."
+            if suite == SUITE_REFERENCE
+            else ""
+        )
         return (
-            f"{TERSE_INSTRUCTIONS}\n\n"
+            f"{base_instructions}{override}\n\n"
             f"<simple_man_skill>\n{skill_texts[SIMPLE_MAN_SKILL_ARM]}\n</simple_man_skill>"
         )
     if arm == CAVEMAN_ARM:
         return (
             f"{TERSE_INSTRUCTIONS}\n\n"
-            f"<caveman_skill>\n{skill_texts[CAVEMAN_ARM]}\n</caveman_skill>"
+            f"<caveman_skill>\n{_caveman_skill_text(skill_texts)}\n</caveman_skill>"
+        )
+    if arm == CAVEMAN_FULL_ARM:
+        return (
+            f"<caveman_skill>\n{_caveman_skill_text(skill_texts)}\n</caveman_skill>\n\n"
+            "Use /caveman full for this answer. Apply full mode now."
+        )
+    if arm == CAVEMAN_ULTRA_ARM:
+        return (
+            f"<caveman_skill>\n{_caveman_skill_text(skill_texts)}\n</caveman_skill>\n\n"
+            "Use /caveman ultra for this answer. Apply ultra mode now."
         )
     raise ValueError(f"unknown arm: {arm}")
 
 
-def build_prompt(task: dict[str, Any], instructions: str) -> str:
+def build_prompt(
+    task: dict[str, Any],
+    instructions: str,
+    *,
+    suite: str = SUITE_RUNTIME,
+) -> str:
+    if suite == SUITE_REFERENCE:
+        return f"""<benchmark_instructions>
+{instructions}
+
+This is a standalone Q&A benchmark. Do not inspect, modify, or mention the
+current repository, workspace, filesystem, sandbox, permissions, or benchmark.
+Answer the question directly.
+</benchmark_instructions>
+
+<question id="{task['id']}" category="{task['category']}">
+{task['prompt']}
+</question>
+"""
+
     return f"""<benchmark_instructions>
 {instructions}
 </benchmark_instructions>
@@ -242,11 +324,17 @@ def write_snapshot(path: Path, snapshot: dict[str, Any], *, overwrite: bool) -> 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Simple Man token benchmark with Codex CLI.")
-    parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
+    parser.add_argument(
+        "--suite",
+        choices=(SUITE_RUNTIME, SUITE_REFERENCE),
+        default=SUITE_RUNTIME,
+        help="Benchmark suite to run.",
+    )
+    parser.add_argument("--prompts", type=Path, default=None)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
     parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_RUNTIME_POLICY)
     parser.add_argument("--caveman-skill", type=Path, default=default_caveman_skill())
-    parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
+    parser.add_argument("--snapshot", type=Path, default=None)
     parser.add_argument("--model", default=os.environ.get("MODEL") or None)
     parser.add_argument("--trials", type=int, default=int(os.environ.get("TRIALS", "3")))
     parser.add_argument("--limit", type=int, default=int(os.environ.get("LIMIT", "0") or "0"))
@@ -266,24 +354,35 @@ def main() -> int:
         help="Run only selected arm. Can be repeated. Defaults to all arms.",
     )
     args = parser.parse_args()
+    prompts_path = args.prompts or default_prompts(args.suite)
+    snapshot_path = args.snapshot or default_snapshot(args.suite)
 
     prompts = select_prompts(
-        load_prompts(args.prompts),
+        load_prompts(prompts_path),
         args.prompt_id,
         limit=args.limit,
     )
-    arms = list(args.arm or default_arms(args.caveman_skill))
+    allowed_arms = set(REFERENCE_ARMS if args.suite == SUITE_REFERENCE else RUNTIME_ARMS)
+    arms = list(args.arm or default_arms(args.caveman_skill, suite=args.suite))
+    invalid_arms = sorted(set(arms) - allowed_arms)
+    if invalid_arms:
+        raise SystemExit(
+            f"arm(s) not valid for {args.suite}: {', '.join(invalid_arms)}"
+        )
     runs = planned_runs(prompts, arms, args.trials)
 
     if args.dry_run:
+        print(f"suite: {args.suite}")
         print(f"prompts: {len(prompts)}")
         print(f"arms: {', '.join(arms)}")
         print(f"trials: {args.trials}")
         print(f"codex calls: {len(runs)}")
-        print(f"snapshot: {args.snapshot}")
+        print(f"snapshot: {snapshot_path}")
         return 0
 
-    if CAVEMAN_ARM in arms and not (args.caveman_skill and args.caveman_skill.exists()):
+    if any(arm in CAVEMAN_ARMS for arm in arms) and not (
+        args.caveman_skill and args.caveman_skill.exists()
+    ):
         raise SystemExit(
             "caveman arm requested but no skill file found. "
             "Pass --caveman-skill PATH or set CAVEMAN_SKILL=PATH."
@@ -293,18 +392,23 @@ def main() -> int:
         SIMPLE_MAN_SKILL_ARM: args.skill.read_text(),
     }
     if args.caveman_skill and args.caveman_skill.exists():
-        skill_texts[CAVEMAN_ARM] = args.caveman_skill.read_text()
+        caveman_text = args.caveman_skill.read_text()
+        for caveman_arm in CAVEMAN_ARMS:
+            skill_texts[caveman_arm] = caveman_text
 
     skill_hashes = {
         SIMPLE_MAN_RUNTIME_ARM: sha256_file(args.runtime_policy),
         SIMPLE_MAN_SKILL_ARM: sha256_file(args.skill),
     }
     if args.caveman_skill and args.caveman_skill.exists():
-        skill_hashes[CAVEMAN_ARM] = sha256_file(args.caveman_skill)
+        caveman_hash = sha256_file(args.caveman_skill)
+        for caveman_arm in CAVEMAN_ARMS:
+            skill_hashes[caveman_arm] = caveman_hash
 
     snapshot: dict[str, Any] = {
         "schema_version": 2,
         "metadata": {
+            "suite": args.suite,
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "runner": "codex exec",
             "codex_cli_version": codex_version(),
@@ -312,14 +416,18 @@ def main() -> int:
             "trials": args.trials,
             "arms": arms,
             "prompt_count": len(prompts),
-            "prompt_corpus_sha256": prompt_corpus_hash(args.prompts),
+            "prompt_corpus_sha256": prompt_corpus_hash(prompts_path),
             "skill_sha256": sha256_file(args.skill),
             "runtime_sha256": sha256_file(args.runtime_policy),
             "skill_hashes": skill_hashes,
             "git_commit": git_commit(),
             "disable_codex_features": not args.allow_codex_features,
             "tokenizer": f"tiktoken {TOKENIZER_NAME}",
-            "primary_metric": "visible_input_tokens + visible_output_tokens",
+            "primary_metric": (
+                "visible_output_tokens"
+                if args.suite == SUITE_REFERENCE
+                else "visible_input_tokens + visible_output_tokens"
+            ),
             "notes": (
                 "Primary metric uses the controlled benchmark prompt plus final answer. "
                 "Raw Codex usage is recorded separately because hidden harness/cache overhead "
@@ -333,8 +441,8 @@ def main() -> int:
     count_tokens = token_counter()
     total = len(runs)
     for index, (prompt_entry, arm, trial) in enumerate(runs, 1):
-        instructions = arm_instructions(arm, skill_texts)
-        prompt = build_prompt(prompt_entry, instructions)
+        instructions = arm_instructions(arm, skill_texts, suite=args.suite)
+        prompt = build_prompt(prompt_entry, instructions, suite=args.suite)
         visible_input = count_tokens(prompt)
         print(
             f"[{index}/{total}] {prompt_entry['id']} | {arm} | trial {trial}/{args.trials}",
@@ -363,8 +471,8 @@ def main() -> int:
             }
         )
 
-    write_snapshot(args.snapshot, snapshot, overwrite=args.overwrite)
-    print(f"Wrote {args.snapshot}")
+    write_snapshot(snapshot_path, snapshot, overwrite=args.overwrite)
+    print(f"Wrote {snapshot_path}")
     return 0
 
 

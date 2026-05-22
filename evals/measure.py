@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from benchmark_lib import ARM_LABELS, CAVEMAN_ARM, CONTROL_ARM
-from benchmark_lib import SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM, TERSE_ARM
+from benchmark_lib import ARM_LABELS, CAVEMAN_ARM, CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM
+from benchmark_lib import CONTROL_ARM, NORMAL_ARM, SIMPLE_MAN_RUNTIME_ARM
+from benchmark_lib import SIMPLE_MAN_SKILL_ARM, SUITE_REFERENCE, SUITE_RUNTIME, TERSE_ARM
 from benchmark_lib import build_category_summary, build_prompt_table, check_run_quality
 from benchmark_lib import compare_arm, pct
 from benchmark_lib import validate_snapshot_age, validate_snapshot_freshness
@@ -17,9 +18,11 @@ from benchmark_lib import validate_snapshot_age, validate_snapshot_freshness
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
+DEFAULT_REFERENCE_PROMPTS = ROOT / "evals" / "prompts" / "reference_compression.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
 DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
 DEFAULT_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
+DEFAULT_REFERENCE_SNAPSHOT = ROOT / "evals" / "snapshots" / "reference-results.json"
 
 
 def load_snapshot(path: Path) -> dict[str, Any]:
@@ -57,12 +60,110 @@ def arm_label(arm: str) -> str:
     return ARM_LABELS.get(arm, arm)
 
 
+def _available_arms(snapshot: dict[str, Any], rows) -> set[str]:
+    metadata = snapshot.get("metadata", {})
+    return set(metadata.get("arms", [])) or {arm for row in rows for arm in row.arms}
+
+
+def _arm_mean_output(rows, arm: str) -> float | None:
+    return mean(
+        [row.arms[arm].median_output for row in rows if row.arms.get(arm)]
+    )
+
+
+def _reference_skill_arms(available_arms: set[str]) -> list[str]:
+    return [
+        arm
+        for arm in (
+            CAVEMAN_FULL_ARM,
+            CAVEMAN_ULTRA_ARM,
+            SIMPLE_MAN_RUNTIME_ARM,
+            SIMPLE_MAN_SKILL_ARM,
+        )
+        if arm in available_arms
+    ]
+
+
+def render_reference_report(snapshot: dict[str, Any]) -> str:
+    metadata = snapshot.get("metadata", {})
+    rows = build_prompt_table(snapshot)
+    available_arms = _available_arms(snapshot, rows)
+    skill_arms = _reference_skill_arms(available_arms)
+
+    lines: list[str] = []
+    lines.append(f"_Generated: {metadata.get('generated_at', '?')}_")
+    lines.append(
+        f"_Runner: {metadata.get('runner', '?')} · "
+        f"Codex: {metadata.get('codex_cli_version', '?')} · "
+        f"Model: {metadata.get('model', '?')}_"
+    )
+    lines.append(
+        f"_n = {metadata.get('prompt_count', len(rows))} prompts × "
+        f"{metadata.get('trials', '?')} trials · primary = visible_output_tokens_"
+    )
+    lines.append(
+        "_Baseline is Codex-calibrated verbose normal: helpful, thorough, clear, "
+        "with examples/tradeoffs where useful._"
+    )
+    lines.append("")
+
+    lines.append("**Reference Output Compression**")
+    lines.append("| Arm | Output compression vs normal | Mean output tokens |")
+    lines.append("|---|---:|---:|")
+    for arm in skill_arms:
+        values = comparison_values(
+            rows,
+            arm=arm,
+            baseline_arm=NORMAL_ARM,
+            amortize_turns=1,
+        )
+        lines.append(
+            f"| {arm_label(arm)} | "
+            f"{pct(mean([value.output_savings for value in values]))} | "
+            f"{fmt_num(_arm_mean_output(rows, arm))} |"
+        )
+
+    lines.append("")
+    lines.append("**Per Prompt**")
+    header = "| Prompt | Normal out |"
+    divider = "|---|---:|"
+    for arm in skill_arms:
+        label = arm_label(arm)
+        header += f" {label} out | {label} vs normal |"
+        divider += "---:|---:|"
+    lines.append(header)
+    lines.append(divider)
+    for row in rows:
+        normal = row.arms.get(NORMAL_ARM)
+        line = f"| {row.prompt_id} | {fmt_num(normal.median_output if normal else None)} |"
+        for arm in skill_arms:
+            candidate = row.arms.get(arm)
+            vs_normal = (
+                compare_arm(candidate, normal, amortize_turns=1)
+                if candidate and normal
+                else None
+            )
+            line += (
+                f" {fmt_num(candidate.median_output if candidate else None)} | "
+                f"{pct(vs_normal.output_savings if vs_normal else None)} |"
+            )
+        lines.append(line)
+
+    lines.append("")
+    lines.append(
+        "_Reference suite is output-only. It validates Caveman README-style "
+        "compression before comparing Simple Man on the same prompts._"
+    )
+    return "\n".join(lines)
+
+
 def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     metadata = snapshot.get("metadata", {})
     rows = build_prompt_table(snapshot)
-    available_arms = set(metadata.get("arms", [])) or {
-        arm for row in rows for arm in row.arms
-    }
+    if metadata.get("suite") == SUITE_REFERENCE:
+        return render_reference_report(snapshot)
+
+    available_arms = _available_arms(snapshot, rows)
     skill_arms = [
         arm
         for arm in (SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM, CAVEMAN_ARM)
@@ -228,6 +329,57 @@ def quality_failures(snapshot: dict[str, Any], *, checked_arms: set[str]) -> lis
     return failures
 
 
+def default_quality_arms(snapshot: dict[str, Any]) -> list[str]:
+    metadata = snapshot.get("metadata", {})
+    available_arms = set(metadata.get("arms", []))
+    if metadata.get("suite") == SUITE_REFERENCE:
+        return [
+            arm
+            for arm in (
+                CAVEMAN_FULL_ARM,
+                CAVEMAN_ULTRA_ARM,
+                SIMPLE_MAN_RUNTIME_ARM,
+                SIMPLE_MAN_SKILL_ARM,
+            )
+            if arm in available_arms
+        ]
+    return [SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+
+
+def reference_sanity_failures(
+    snapshot: dict[str, Any],
+    *,
+    min_savings: float,
+) -> list[str]:
+    if snapshot.get("metadata", {}).get("suite") != SUITE_REFERENCE:
+        return []
+
+    rows = build_prompt_table(snapshot)
+    caveman_means: list[tuple[str, float]] = []
+    for arm in (CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM):
+        values = comparison_values(
+            rows,
+            arm=arm,
+            baseline_arm=NORMAL_ARM,
+            amortize_turns=1,
+        )
+        arm_mean = mean([value.output_savings for value in values])
+        if arm_mean is not None:
+            caveman_means.append((arm, arm_mean))
+
+    if not caveman_means:
+        return ["Caveman reference sanity failed: no Caveman reference arm present"]
+
+    best_arm, best_savings = max(caveman_means, key=lambda item: item[1])
+    if best_savings < min_savings:
+        return [
+            "Caveman reference sanity failed: "
+            f"best={arm_label(best_arm)} {pct(best_savings)}, "
+            f"required>={pct(min_savings)}"
+        ]
+    return []
+
+
 def run_checks(args: argparse.Namespace, snapshot: dict[str, Any]) -> int:
     errors: list[str] = []
     errors.extend(
@@ -239,10 +391,14 @@ def run_checks(args: argparse.Namespace, snapshot: dict[str, Any]) -> int:
         )
     )
     errors.extend(validate_snapshot_age(snapshot, args.max_age_days))
-    checked_arms = set(
-        args.quality_arm or [SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
-    )
+    checked_arms = set(args.quality_arm or default_quality_arms(snapshot))
     errors.extend(quality_failures(snapshot, checked_arms=checked_arms))
+    errors.extend(
+        reference_sanity_failures(
+            snapshot,
+            min_savings=args.reference_min_caveman_savings,
+        )
+    )
 
     expected_runs = (
         int(snapshot.get("metadata", {}).get("prompt_count", 0))
@@ -265,6 +421,12 @@ def run_checks(args: argparse.Namespace, snapshot: dict[str, Any]) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Measure Simple Man benchmark snapshot.")
+    parser.add_argument(
+        "--suite",
+        choices=(SUITE_RUNTIME, SUITE_REFERENCE),
+        default=None,
+        help="Benchmark suite. Defaults to snapshot metadata.",
+    )
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
@@ -281,9 +443,13 @@ def main() -> int:
     )
     parser.add_argument("--max-age-days", type=int, default=90)
     parser.add_argument("--amortize-turns", type=int, default=10)
+    parser.add_argument("--reference-min-caveman-savings", type=float, default=0.50)
     args = parser.parse_args()
 
     snapshot = load_snapshot(args.snapshot)
+    suite = args.suite or snapshot.get("metadata", {}).get("suite")
+    if suite == SUITE_REFERENCE and args.prompts == DEFAULT_PROMPTS:
+        args.prompts = DEFAULT_REFERENCE_PROMPTS
     if args.check:
         return run_checks(args, snapshot)
 

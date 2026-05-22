@@ -64,9 +64,12 @@ See [INSTALL.md](./INSTALL.md) for per-agent setup notes.
 
 ## Benchmark
 
-This repo includes a Codex-based token benchmark for checking whether
-Simple Man reduces communication cost without hiding important engineering
-facts.
+This repo includes two Codex-based token benchmark suites:
+
+- `runtime_economics`: coding-agent cost, including instruction overhead and
+  long-session amortized net.
+- `reference_compression`: Caveman README-style output compression against a
+  verbose normal helpful baseline.
 
 ```bash
 make bench-dry-run
@@ -74,12 +77,16 @@ make bench-refresh
 make bench
 make bench-check
 make bench-compare-sample
+make bench-reference-dry-run
+make bench-reference-refresh
+make bench-reference
+make bench-reference-check
 ```
 
 The benchmark compares `control`, generic `terse`, `simple_man_runtime`,
-`simple_man_skill`, and optional `caveman` arms over 40 coding-agent tasks.
-Headline numbers use runtime output compression and long-session net;
-full-skill first-turn cost is diagnostic.
+`simple_man_skill`, and optional Caveman arms. Runtime headlines use output
+compression and long-session net; reference headlines use output-only
+compression vs `normal`.
 
 See [evals/README.md](./evals/README.md).
 
