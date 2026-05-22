@@ -40,21 +40,21 @@ class BenchmarkLibTests(unittest.TestCase):
                 },
                 {
                     "prompt_id": "p1",
-                    "arm": "simple_man",
+                    "arm": "simple_man_runtime",
                     "trial": 1,
                     "usage": {"input_tokens": 120, "output_tokens": 10},
                     "text": "simple answer",
                 },
                 {
                     "prompt_id": "p1",
-                    "arm": "simple_man",
+                    "arm": "simple_man_runtime",
                     "trial": 2,
                     "usage": {"input_tokens": 130, "output_tokens": 20},
                     "text": "simple answer",
                 },
                 {
                     "prompt_id": "p1",
-                    "arm": "simple_man",
+                    "arm": "simple_man_runtime",
                     "trial": 3,
                     "usage": {"input_tokens": 110, "output_tokens": 30},
                     "text": "simple answer",
@@ -67,7 +67,7 @@ class BenchmarkLibTests(unittest.TestCase):
 
         self.assertEqual(row.prompt_id, "p1")
         self.assertEqual(row.arms["control"].median_total, 150)
-        self.assertEqual(row.arms["simple_man"].median_total, 140)
+        self.assertEqual(row.arms["simple_man_runtime"].median_total, 140)
         self.assertAlmostEqual(row.net_savings_vs_control, 1 - 140 / 150)
         self.assertAlmostEqual(row.output_savings_vs_control, 1 - 20 / 50)
 
@@ -86,7 +86,7 @@ class BenchmarkLibTests(unittest.TestCase):
                 },
                 {
                     "prompt_id": "p1",
-                    "arm": "simple_man",
+                    "arm": "simple_man_runtime",
                     "trial": 1,
                     "visible_input_tokens": 24,
                     "visible_output_tokens": 3,
@@ -101,7 +101,7 @@ class BenchmarkLibTests(unittest.TestCase):
 
         self.assertEqual(row.arms["control"].median_total, 30)
         self.assertEqual(row.arms["control"].median_codex_total, 2000)
-        self.assertEqual(row.arms["simple_man"].median_total, 27)
+        self.assertEqual(row.arms["simple_man_runtime"].median_total, 27)
         self.assertAlmostEqual(row.net_savings_vs_control, 0.1)
 
     def test_arm_comparison_reports_output_first_turn_and_amortized_savings(self):
@@ -222,13 +222,17 @@ class BenchmarkLibTests(unittest.TestCase):
                     ["integration tests fail"],
                     ["tool calls"],
                     ["builder"],
+                    ["table drop"],
                 ],
             },
         }
         run = {
             "prompt_id": "status",
             "arm": "simple_man",
-            "text": "Unit tests: pass. Integration tests: fail. tool_call_id recorded. AS build.",
+            "text": (
+                "Unit tests: pass. Integration tests: fail. "
+                "tool_call_id recorded. AS build. before dropping any table."
+            ),
         }
 
         failures = bench.check_run_quality(prompt, run)
@@ -270,6 +274,7 @@ class BenchmarkLibTests(unittest.TestCase):
             errors = bench.validate_snapshot_freshness(
                 snapshot=snapshot,
                 skill_path=skill,
+                runtime_path=None,
                 prompts_path=None,
             )
 
@@ -342,11 +347,11 @@ class BenchmarkLibTests(unittest.TestCase):
             {"id": "b", "category": "x", "prompt": "B"},
         ]
 
-        runs = run_codex.planned_runs(prompts, ["control", "simple_man"], 3)
+        runs = run_codex.planned_runs(prompts, ["control", "simple_man_runtime"], 3)
 
         self.assertEqual(len(runs), 12)
         self.assertEqual(runs[0], (prompts[0], "control", 1))
-        self.assertEqual(runs[-1], (prompts[1], "simple_man", 3))
+        self.assertEqual(runs[-1], (prompts[1], "simple_man_runtime", 3))
 
     def test_select_prompts_filters_by_explicit_ids_preserving_requested_order(self):
         prompts = [
@@ -373,7 +378,55 @@ class BenchmarkLibTests(unittest.TestCase):
             arms = run_codex.default_arms(caveman)
 
         self.assertIn("caveman", arms)
-        self.assertIn("simple_man", arms)
+        self.assertIn("simple_man_runtime", arms)
+        self.assertIn("simple_man_skill", arms)
+
+    def test_runtime_policy_has_no_skill_reference(self):
+        snippet = (ROOT / "AGENTS.md.snippet").read_text()
+
+        self.assertNotIn("$simple-man", snippet)
+        self.assertIn("Simple Man runtime policy", snippet)
+
+    def test_arm_instructions_split_runtime_and_full_skill(self):
+        skill_texts = {
+            "simple_man_runtime": "runtime rules",
+            "simple_man_skill": "full skill rules",
+        }
+
+        runtime = run_codex.arm_instructions("simple_man_runtime", skill_texts)
+        full_skill = run_codex.arm_instructions("simple_man_skill", skill_texts)
+
+        self.assertIn("<simple_man_runtime_policy>", runtime)
+        self.assertIn("runtime rules", runtime)
+        self.assertNotIn("full skill rules", runtime)
+        self.assertIn("<simple_man_skill>", full_skill)
+        self.assertIn("full skill rules", full_skill)
+
+    def test_snapshot_hash_validation_checks_runtime_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp) / "SKILL.md"
+            runtime = Path(tmp) / "AGENTS.md.snippet"
+            skill.write_text("skill\n")
+            runtime.write_text("runtime current\n")
+            snapshot = {
+                "metadata": {
+                    "skill_hashes": {
+                        "simple_man_skill": bench.sha256_text("skill\n"),
+                        "simple_man_runtime": bench.sha256_text("runtime old\n"),
+                    },
+                    "prompt_corpus_sha256": "unused",
+                }
+            }
+
+            errors = bench.validate_snapshot_freshness(
+                snapshot=snapshot,
+                skill_path=skill,
+                runtime_path=runtime,
+                prompts_path=None,
+            )
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("runtime_sha256 mismatch", errors[0])
 
 
 if __name__ == "__main__":

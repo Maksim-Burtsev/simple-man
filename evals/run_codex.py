@@ -11,13 +11,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-from benchmark_lib import ARMS, CAVEMAN_ARM, CONTROL_ARM, SIMPLE_MAN_ARM, TERSE_ARM
+from benchmark_lib import ARMS, CAVEMAN_ARM, CONTROL_ARM, SIMPLE_MAN_RUNTIME_ARM
+from benchmark_lib import SIMPLE_MAN_SKILL_ARM, TERSE_ARM
 from benchmark_lib import load_prompts, prompt_corpus_hash, sha256_file, sha256_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
+DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
 DEFAULT_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
 TOKENIZER_NAME = "o200k_base"
 LOCAL_CAVEMAN_SKILL = Path(
@@ -68,7 +70,7 @@ def default_caveman_skill() -> Path | None:
 
 
 def default_arms(caveman_skill: Path | None) -> list[str]:
-    arms = [CONTROL_ARM, TERSE_ARM, SIMPLE_MAN_ARM]
+    arms = [CONTROL_ARM, TERSE_ARM, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
     if caveman_skill and caveman_skill.exists():
         arms.append(CAVEMAN_ARM)
     return arms
@@ -79,10 +81,17 @@ def arm_instructions(arm: str, skill_texts: dict[str, str]) -> str:
         return CONTROL_INSTRUCTIONS
     if arm == TERSE_ARM:
         return TERSE_INSTRUCTIONS
-    if arm == SIMPLE_MAN_ARM:
+    if arm == SIMPLE_MAN_RUNTIME_ARM:
         return (
             f"{TERSE_INSTRUCTIONS}\n\n"
-            f"<simple_man_skill>\n{skill_texts[SIMPLE_MAN_ARM]}\n</simple_man_skill>"
+            f"<simple_man_runtime_policy>\n"
+            f"{skill_texts[SIMPLE_MAN_RUNTIME_ARM]}\n"
+            f"</simple_man_runtime_policy>"
+        )
+    if arm == SIMPLE_MAN_SKILL_ARM:
+        return (
+            f"{TERSE_INSTRUCTIONS}\n\n"
+            f"<simple_man_skill>\n{skill_texts[SIMPLE_MAN_SKILL_ARM]}\n</simple_man_skill>"
         )
     if arm == CAVEMAN_ARM:
         return (
@@ -235,6 +244,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run Simple Man token benchmark with Codex CLI.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
+    parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_RUNTIME_POLICY)
     parser.add_argument("--caveman-skill", type=Path, default=default_caveman_skill())
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--model", default=os.environ.get("MODEL") or None)
@@ -278,16 +288,22 @@ def main() -> int:
             "caveman arm requested but no skill file found. "
             "Pass --caveman-skill PATH or set CAVEMAN_SKILL=PATH."
         )
-    skill_texts = {SIMPLE_MAN_ARM: args.skill.read_text()}
+    skill_texts = {
+        SIMPLE_MAN_RUNTIME_ARM: args.runtime_policy.read_text(),
+        SIMPLE_MAN_SKILL_ARM: args.skill.read_text(),
+    }
     if args.caveman_skill and args.caveman_skill.exists():
         skill_texts[CAVEMAN_ARM] = args.caveman_skill.read_text()
 
-    skill_hashes = {SIMPLE_MAN_ARM: sha256_file(args.skill)}
+    skill_hashes = {
+        SIMPLE_MAN_RUNTIME_ARM: sha256_file(args.runtime_policy),
+        SIMPLE_MAN_SKILL_ARM: sha256_file(args.skill),
+    }
     if args.caveman_skill and args.caveman_skill.exists():
         skill_hashes[CAVEMAN_ARM] = sha256_file(args.caveman_skill)
 
     snapshot: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "metadata": {
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "runner": "codex exec",
@@ -298,6 +314,7 @@ def main() -> int:
             "prompt_count": len(prompts),
             "prompt_corpus_sha256": prompt_corpus_hash(args.prompts),
             "skill_sha256": sha256_file(args.skill),
+            "runtime_sha256": sha256_file(args.runtime_policy),
             "skill_hashes": skill_hashes,
             "git_commit": git_commit(),
             "disable_codex_features": not args.allow_codex_features,

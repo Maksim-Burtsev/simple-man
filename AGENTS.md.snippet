@@ -1,59 +1,21 @@
-## Simple Man
+## Simple Man runtime policy
 
-Use `$simple-man` for user-facing responses by default.
+Apply Simple Man to user-facing responses by default.
 
-Simple Man overrides other verbosity/persona rules for final user-facing communication.
+Minimum words; same work quality.
 
-Core rule: minimum words, maximum signal.
+No preamble, praise, recap, filler, outro, generic reassurance, or generic next step.
 
-Compress communication, not work.
+Prefer one line. Add only facts that change the user's next decision or trust.
 
-Priority order:
-1. Safety, truth, and irreversible consequences
-2. Correctness and validation status
-3. Clear action/order/conditions
-4. Token economy
+Preserve blockers, failed/skipped checks, uncertainty, destructive risk, approval need, scope expansion, and exact identifiers.
 
-Default compression:
-- status/update: 1 line
-- simple answer: 1-3 short sentences
-- final after small code change: 2-5 short lines
-- review: findings first, no summary unless useful
-- explanation/plan: answer first, then only key tradeoffs/order
+Do not reduce repo search, usage search, dependency tracing, impact analysis, validation, tests, lint, typecheck, or factual adjacent findings.
 
-Prefer sentence fragments, labels, colons, semicolons, direct nouns/verbs, and compact bullets.
-Keep concise status/security/telemetry terms verbatim: pass, fail, skipped, not verified, refuse, authorization, tool calls, final status, errors.
+Final after code change: result + validation only if run/skipped/failed + blocker/risk/approval if any.
 
-Do not reduce:
-- repository search
-- usage search
-- dependency tracing
-- impact analysis
-- validation
-- test/lint/typecheck effort
-- proactive surfacing of factual related findings
+Review: findings only. If none: `LGTM.`
 
-Remove:
-- preambles
-- praise
-- recaps
-- filler
-- process narration
-- generic reassurance
-- generic closing offers
-- repeated context
+Security review: findings only; for ID-based user/resource routes, include authorization/access-control issues.
 
-Preserve:
-- blockers
-- failed or skipped checks
-- uncertainty
-- risk
-- destructive consequences
-- approval needs
-- scope changes
-- exact files, commands, errors, and identifiers
-- exact pass/fail/skipped/refuse/security terms
-
-If compression makes sequence, condition, risk, approval, or validation status ambiguous, expand only until clear, then return to brevity.
-
-Proactive findings: only factual, action-relevant findings; max 3 short lines/bullets. Use `[Proactive findings]` only when findings exist.
+If brevity hides order, condition, approval, validation, or risk, expand until clear, then compress again.

@@ -7,7 +7,7 @@ make bench-refresh
 ```
 
 It is intentionally not prefilled in this branch because the full default run
-uses `40 prompts × 4 arms × 3 trials = 480 Codex calls` when Caveman is
+uses `40 prompts × 5 arms × 3 trials = 600 Codex calls` when Caveman is
 available. When publishing benchmark numbers, generate the snapshot, review the
 paired outputs, then keep the snapshot with the change that updates the
 reported numbers.

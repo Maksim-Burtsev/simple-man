@@ -12,9 +12,21 @@ from typing import Any
 
 CONTROL_ARM = "control"
 TERSE_ARM = "terse"
-SIMPLE_MAN_ARM = "simple_man"
+SIMPLE_MAN_RUNTIME_ARM = "simple_man_runtime"
+SIMPLE_MAN_SKILL_ARM = "simple_man_skill"
 CAVEMAN_ARM = "caveman"
-ARMS = (CONTROL_ARM, TERSE_ARM, SIMPLE_MAN_ARM, CAVEMAN_ARM)
+ARMS = (
+    CONTROL_ARM,
+    TERSE_ARM,
+    SIMPLE_MAN_RUNTIME_ARM,
+    SIMPLE_MAN_SKILL_ARM,
+    CAVEMAN_ARM,
+)
+ARM_LABELS = {
+    SIMPLE_MAN_RUNTIME_ARM: "Simple Man runtime",
+    SIMPLE_MAN_SKILL_ARM: "Simple Man skill",
+    CAVEMAN_ARM: "Caveman",
+}
 
 
 @dataclass(frozen=True)
@@ -192,7 +204,7 @@ def build_prompt_table(snapshot: dict[str, Any]) -> list[PromptStats]:
         arm_stats = {arm: _arm_stats(arm_runs) for arm, arm_runs in by_arm.items()}
         control = arm_stats.get(CONTROL_ARM)
         terse = arm_stats.get(TERSE_ARM)
-        simple = arm_stats.get(SIMPLE_MAN_ARM)
+        simple = arm_stats.get(SIMPLE_MAN_RUNTIME_ARM)
 
         rows.append(
             PromptStats(
@@ -265,7 +277,9 @@ def _normalize_quality_text(text: str) -> str:
     tokens = re.findall(r"[a-z0-9]+", text.lower())
     stems: list[str] = []
     for token in tokens:
-        if len(token) > 5 and token.endswith("er"):
+        if len(token) > 6 and token.endswith("pping"):
+            token = token[:-4]
+        elif len(token) > 5 and token.endswith("er"):
             token = token[:-2]
         elif len(token) > 3 and token.endswith("s"):
             token = token[:-1]
@@ -278,7 +292,15 @@ def _quality_term_matches(term: str, text: str, normalized_text: str) -> bool:
     if lowered in text:
         return True
     normalized_term = _normalize_quality_text(term)
-    return bool(normalized_term and normalized_term in normalized_text)
+    if not normalized_term:
+        return False
+    if normalized_term in normalized_text:
+        return True
+    term_tokens = normalized_term.split()
+    if len(term_tokens) > 1:
+        text_tokens = set(normalized_text.split())
+        return all(token in text_tokens for token in term_tokens)
+    return False
 
 
 def check_run_quality(prompt: dict[str, Any], run: dict[str, Any]) -> list[str]:
@@ -306,14 +328,28 @@ def check_run_quality(prompt: dict[str, Any], run: dict[str, Any]) -> list[str]:
 def validate_snapshot_freshness(
     snapshot: dict[str, Any],
     skill_path: Path,
+    runtime_path: Path | None,
     prompts_path: Path | None,
 ) -> list[str]:
     metadata = snapshot.get("metadata", {})
     errors: list[str] = []
+    skill_hashes = metadata.get("skill_hashes") or {}
+
     expected_skill = sha256_file(skill_path)
-    actual_skill = metadata.get("skill_sha256")
+    actual_skill = skill_hashes.get(SIMPLE_MAN_SKILL_ARM) or metadata.get("skill_sha256")
     if actual_skill != expected_skill:
         errors.append(f"skill_sha256 mismatch: snapshot={actual_skill} current={expected_skill}")
+
+    if runtime_path is not None:
+        expected_runtime = sha256_file(runtime_path)
+        actual_runtime = skill_hashes.get(SIMPLE_MAN_RUNTIME_ARM) or metadata.get(
+            "runtime_sha256"
+        )
+        if actual_runtime != expected_runtime:
+            errors.append(
+                "runtime_sha256 mismatch: "
+                f"snapshot={actual_runtime} current={expected_runtime}"
+            )
 
     if prompts_path is not None:
         expected_prompts = prompt_corpus_hash(prompts_path)

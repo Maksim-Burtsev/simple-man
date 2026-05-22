@@ -1,33 +1,35 @@
 # Simple Man Benchmark
 
-This benchmark measures how `skills/simple-man/SKILL.md` changes Codex token
-usage when the same coding-agent tasks are answered with and without the skill.
-When a Caveman skill file is available, it also adds a `caveman` comparison arm.
+This benchmark measures Simple Man runtime and full-skill token behavior on the
+same coding-agent tasks. When a Caveman skill file is available, it also adds a
+`caveman` comparison arm.
 
 ## Design
 
-The benchmark uses four possible arms:
+The benchmark uses five possible arms:
 
 | Arm | Instruction |
 | --- | --- |
 | `control` | Neutral professional coding-agent instruction |
 | `terse` | Control + generic concise-answer instruction |
-| `simple_man` | `terse` + the current `skills/simple-man/SKILL.md` content |
+| `simple_man_runtime` | `terse` + tiny always-on `AGENTS.md.snippet` policy |
+| `simple_man_skill` | `terse` + full `skills/simple-man/SKILL.md` content |
 | `caveman` | `terse` + an external Caveman `SKILL.md` |
 
 The report separates three metrics:
 
 ```text
-output_compression = 1 - skill_visible_output / control_visible_output
-first_turn_net = 1 - skill_visible_total / control_visible_total
-amortized_net = 1 - (control_input + skill_overhead / turns + skill_output) / control_total
+output_compression = 1 - arm_visible_output / baseline_visible_output
+first_turn_net = 1 - arm_visible_total / baseline_visible_total
+session_net = 1 - (control_input + arm_overhead / turns + arm_output) / control_total
 ```
 
 where `visible_total = visible_input_tokens + visible_output_tokens`, counted
 with `tiktoken o200k_base` over the controlled benchmark prompt and final
 answer. `output_compression` is the fair Caveman-style response-length metric.
-`first_turn_net` and `amortized_net` are cost economics metrics that include
-skill input overhead.
+`session_net` is reported for runtime over 20/50/100 turns. Full-skill
+first-turn and net costs are diagnostic because injecting a full skill into
+every isolated turn is the worst-case usage pattern.
 
 ## Why Codex CLI
 
@@ -89,7 +91,7 @@ make bench
 ```
 
 Validate snapshot freshness, prompt coverage, and deterministic quality checks
-for `simple_man`:
+for `simple_man_runtime` and `simple_man_skill`:
 
 ```bash
 make bench-check
@@ -99,7 +101,7 @@ make bench-check
 external-arm quality too:
 
 ```bash
-python3 evals/measure.py --check --quality-arm simple_man --quality-arm caveman
+python3 evals/measure.py --check --quality-arm simple_man_runtime --quality-arm simple_man_skill --quality-arm caveman
 ```
 
 Smoke-test the runner with one prompt and one trial, writing outside the repo:
@@ -117,6 +119,7 @@ The snapshot records:
 - trial count
 - prompt corpus hash
 - `SKILL.md` hash
+- runtime policy hash
 - git commit
 - per-run final text, visible token counts, and raw Codex usage
 - optional external Caveman skill hash when included
@@ -138,5 +141,5 @@ benchmark numbers.
   loading.
 - The quality gate is intentionally lightweight and deterministic. It catches
   obvious omissions but does not replace human review of paired outputs.
-- Full default run size is `40 prompts × 4 arms × 3 trials = 480 Codex calls`
+- Full default run size is `40 prompts × 5 arms × 3 trials = 600 Codex calls`
   when Caveman is available.

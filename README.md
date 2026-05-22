@@ -8,7 +8,7 @@ High-compression professional communication mode for coding agents.
 
 Simple Man is not a persona. It is a communication policy:
 
-> Minimum words, maximum signal.
+> Minimum user-facing words; same work quality.
 
 It is designed for users who work with agents for many hours and want lower cognitive load without making the agent passive, less careful, or less proactive.
 
@@ -41,7 +41,10 @@ It must not reduce:
 
 ## Agent support
 
-This repo ships one canonical skill plus lightweight project instruction files.
+This repo ships two activation surfaces:
+
+- full skill: `skills/simple-man/SKILL.md`
+- tiny always-on runtime policy: `AGENTS.md`, `AGENTS.md.snippet`, `CLAUDE.md`, `GEMINI.md`
 
 | Agent/tool | Path |
 | --- | --- |
@@ -51,6 +54,9 @@ This repo ships one canonical skill plus lightweight project instruction files.
 | Qwen Code | `AGENTS.md`, optional global skill copy |
 | Cursor / Windsurf / Cline / Copilot / Continue / Zed / Junie | `AGENTS.md`, or copy `AGENTS.md.snippet` into that agent's native rule file |
 | Amp / OpenCode / Kilo / Roo / Aider / other AGENTS.md agents | `AGENTS.md` |
+
+Always-on project files do not invoke `$simple-man`; they inline a tiny runtime
+policy to avoid loading full skill overhead on every turn.
 
 Agent-specific dotdir rule files are not committed here by default. They are target-project activation files, not the source of the skill.
 
@@ -70,9 +76,10 @@ make bench-check
 make bench-compare-sample
 ```
 
-The benchmark compares `control`, generic `terse`, `simple_man`, and optional
-`caveman` arms over 40 coding-agent tasks. It reports output compression,
-first-turn net cost, and amortized net cost separately.
+The benchmark compares `control`, generic `terse`, `simple_man_runtime`,
+`simple_man_skill`, and optional `caveman` arms over 40 coding-agent tasks.
+Headline numbers use runtime output compression and long-session net;
+full-skill first-turn cost is diagnostic.
 
 See [evals/README.md](./evals/README.md).
 

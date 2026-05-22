@@ -1,49 +1,59 @@
-# Simple Man Compression Benchmark Brief
+# Simple Man Runtime Benchmark Brief
 
 Date: 2026-05-22
 Repo: `/Users/zadro/open-source/simple-man`
 Branch: `codex/benchmark-simple-man`
+PR: https://github.com/Maksim-Burtsev/simple-man/pull/2
 
 ## Goal
 
-Simple Man originally aimed to reduce user-facing agent tokens at least around
-Caveman ultra level, without lowering engineering quality. Earlier benchmarks
-showed weak or negative compression. This branch tightens the skill and adds a
-reproducible benchmark harness.
+Fix the main issue from the GPT review: full `SKILL.md` is too expensive as an
+always-on instruction. The PR now separates:
 
-## What Changed
+- `simple_man_runtime`: tiny always-on policy from `AGENTS.md.snippet`
+- `simple_man_skill`: full explicit skill from `skills/simple-man/SKILL.md`
 
-Skill changes:
+Headline numbers should use runtime output compression and runtime long-session
+net. Full-skill first-turn/net metrics are diagnostic only.
 
-- `skills/simple-man/SKILL.md` now uses explicit high-compression rules:
-  sentence fragments, compact labels, direct nouns/verbs, no preamble/recap,
-  strict response budgets by answer type.
-- Preserves quality-critical facts: failed/skipped checks, risk, approval
-  needs, exact files/commands/errors/identifiers.
-- Adds verbatim preservation for concise status/security/telemetry terms:
-  `pass`, `fail`, `skipped`, `not verified`, `refuse`, `authorization`,
-  `tool calls`, `final status`, `errors`.
-- Adds compact response patterns for status, blockers, risk, review findings,
-  skipped validation, security review, and agent telemetry.
-- Keeps the skill small: current `SKILL.md` is 530 words; local Caveman
-  `SKILL.md` is 531 words.
+## Current Runtime Shape
 
-Harness changes:
+- `AGENTS.md.snippet`: 123 words
+- `skills/simple-man/SKILL.md`: 287 words
+- local Caveman `SKILL.md`: 528 words
 
-- Adds `control`, `terse`, `simple_man`, and optional `caveman` arms.
-- Separates:
-  - output compression: answer length only
-  - first-turn net: includes full skill input overhead
-  - amortized net: spreads skill overhead over N turns, default 10
-- Uses `tiktoken` `o200k_base` for controlled visible input/output token counts.
-- Records raw Codex usage separately for diagnostics.
-- Adds 40 coding-agent prompts across explanation, debugging, implementation,
-  planning, code-review, status, and risk categories.
-- `measure.py --check` gates `simple_man` by default. Caveman is comparison,
-  not this repo's CI gate. Use `--quality-arm caveman` to inspect it.
-- Quality matcher now tolerates punctuation and simple morphology, e.g.
-  `Unit tests: pass` matches `unit tests pass`, `tool_call_id` matches
-  `tool calls`, `AS build` matches `builder`.
+Always-on files do not invoke `$simple-man`; they inline the tiny runtime
+policy. The full skill remains available for explicit skill installs.
+
+Current hashes:
+
+- runtime policy: `a1bf7f5845c42827148411853f64822ebe1bc030d2f6b39a11d4a8c3c013cd54`
+- full skill: `ca54634f8adaeda5bffbddad08cef0cca64aca81b943bf2a9ae981aa5c2b40e3`
+- Caveman reference: `6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593`
+
+## Harness
+
+Arms:
+
+- `control`
+- `terse`
+- `simple_man_runtime`
+- `simple_man_skill`
+- `caveman`
+
+Metrics:
+
+- `output_compression`: answer length only
+- `first_turn_net`: isolated turn with full instruction overhead
+- `session_net`: instruction overhead amortized over 20/50/100 turns
+
+Default full run size with Caveman: `40 prompts x 5 arms x 3 trials = 600 Codex calls`.
+
+Quality gate:
+
+- default `measure.py --check` gates `simple_man_runtime` and `simple_man_skill`
+- Caveman can be added with `--quality-arm caveman`
+- current focused and first-10 samples pass both default and Caveman-inclusive checks
 
 ## Repro Commands
 
@@ -55,11 +65,11 @@ make bench-dry-run
 git diff --check
 ```
 
-Focused comparison sample:
+Focused sample:
 
 ```bash
 uv run --with tiktoken python evals/run_codex.py \
-  --snapshot /tmp/simple-man-caveman-focused-after-results.json \
+  --snapshot /tmp/simple-man-runtime-focused-results.json \
   --overwrite \
   --trials 1 \
   --prompt-id status-update-failing-tests \
@@ -73,143 +83,98 @@ uv run --with tiktoken python evals/run_codex.py \
   --prompt-id observability-agent-trace \
   --prompt-id frontend-overlap-bug
 
-python3 evals/measure.py --snapshot /tmp/simple-man-caveman-focused-after-results.json
-python3 evals/measure.py --snapshot /tmp/simple-man-caveman-focused-after-results.json --check
+python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json
+python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json --check
 ```
 
 Canonical first-10 sample:
 
 ```bash
 uv run --with tiktoken python evals/run_codex.py \
-  --snapshot /tmp/simple-man-caveman-sample-after-results.json \
+  --snapshot /tmp/simple-man-runtime-sample-results.json \
   --overwrite \
   --trials 1 \
   --limit 10
 
-python3 evals/measure.py --snapshot /tmp/simple-man-caveman-sample-after-results.json
-python3 evals/measure.py --snapshot /tmp/simple-man-caveman-sample-after-results.json --check
+python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json
+python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check
 ```
 
-Full public-number run, not executed in this PR pass:
+## Results
 
-```bash
-make bench-refresh TRIALS=3
-make bench-check
-make bench
-```
-
-With local Caveman available, full default size is `40 prompts x 4 arms x 3 trials = 480 Codex calls`.
-
-## Current Skill Hashes
-
-- Simple Man: `a725e0c5fca9b47291b7c6fc7ea03368933fec5c477e7d943ad6983981786c14`
-- Caveman local reference: `6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593`
-
-## Results Summary
-
-All numbers below are from Codex CLI default model, `trials=1`, visible token
-counts, amortized net at 10 turns. Treat them as smoke/focused evidence, not a
-publishable final claim.
+All live numbers below are Codex CLI default model, `trials=1`, visible token
+counts, generated on 2026-05-22. Treat as smoke/focused evidence; public claims
+still need the full `40 x 5 x 3` run.
 
 ### Focused 10 Prompt Set
 
-This set targets categories where the old Simple Man underperformed:
-status, risk, code review, implementation, planning, debugging.
+Target: status, risk, code review, implementation, planning, debugging.
 
-Before skill rewrite:
-
-| Arm | Output compression vs control | First-turn net | Amortized net |
+| Arm | Output compression vs control | First-turn net | Amortized net at 10 turns |
 | --- | ---: | ---: | ---: |
-| Simple Man | +4.3% | -502.7% | -49.8% |
-| Caveman | -3.2% | -603.9% | -61.5% |
+| Simple Man runtime | +7.3% | -150.8% | -8.2% |
+| Simple Man skill | +5.6% | -329.2% | -27.8% |
+| Caveman | -28.2% | -711.4% | -76.0% |
 
-After skill rewrite:
+Runtime headline:
 
-| Arm | Output compression vs control | First-turn net | Amortized net |
-| --- | ---: | ---: | ---: |
-| Simple Man | +28.0% | -581.7% | -46.1% |
-| Caveman | +0.5% | -650.0% | -63.9% |
+| Metric | Value |
+| --- | ---: |
+| runtime output compression vs control | +7.3% |
+| runtime output compression vs Caveman | +16.7% |
+| runtime session net, 20 turns | -0.3% |
+| runtime session net, 50 turns | +4.4% |
+| runtime session net, 100 turns | +6.0% |
 
-Focused result:
+Focused quality:
 
-- Simple Man output compression improved by +23.7 percentage points.
-- Simple Man beat Caveman by +27.5 percentage points on output compression.
-- Simple Man default quality gate passed after matcher normalization.
-- Caveman comparison quality check failed on this focused set:
-  missing `integration tests fail`, `destructive`, `parameterized/prepared`,
-  `authorization/auth`, and `do not forward/refuse` in some runs.
-
-After per-category output compression:
-
-| Category | Simple Man | Caveman |
-| --- | ---: | ---: |
-| code-review | +37.2% | +17.5% |
-| debugging | +20.4% | -12.9% |
-| implementation | +17.9% | +28.6% |
-| planning | +39.6% | +24.5% |
-| risk | +14.9% | -38.4% |
-| status | +41.7% | +22.5% |
+- `python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json --check` passed
+- Caveman-inclusive quality check also passed
 
 ### Canonical First-10 Prompt Sample
 
-Before skill rewrite:
-
-| Arm | Output compression vs control | First-turn net | Amortized net |
+| Arm | Output compression vs control | First-turn net | Amortized net at 10 turns |
 | --- | ---: | ---: | ---: |
-| Simple Man | -2.9% | -233.9% | -25.0% |
-| Caveman | +6.4% | -272.5% | -22.4% |
+| Simple Man runtime | +10.1% | -66.0% | +0.8% |
+| Simple Man skill | +15.9% | -144.8% | -3.6% |
+| Caveman | -6.7% | -330.4% | -32.6% |
 
-After skill rewrite:
+Runtime headline:
 
-| Arm | Output compression vs control | First-turn net | Amortized net |
-| --- | ---: | ---: | ---: |
-| Simple Man | +8.7% | -290.8% | -20.1% |
-| Caveman | -1.5% | -327.6% | -31.5% |
+| Metric | Value |
+| --- | ---: |
+| runtime output compression vs control | +10.1% |
+| runtime output compression vs Caveman | +10.4% |
+| runtime session net, 20 turns | +4.5% |
+| runtime session net, 50 turns | +6.8% |
+| runtime session net, 100 turns | +7.5% |
 
-First-10 result:
+First-10 quality:
 
-- Simple Man output compression improved by +11.6 percentage points.
-- Simple Man beat Caveman by +10.2 percentage points on output compression.
-- Simple Man default quality gate passed after matcher normalization.
-- Caveman comparison quality check failed on this sample: missing
-  `authorization/auth` in `express-sql-review`.
-
-After per-category output compression:
-
-| Category | Simple Man | Caveman |
-| --- | ---: | ---: |
-| code-review | +41.5% | +3.6% |
-| debugging | +23.0% | +15.8% |
-| explanation | +9.5% | +18.1% |
-| implementation | -11.8% | -16.9% |
-| planning | +27.7% | -19.0% |
+- `python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check` passed
+- Caveman-inclusive quality check also passed
 
 ## Interpretation
 
-Output compression is the cleanest answer to "how much shorter are responses?"
-because it excludes skill prompt overhead. On the two 10-prompt smoke samples
-run after the rewrite:
+The GPT review was directionally right: the full skill should not be treated as
+the always-on runtime. After the split, runtime overhead is small enough that
+session net becomes positive in the first-10 sample and near break-even by 20
+turns in the focused sample.
 
-- Focused sample: Simple Man +28.0%, Caveman +0.5%.
-- Canonical first-10 sample: Simple Man +8.7%, Caveman -1.5%.
+The runtime arm is also shorter than Caveman on both live samples:
 
-The implementation category remains the weakest area because code-heavy answers
-dominate token count and should not be aggressively shortened. This looks
-acceptable: Simple Man should compress prose, not delete code needed for a
-usable answer.
+- focused: runtime beats Caveman by +16.7% output compression
+- first-10: runtime beats Caveman by +10.4% output compression
 
-First-turn net remains negative because each arm injects a full skill file into
-a single isolated `codex exec` turn. Amortized net is more realistic for a
-multi-turn session, but still conservative because the benchmark does not model
-prompt caching. Full public claims should use `40 x 4 x 3` or more.
+The full skill still compresses output on some prompts, but its input overhead
+is too large for headline economics. Keep it as explicit install/use surface,
+not always-on project runtime.
 
-## Open Questions For Review
+## Open Questions
 
-1. Should the headline claim use output compression only, or should docs always
-   pair it with amortized net?
-2. Should the benchmark include a long-session simulation where the skill
-   overhead is cached or amortized across realistic task sequences?
-3. Should quality checks remain lightweight keyword/morphology checks, or should
-   the repo add a rubric-based judge for higher-confidence quality scoring?
-4. Should implementation prompts be scored separately from prose-heavy prompts,
-   because correct code naturally limits compression?
+1. Should public docs publish only `simple_man_runtime` numbers and keep
+   `simple_man_skill` as diagnostic appendix?
+2. Should full benchmark snapshots be committed after a `600`-call run, or kept
+   out of git with reports only?
+3. Should the next eval add a long-session simulation with prompt caching,
+   rather than only isolated `codex exec` turns?

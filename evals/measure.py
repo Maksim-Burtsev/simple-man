@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from benchmark_lib import CAVEMAN_ARM, CONTROL_ARM, SIMPLE_MAN_ARM, TERSE_ARM
+from benchmark_lib import ARM_LABELS, CAVEMAN_ARM, CONTROL_ARM
+from benchmark_lib import SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM, TERSE_ARM
 from benchmark_lib import build_category_summary, build_prompt_table, check_run_quality
 from benchmark_lib import compare_arm, pct
 from benchmark_lib import validate_snapshot_age, validate_snapshot_freshness
@@ -17,6 +18,7 @@ from benchmark_lib import validate_snapshot_age, validate_snapshot_freshness
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
+DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
 DEFAULT_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
 
 
@@ -51,6 +53,10 @@ def comparison_values(rows, *, arm: str, baseline_arm: str, amortize_turns: int)
     return values
 
 
+def arm_label(arm: str) -> str:
+    return ARM_LABELS.get(arm, arm)
+
+
 def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     metadata = snapshot.get("metadata", {})
     rows = build_prompt_table(snapshot)
@@ -58,7 +64,9 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
         arm for row in rows for arm in row.arms
     }
     skill_arms = [
-        arm for arm in (SIMPLE_MAN_ARM, CAVEMAN_ARM) if arm in available_arms
+        arm
+        for arm in (SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM, CAVEMAN_ARM)
+        if arm in available_arms
     ]
 
     lines: list[str] = []
@@ -76,11 +84,54 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     lines.append(f"_Amortized net assumes skill input overhead spread over {amortize_turns} turns._")
     lines.append("")
 
+    runtime = SIMPLE_MAN_RUNTIME_ARM if SIMPLE_MAN_RUNTIME_ARM in available_arms else None
+    if runtime:
+        runtime_vs_control = comparison_values(
+            rows,
+            arm=runtime,
+            baseline_arm=CONTROL_ARM,
+            amortize_turns=amortize_turns,
+        )
+        lines.append("**Headline**")
+        lines.append("| Metric | Value |")
+        lines.append("|---|---:|")
+        lines.append(
+            "| Runtime output compression vs control | "
+            f"{pct(mean([value.output_savings for value in runtime_vs_control]))} |"
+        )
+        if CAVEMAN_ARM in available_arms:
+            runtime_vs_caveman = comparison_values(
+                rows,
+                arm=runtime,
+                baseline_arm=CAVEMAN_ARM,
+                amortize_turns=amortize_turns,
+            )
+            lines.append(
+                "| Runtime output compression vs Caveman | "
+                f"{pct(mean([value.output_savings for value in runtime_vs_caveman]))} |"
+            )
+        lines.append("")
+
+        lines.append("**Runtime Session Net Vs Control**")
+        lines.append("| Amortized turns | Session net |")
+        lines.append("|---:|---:|")
+        for turns in (20, 50, 100):
+            values = comparison_values(
+                rows,
+                arm=runtime,
+                baseline_arm=CONTROL_ARM,
+                amortize_turns=turns,
+            )
+            lines.append(
+                f"| {turns} | {pct(mean([value.amortized_net_savings for value in values]))} |"
+            )
+        lines.append("")
+
     lines.append("**Output Compression**")
     header = "| Prompt | Category | Control out | Terse out |"
     divider = "|---|---:|---:|---:|"
     for arm in skill_arms:
-        label = "Simple Man" if arm == SIMPLE_MAN_ARM else "Caveman"
+        label = arm_label(arm)
         header += f" {label} out | {label} vs control | {label} vs terse |"
         divider += "---:|---:|---:|"
     lines.append(header)
@@ -117,7 +168,7 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     lines.append("| Arm | Output compression | First-turn net | Amortized net |")
     lines.append("|---|---:|---:|---:|")
     for arm in skill_arms:
-        label = "Simple Man" if arm == SIMPLE_MAN_ARM else "Caveman"
+        label = arm_label(arm)
         values = comparison_values(
             rows,
             arm=arm,
@@ -136,7 +187,7 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     lines.append("| Arm | Category | Prompts | Output compression | First-turn net | Amortized net |")
     lines.append("|---|---|---:|---:|---:|---:|")
     for arm in skill_arms:
-        label = "Simple Man" if arm == SIMPLE_MAN_ARM else "Caveman"
+        label = arm_label(arm)
         for item in build_category_summary(
             rows,
             arm=arm,
@@ -153,7 +204,7 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     lines.append("")
     lines.append(
         "_Output compression measures answer length only. First-turn net includes full "
-        "visible skill input overhead. Amortized net spreads skill overhead across turns._"
+        "visible instruction input overhead. Amortized net spreads instruction overhead across turns._"
     )
     return "\n".join(lines)
 
@@ -183,11 +234,14 @@ def run_checks(args: argparse.Namespace, snapshot: dict[str, Any]) -> int:
         validate_snapshot_freshness(
             snapshot=snapshot,
             skill_path=args.skill,
+            runtime_path=args.runtime_policy,
             prompts_path=args.prompts,
         )
     )
     errors.extend(validate_snapshot_age(snapshot, args.max_age_days))
-    checked_arms = set(args.quality_arm or [SIMPLE_MAN_ARM])
+    checked_arms = set(
+        args.quality_arm or [SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+    )
     errors.extend(quality_failures(snapshot, checked_arms=checked_arms))
 
     expected_runs = (
@@ -214,12 +268,16 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
+    parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_RUNTIME_POLICY)
     parser.add_argument("--check", action="store_true")
     parser.add_argument(
         "--quality-arm",
         action="append",
         default=None,
-        help="Arm to gate with prompt quality checks. Repeatable. Defaults to simple_man.",
+        help=(
+            "Arm to gate with prompt quality checks. Repeatable. "
+            "Defaults to simple_man_runtime and simple_man_skill."
+        ),
     )
     parser.add_argument("--max-age-days", type=int, default=90)
     parser.add_argument("--amortize-turns", type=int, default=10)
