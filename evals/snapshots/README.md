@@ -13,8 +13,8 @@ make bench-reference-refresh
 ```
 
 They are intentionally not prefilled in this branch because the full runtime
-run uses `40 prompts × 5 arms × 3 trials = 600 Codex calls` and the full
-reference run uses `10 prompts × 5 arms × 3 trials = 150 Codex calls` when
+run uses `40 prompts × 6 arms × 3 trials = 720 Codex calls` and the full
+reference run uses `10 prompts × 6 arms × 3 trials = 180 Codex calls` when
 Caveman is available. When publishing benchmark numbers, generate the snapshot,
 review the paired outputs, then keep the snapshot with the change that updates
 the reported numbers.

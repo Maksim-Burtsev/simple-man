@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from benchmark_lib import ARM_LABELS, CAVEMAN_ARM, CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM
-from benchmark_lib import CONTROL_ARM, NORMAL_ARM, SIMPLE_MAN_RUNTIME_ARM
+from benchmark_lib import CONTROL_ARM, NORMAL_ARM, SIMPLE_MAN_CANDIDATE_ARM
+from benchmark_lib import SIMPLE_MAN_RUNTIME_ARM
 from benchmark_lib import SIMPLE_MAN_SKILL_ARM, SUITE_REFERENCE, SUITE_RUNTIME, TERSE_ARM
 from benchmark_lib import build_category_summary, build_prompt_table, check_run_quality
 from benchmark_lib import compare_arm, pct
@@ -21,6 +22,7 @@ DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
 DEFAULT_REFERENCE_PROMPTS = ROOT / "evals" / "prompts" / "reference_compression.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
 DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
+DEFAULT_CANDIDATE_POLICY = ROOT / "evals" / "policies" / "simple_man_candidate_runtime.md"
 DEFAULT_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
 DEFAULT_REFERENCE_SNAPSHOT = ROOT / "evals" / "snapshots" / "reference-results.json"
 
@@ -78,6 +80,7 @@ def _reference_skill_arms(available_arms: set[str]) -> list[str]:
             CAVEMAN_FULL_ARM,
             CAVEMAN_ULTRA_ARM,
             SIMPLE_MAN_RUNTIME_ARM,
+            SIMPLE_MAN_CANDIDATE_ARM,
             SIMPLE_MAN_SKILL_ARM,
         )
         if arm in available_arms
@@ -166,7 +169,12 @@ def render_report(snapshot: dict[str, Any], *, amortize_turns: int = 10) -> str:
     available_arms = _available_arms(snapshot, rows)
     skill_arms = [
         arm
-        for arm in (SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM, CAVEMAN_ARM)
+        for arm in (
+            SIMPLE_MAN_RUNTIME_ARM,
+            SIMPLE_MAN_CANDIDATE_ARM,
+            SIMPLE_MAN_SKILL_ARM,
+            CAVEMAN_ARM,
+        )
         if arm in available_arms
     ]
 
@@ -332,18 +340,15 @@ def quality_failures(snapshot: dict[str, Any], *, checked_arms: set[str]) -> lis
 def default_quality_arms(snapshot: dict[str, Any]) -> list[str]:
     metadata = snapshot.get("metadata", {})
     available_arms = set(metadata.get("arms", []))
-    if metadata.get("suite") == SUITE_REFERENCE:
-        return [
-            arm
-            for arm in (
-                CAVEMAN_FULL_ARM,
-                CAVEMAN_ULTRA_ARM,
-                SIMPLE_MAN_RUNTIME_ARM,
-                SIMPLE_MAN_SKILL_ARM,
-            )
-            if arm in available_arms
-        ]
-    return [SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+    return [
+        arm
+        for arm in (
+            SIMPLE_MAN_RUNTIME_ARM,
+            SIMPLE_MAN_CANDIDATE_ARM,
+            SIMPLE_MAN_SKILL_ARM,
+        )
+        if not available_arms or arm in available_arms
+    ]
 
 
 def reference_sanity_failures(
@@ -387,6 +392,7 @@ def run_checks(args: argparse.Namespace, snapshot: dict[str, Any]) -> int:
             snapshot=snapshot,
             skill_path=args.skill,
             runtime_path=args.runtime_policy,
+            candidate_path=args.candidate_runtime_policy,
             prompts_path=args.prompts,
         )
     )
@@ -431,6 +437,11 @@ def main() -> int:
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
     parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_RUNTIME_POLICY)
+    parser.add_argument(
+        "--candidate-runtime-policy",
+        type=Path,
+        default=DEFAULT_CANDIDATE_POLICY,
+    )
     parser.add_argument("--check", action="store_true")
     parser.add_argument(
         "--quality-arm",
@@ -438,7 +449,7 @@ def main() -> int:
         default=None,
         help=(
             "Arm to gate with prompt quality checks. Repeatable. "
-            "Defaults to simple_man_runtime and simple_man_skill."
+            "Defaults to Simple Man runtime/candidate/skill arms."
         ),
     )
     parser.add_argument("--max-age-days", type=int, default=90)

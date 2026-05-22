@@ -44,7 +44,7 @@ It must not reduce:
 This repo ships two activation surfaces:
 
 - full skill: `skills/simple-man/SKILL.md`
-- tiny always-on runtime policy: `AGENTS.md`, `AGENTS.md.snippet`, `CLAUDE.md`, `GEMINI.md`
+- compact always-on runtime policy: `AGENTS.md`, `AGENTS.md.snippet`, `CLAUDE.md`, `GEMINI.md`
 
 | Agent/tool | Path |
 | --- | --- |
@@ -55,7 +55,7 @@ This repo ships two activation surfaces:
 | Cursor / Windsurf / Cline / Copilot / Continue / Zed / Junie | `AGENTS.md`, or copy `AGENTS.md.snippet` into that agent's native rule file |
 | Amp / OpenCode / Kilo / Roo / Aider / other AGENTS.md agents | `AGENTS.md` |
 
-Always-on project files do not invoke `$simple-man`; they inline a tiny runtime
+Always-on project files do not invoke `$simple-man`; they inline a compact runtime
 policy to avoid loading full skill overhead on every turn.
 
 Agent-specific dotdir rule files are not committed here by default. They are target-project activation files, not the source of the skill.
@@ -84,9 +84,9 @@ make bench-reference-check
 ```
 
 The benchmark compares `control`, generic `terse`, `simple_man_runtime`,
-`simple_man_skill`, and optional Caveman arms. Runtime headlines use output
-compression and long-session net; reference headlines use output-only
-compression vs `normal`.
+`simple_man_candidate`, `simple_man_skill`, and optional Caveman arms. Runtime
+headlines use output compression and long-session net; reference headlines use
+output-only compression vs `normal`.
 
 See [evals/README.md](./evals/README.md).
 

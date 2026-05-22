@@ -17,6 +17,7 @@ NORMAL_ARM = "normal"
 CONTROL_ARM = "control"
 TERSE_ARM = "terse"
 SIMPLE_MAN_RUNTIME_ARM = "simple_man_runtime"
+SIMPLE_MAN_CANDIDATE_ARM = "simple_man_candidate"
 SIMPLE_MAN_SKILL_ARM = "simple_man_skill"
 CAVEMAN_ARM = "caveman"
 CAVEMAN_FULL_ARM = "caveman_full"
@@ -26,6 +27,7 @@ RUNTIME_ARMS = (
     CONTROL_ARM,
     TERSE_ARM,
     SIMPLE_MAN_RUNTIME_ARM,
+    SIMPLE_MAN_CANDIDATE_ARM,
     SIMPLE_MAN_SKILL_ARM,
     CAVEMAN_ARM,
 )
@@ -34,12 +36,14 @@ REFERENCE_ARMS = (
     CAVEMAN_FULL_ARM,
     CAVEMAN_ULTRA_ARM,
     SIMPLE_MAN_RUNTIME_ARM,
+    SIMPLE_MAN_CANDIDATE_ARM,
     SIMPLE_MAN_SKILL_ARM,
 )
 ARMS = tuple(dict.fromkeys((*RUNTIME_ARMS, *REFERENCE_ARMS)))
 ARM_LABELS = {
     NORMAL_ARM: "Normal",
     SIMPLE_MAN_RUNTIME_ARM: "Simple Man runtime",
+    SIMPLE_MAN_CANDIDATE_ARM: "Simple Man candidate",
     SIMPLE_MAN_SKILL_ARM: "Simple Man skill",
     CAVEMAN_ARM: "Caveman",
     CAVEMAN_FULL_ARM: "Caveman full",
@@ -313,6 +317,9 @@ def _quality_term_matches(term: str, text: str, normalized_text: str) -> bool:
     if not normalized_term:
         return False
     aliases = {
+        "access control": ("idor", "allowed to access", "allowed to read"),
+        "authorization": ("idor", "allowed to access", "allowed to read"),
+        "auth": ("idor", "allowed to access", "allowed to read"),
         "object": ("obj",),
         "reference": ("ref", "identity"),
         "fallback": ("fallback ui", "something went wrong", "role alert"),
@@ -354,7 +361,8 @@ def validate_snapshot_freshness(
     snapshot: dict[str, Any],
     skill_path: Path,
     runtime_path: Path | None,
-    prompts_path: Path | None,
+    candidate_path: Path | None = None,
+    prompts_path: Path | None = None,
 ) -> list[str]:
     metadata = snapshot.get("metadata", {})
     errors: list[str] = []
@@ -374,6 +382,17 @@ def validate_snapshot_freshness(
             errors.append(
                 "runtime_sha256 mismatch: "
                 f"snapshot={actual_runtime} current={expected_runtime}"
+            )
+
+    if candidate_path is not None:
+        expected_candidate = sha256_file(candidate_path)
+        actual_candidate = skill_hashes.get(SIMPLE_MAN_CANDIDATE_ARM) or metadata.get(
+            "candidate_sha256"
+        )
+        if actual_candidate != expected_candidate:
+            errors.append(
+                "candidate_sha256 mismatch: "
+                f"snapshot={actual_candidate} current={expected_candidate}"
             )
 
     if prompts_path is not None:

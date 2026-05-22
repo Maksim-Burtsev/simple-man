@@ -12,13 +12,14 @@ different things:
 
 Default runner suite: `runtime_economics`.
 
-It uses five possible arms:
+It uses six possible arms:
 
 | Arm | Instruction |
 | --- | --- |
 | `control` | Neutral professional coding-agent instruction |
 | `terse` | Control + generic concise-answer instruction |
-| `simple_man_runtime` | `terse` + tiny always-on `AGENTS.md.snippet` policy |
+| `simple_man_runtime` | `terse` + compact always-on `AGENTS.md.snippet` policy |
+| `simple_man_candidate` | `terse` + candidate quality-first compression policy |
 | `simple_man_skill` | `terse` + full `skills/simple-man/SKILL.md` content |
 | `caveman` | `terse` + an external Caveman `SKILL.md` |
 
@@ -48,7 +49,8 @@ This suite mirrors the Caveman README benchmark shape:
 | `normal` | Codex-calibrated verbose helpful baseline |
 | `caveman_full` | Caveman `SKILL.md` + explicit `/caveman full` |
 | `caveman_ultra` | Caveman `SKILL.md` + explicit `/caveman ultra` |
-| `simple_man_runtime` | `normal` + tiny always-on `AGENTS.md.snippet` policy |
+| `simple_man_runtime` | `normal` + compact always-on `AGENTS.md.snippet` policy |
+| `simple_man_candidate` | `normal` + candidate quality-first compression policy |
 | `simple_man_skill` | `normal` + full `skills/simple-man/SKILL.md` content |
 
 Its headline metric is only:
@@ -136,7 +138,7 @@ make bench-reference-check
 ```
 
 Validate snapshot freshness, prompt coverage, and deterministic quality checks
-for `simple_man_runtime` and `simple_man_skill`:
+for `simple_man_runtime`, `simple_man_candidate`, and `simple_man_skill`:
 
 ```bash
 make bench-check
@@ -146,7 +148,7 @@ make bench-check
 external-arm quality too:
 
 ```bash
-python3 evals/measure.py --check --quality-arm simple_man_runtime --quality-arm simple_man_skill --quality-arm caveman
+python3 evals/measure.py --check --quality-arm simple_man_runtime --quality-arm simple_man_candidate --quality-arm simple_man_skill --quality-arm caveman
 ```
 
 Smoke-test the runner with one prompt and one trial, writing outside the repo:
@@ -165,6 +167,7 @@ The snapshot records:
 - prompt corpus hash
 - `SKILL.md` hash
 - runtime policy hash
+- candidate policy hash
 - git commit
 - per-run final text, visible token counts, and raw Codex usage
 - optional external Caveman skill hash when included
@@ -189,9 +192,9 @@ benchmark numbers.
   loading.
 - The quality gate is intentionally lightweight and deterministic. It catches
   obvious omissions but does not replace human review of paired outputs.
-- Full default run size is `40 prompts × 5 arms × 3 trials = 600 Codex calls`
+- Full default run size is `40 prompts × 6 arms × 3 trials = 720 Codex calls`
   when Caveman is available.
-- Full reference run size is `10 prompts × 5 arms × 3 trials = 150 Codex calls`
+- Full reference run size is `10 prompts × 6 arms × 3 trials = 180 Codex calls`
   when Caveman is available.
 - `reference_compression` is still Codex CLI, not Claude API. It uses a verbose
   normal baseline to make the comparison shape comparable; exact Caveman README

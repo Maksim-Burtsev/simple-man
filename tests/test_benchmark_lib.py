@@ -265,6 +265,19 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertIn("missing one of: SQL injection | injection", failures)
         self.assertIn("forbidden term present: string interpolation is fine", failures)
 
+    def test_quality_check_treats_idor_as_access_control(self):
+        prompt = {
+            "id": "sql-review",
+            "checks": {"must_include_any": [["authorization", "access control", "auth"]]},
+        }
+        run = {
+            "prompt_id": "sql-review",
+            "arm": "simple_man_runtime",
+            "text": "Potential IDOR: ensure the requester is allowed to access this user.",
+        }
+
+        self.assertEqual(bench.check_run_quality(prompt, run), [])
+
     def test_snapshot_hash_validation_detects_stale_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill = Path(tmp) / "SKILL.md"
@@ -394,6 +407,7 @@ class BenchmarkLibTests(unittest.TestCase):
 
         self.assertIn("caveman", arms)
         self.assertIn("simple_man_runtime", arms)
+        self.assertIn("simple_man_candidate", arms)
         self.assertIn("simple_man_skill", arms)
 
     def test_reference_default_arms_use_normal_and_explicit_caveman_modes(self):
@@ -410,6 +424,7 @@ class BenchmarkLibTests(unittest.TestCase):
                 "caveman_full",
                 "caveman_ultra",
                 "simple_man_runtime",
+                "simple_man_candidate",
                 "simple_man_skill",
             ],
         )
@@ -419,25 +434,80 @@ class BenchmarkLibTests(unittest.TestCase):
 
         self.assertNotIn("$simple-man", snippet)
         self.assertIn("Simple Man runtime policy", snippet)
+        self.assertIn("Delete water only", snippet)
+        self.assertIn("No compression may remove a material fact", snippet)
 
     def test_arm_instructions_split_runtime_and_full_skill(self):
         skill_texts = {
             "simple_man_runtime": "runtime rules",
+            "simple_man_candidate": "candidate rules",
             "simple_man_skill": "full skill rules",
         }
 
         runtime = run_codex.arm_instructions("simple_man_runtime", skill_texts)
+        candidate = run_codex.arm_instructions("simple_man_candidate", skill_texts)
         full_skill = run_codex.arm_instructions("simple_man_skill", skill_texts)
 
         self.assertIn("<simple_man_runtime_policy>", runtime)
         self.assertIn("runtime rules", runtime)
+        self.assertIn("<simple_man_candidate_runtime_policy>", candidate)
+        self.assertIn("candidate rules", candidate)
+        self.assertNotIn("runtime rules", candidate)
         self.assertNotIn("full skill rules", runtime)
         self.assertIn("<simple_man_skill>", full_skill)
         self.assertIn("full skill rules", full_skill)
 
+    def test_candidate_policy_is_quality_first_and_water_only(self):
+        policy = (ROOT / "evals" / "policies" / "simple_man_candidate_runtime.md").read_text()
+
+        self.assertNotIn("$simple-man", policy)
+        self.assertIn("No compression may remove a material fact", policy)
+        self.assertIn("Delete water only", policy)
+
+    def test_runtime_quality_gate_includes_candidate_when_available(self):
+        import measure
+
+        snapshot = {
+            "metadata": {
+                "suite": bench.SUITE_RUNTIME,
+                "arms": [
+                    "control",
+                    "simple_man_runtime",
+                    "simple_man_candidate",
+                    "simple_man_skill",
+                ],
+            }
+        }
+
+        self.assertEqual(
+            measure.default_quality_arms(snapshot),
+            ["simple_man_runtime", "simple_man_candidate", "simple_man_skill"],
+        )
+
+    def test_reference_quality_gate_excludes_external_caveman_by_default(self):
+        import measure
+
+        snapshot = {
+            "metadata": {
+                "suite": bench.SUITE_REFERENCE,
+                "arms": [
+                    "normal",
+                    "caveman_ultra",
+                    "simple_man_runtime",
+                    "simple_man_candidate",
+                ],
+            }
+        }
+
+        self.assertEqual(
+            measure.default_quality_arms(snapshot),
+            ["simple_man_runtime", "simple_man_candidate"],
+        )
+
     def test_reference_instructions_compare_against_normal_not_terse(self):
         skill_texts = {
             "simple_man_runtime": "runtime rules",
+            "simple_man_candidate": "candidate rules",
             "simple_man_skill": "full skill rules",
             "caveman_full": "cave rules",
             "caveman_ultra": "cave rules",
@@ -446,6 +516,9 @@ class BenchmarkLibTests(unittest.TestCase):
         normal = run_codex.arm_instructions("normal", skill_texts, suite=bench.SUITE_REFERENCE)
         runtime = run_codex.arm_instructions(
             "simple_man_runtime", skill_texts, suite=bench.SUITE_REFERENCE
+        )
+        candidate = run_codex.arm_instructions(
+            "simple_man_candidate", skill_texts, suite=bench.SUITE_REFERENCE
         )
         caveman_ultra = run_codex.arm_instructions(
             "caveman_ultra", skill_texts, suite=bench.SUITE_REFERENCE
@@ -456,6 +529,8 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertIn("You are a helpful assistant.", runtime)
         self.assertIn("Answer thoroughly", runtime)
         self.assertIn("<simple_man_runtime_policy>", runtime)
+        self.assertIn("<simple_man_candidate_runtime_policy>", candidate)
+        self.assertIn("candidate rules", candidate)
         self.assertNotIn("Be concise.", runtime)
         self.assertIn("<caveman_skill>", caveman_ultra)
         self.assertIn("Use /caveman ultra", caveman_ultra)
@@ -484,7 +559,12 @@ class BenchmarkLibTests(unittest.TestCase):
                 "model": "test",
                 "prompt_count": 1,
                 "trials": 1,
-                "arms": ["normal", "caveman_ultra", "simple_man_runtime"],
+                "arms": [
+                    "normal",
+                    "caveman_ultra",
+                    "simple_man_runtime",
+                    "simple_man_candidate",
+                ],
             },
             "prompts": [{"id": "p1", "category": "x", "prompt": "P"}],
             "runs": [
@@ -521,6 +601,17 @@ class BenchmarkLibTests(unittest.TestCase):
                     "usage": {},
                     "text": "simple",
                 },
+                {
+                    "prompt_id": "p1",
+                    "category": "x",
+                    "arm": "simple_man_candidate",
+                    "trial": 1,
+                    "visible_input_tokens": 65,
+                    "visible_output_tokens": 45,
+                    "visible_total_tokens": 110,
+                    "usage": {},
+                    "text": "candidate",
+                },
             ],
         }
 
@@ -529,6 +620,7 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertIn("Reference Output Compression", report)
         self.assertIn("| Caveman ultra | +65.0% | 35 |", report)
         self.assertIn("| Simple Man runtime | +50.0% | 50 |", report)
+        self.assertIn("| Simple Man candidate | +55.0% | 45 |", report)
         self.assertNotIn("First-turn net", report)
 
     def test_reference_sanity_requires_caveman_to_compress_like_readme(self):
@@ -574,13 +666,16 @@ class BenchmarkLibTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             skill = Path(tmp) / "SKILL.md"
             runtime = Path(tmp) / "AGENTS.md.snippet"
+            candidate = Path(tmp) / "candidate.md"
             skill.write_text("skill\n")
             runtime.write_text("runtime current\n")
+            candidate.write_text("candidate current\n")
             snapshot = {
                 "metadata": {
                     "skill_hashes": {
                         "simple_man_skill": bench.sha256_text("skill\n"),
                         "simple_man_runtime": bench.sha256_text("runtime old\n"),
+                        "simple_man_candidate": bench.sha256_text("candidate old\n"),
                     },
                     "prompt_corpus_sha256": "unused",
                 }
@@ -590,11 +685,13 @@ class BenchmarkLibTests(unittest.TestCase):
                 snapshot=snapshot,
                 skill_path=skill,
                 runtime_path=runtime,
+                candidate_path=candidate,
                 prompts_path=None,
             )
 
-        self.assertEqual(len(errors), 1)
+        self.assertEqual(len(errors), 2)
         self.assertIn("runtime_sha256 mismatch", errors[0])
+        self.assertIn("candidate_sha256 mismatch", errors[1])
 
 
 if __name__ == "__main__":

@@ -13,7 +13,8 @@ from typing import Any
 
 from benchmark_lib import ARMS, CAVEMAN_ARM, CAVEMAN_ARMS, CAVEMAN_FULL_ARM
 from benchmark_lib import CAVEMAN_ULTRA_ARM, CONTROL_ARM, NORMAL_ARM, REFERENCE_ARMS
-from benchmark_lib import RUNTIME_ARMS, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM
+from benchmark_lib import RUNTIME_ARMS, SIMPLE_MAN_CANDIDATE_ARM
+from benchmark_lib import SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM
 from benchmark_lib import SUITE_REFERENCE, SUITE_RUNTIME, TERSE_ARM
 from benchmark_lib import load_prompts, prompt_corpus_hash, sha256_file, sha256_text
 
@@ -23,6 +24,7 @@ DEFAULT_RUNTIME_PROMPTS = ROOT / "evals" / "prompts" / "coding_tasks.jsonl"
 DEFAULT_REFERENCE_PROMPTS = ROOT / "evals" / "prompts" / "reference_compression.jsonl"
 DEFAULT_SKILL = ROOT / "skills" / "simple-man" / "SKILL.md"
 DEFAULT_RUNTIME_POLICY = ROOT / "AGENTS.md.snippet"
+DEFAULT_CANDIDATE_POLICY = ROOT / "evals" / "policies" / "simple_man_candidate_runtime.md"
 DEFAULT_RUNTIME_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
 DEFAULT_REFERENCE_SNAPSHOT = ROOT / "evals" / "snapshots" / "reference-results.json"
 TOKENIZER_NAME = "o200k_base"
@@ -93,12 +95,23 @@ def default_snapshot(suite: str) -> Path:
 
 def default_arms(caveman_skill: Path | None, *, suite: str = SUITE_RUNTIME) -> list[str]:
     if suite == SUITE_REFERENCE:
-        arms = [NORMAL_ARM, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+        arms = [
+            NORMAL_ARM,
+            SIMPLE_MAN_RUNTIME_ARM,
+            SIMPLE_MAN_CANDIDATE_ARM,
+            SIMPLE_MAN_SKILL_ARM,
+        ]
         if caveman_skill and caveman_skill.exists():
             arms[1:1] = [CAVEMAN_FULL_ARM, CAVEMAN_ULTRA_ARM]
         return arms
 
-    arms = [CONTROL_ARM, TERSE_ARM, SIMPLE_MAN_RUNTIME_ARM, SIMPLE_MAN_SKILL_ARM]
+    arms = [
+        CONTROL_ARM,
+        TERSE_ARM,
+        SIMPLE_MAN_RUNTIME_ARM,
+        SIMPLE_MAN_CANDIDATE_ARM,
+        SIMPLE_MAN_SKILL_ARM,
+    ]
     if caveman_skill and caveman_skill.exists():
         arms.append(CAVEMAN_ARM)
     return arms
@@ -135,6 +148,18 @@ def arm_instructions(
             f"<simple_man_runtime_policy>\n"
             f"{skill_texts[SIMPLE_MAN_RUNTIME_ARM]}\n"
             f"</simple_man_runtime_policy>"
+        )
+    if arm == SIMPLE_MAN_CANDIDATE_ARM:
+        override = (
+            "\n\nThe compression policy below overrides the verbose baseline."
+            if suite == SUITE_REFERENCE
+            else ""
+        )
+        return (
+            f"{base_instructions}{override}\n\n"
+            f"<simple_man_candidate_runtime_policy>\n"
+            f"{skill_texts[SIMPLE_MAN_CANDIDATE_ARM]}\n"
+            f"</simple_man_candidate_runtime_policy>"
         )
     if arm == SIMPLE_MAN_SKILL_ARM:
         override = (
@@ -333,6 +358,11 @@ def main() -> int:
     parser.add_argument("--prompts", type=Path, default=None)
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL)
     parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_RUNTIME_POLICY)
+    parser.add_argument(
+        "--candidate-runtime-policy",
+        type=Path,
+        default=DEFAULT_CANDIDATE_POLICY,
+    )
     parser.add_argument("--caveman-skill", type=Path, default=default_caveman_skill())
     parser.add_argument("--snapshot", type=Path, default=None)
     parser.add_argument("--model", default=os.environ.get("MODEL") or None)
@@ -389,6 +419,7 @@ def main() -> int:
         )
     skill_texts = {
         SIMPLE_MAN_RUNTIME_ARM: args.runtime_policy.read_text(),
+        SIMPLE_MAN_CANDIDATE_ARM: args.candidate_runtime_policy.read_text(),
         SIMPLE_MAN_SKILL_ARM: args.skill.read_text(),
     }
     if args.caveman_skill and args.caveman_skill.exists():
@@ -398,6 +429,7 @@ def main() -> int:
 
     skill_hashes = {
         SIMPLE_MAN_RUNTIME_ARM: sha256_file(args.runtime_policy),
+        SIMPLE_MAN_CANDIDATE_ARM: sha256_file(args.candidate_runtime_policy),
         SIMPLE_MAN_SKILL_ARM: sha256_file(args.skill),
     }
     if args.caveman_skill and args.caveman_skill.exists():
@@ -419,6 +451,7 @@ def main() -> int:
             "prompt_corpus_sha256": prompt_corpus_hash(prompts_path),
             "skill_sha256": sha256_file(args.skill),
             "runtime_sha256": sha256_file(args.runtime_policy),
+            "candidate_sha256": sha256_file(args.candidate_runtime_policy),
             "skill_hashes": skill_hashes,
             "git_commit": git_commit(),
             "disable_codex_features": not args.allow_codex_features,

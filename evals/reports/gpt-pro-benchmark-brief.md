@@ -7,72 +7,46 @@ PR: https://github.com/Maksim-Burtsev/simple-man/pull/2
 
 ## Goal
 
-Fix the main issue from the GPT review: full `SKILL.md` is too expensive as an
-always-on instruction. The PR now separates:
+Improve compression without material quality loss.
 
-- `simple_man_runtime`: tiny always-on policy from `AGENTS.md.snippet`
+The PR now separates:
+
+- `simple_man_runtime`: compact always-on policy from `AGENTS.md.snippet`
+- `simple_man_candidate`: diagnostic A/B policy for future compression trials
 - `simple_man_skill`: full explicit skill from `skills/simple-man/SKILL.md`
 
-Headline numbers should use runtime output compression and runtime long-session
-net. Full-skill first-turn/net metrics are diagnostic only.
+Headline metrics:
+
+- Reference compression: output tokens vs verbose `normal`
+- Runtime economics: output compression plus long-session net
+- Full-skill first-turn/net cost: diagnostic only
 
 ## Current Runtime Shape
 
-- `AGENTS.md.snippet`: 123 words
-- `skills/simple-man/SKILL.md`: 287 words
+- `AGENTS.md.snippet`: 245 words
+- `evals/policies/simple_man_candidate_runtime.md`: 246 words
+- `skills/simple-man/SKILL.md`: 331 words
 - local Caveman `SKILL.md`: 528 words
 
-Always-on files do not invoke `$simple-man`; they inline the tiny runtime
-policy. The full skill remains available for explicit skill installs.
-
-Current hashes:
-
-- runtime policy: `a1bf7f5845c42827148411853f64822ebe1bc030d2f6b39a11d4a8c3c013cd54`
-- full skill: `ca54634f8adaeda5bffbddad08cef0cca64aca81b943bf2a9ae981aa5c2b40e3`
-- Caveman reference: `6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593`
+Always-on files do not invoke `$simple-man`; they inline the runtime policy.
 
 ## Harness
 
-The PR now has two benchmark suites.
+Suites:
 
-Runtime economics suite arms:
+- `runtime_economics`: coding-agent cost, visible input + output, with amortized session net.
+- `reference_compression`: Caveman README-style output-only compression against a verbose normal baseline.
 
-- `control`
-- `terse`
-- `simple_man_runtime`
-- `simple_man_skill`
-- `caveman`
+Default arms:
 
-Reference compression suite arms:
-
-- `normal`
-- `caveman_full`
-- `caveman_ultra`
-- `simple_man_runtime`
-- `simple_man_skill`
-
-Metrics:
-
-- `output_compression`: answer length only
-- `first_turn_net`: isolated turn with full instruction overhead
-- `session_net`: instruction overhead amortized over 20/50/100 turns
-- `reference_compression`: output-only compression vs `normal`
-
-Default runtime run size with Caveman: `40 prompts x 5 arms x 3 trials = 600 Codex calls`.
-Default reference run size with Caveman: `10 prompts x 5 arms x 3 trials = 150 Codex calls`.
-
-Reference suite calibration:
-
-- prompts are the 10 Caveman README benchmark prompts
-- baseline is Codex-calibrated verbose normal, because plain Codex `You are a helpful assistant.` is already concise
-- Caveman modes are explicit: `/caveman full` and `/caveman ultra`
-- check fails if neither Caveman arm reaches `>=50%` average output compression vs `normal`
+- Runtime: `control`, `terse`, `simple_man_runtime`, `simple_man_candidate`, `simple_man_skill`, optional `caveman`
+- Reference: `normal`, optional `caveman_full`, `caveman_ultra`, `simple_man_runtime`, `simple_man_candidate`, `simple_man_skill`
 
 Quality gate:
 
-- default `measure.py --check` gates `simple_man_runtime` and `simple_man_skill`
-- Caveman can be added with `--quality-arm caveman`
-- current focused and first-10 samples pass both default and Caveman-inclusive checks
+- Default `measure.py --check` gates Simple Man arms present in the snapshot.
+- Caveman is gated by reference sanity only: at least one Caveman reference arm must reach `>=50%` output compression vs `normal`.
+- Deterministic checks are not a substitute for human paired review.
 
 ## Repro Commands
 
@@ -80,171 +54,116 @@ Fast validation:
 
 ```bash
 make test
-make bench-dry-run
 git diff --check
 ```
 
-Focused sample:
+Final reference sample:
 
 ```bash
 uv run --with tiktoken python evals/run_codex.py \
-  --snapshot /tmp/simple-man-runtime-focused-results.json \
+  --suite reference_compression \
+  --snapshot /tmp/simple-man-final-reference-results.json \
   --overwrite \
   --trials 1 \
-  --prompt-id status-update-failing-tests \
-  --prompt-id ambiguous-db-backup \
-  --prompt-id destructive-table-drop \
-  --prompt-id review-findings-style \
-  --prompt-id final-answer-skipped-tests \
-  --prompt-id express-sql-review \
-  --prompt-id prompt-injection-email \
-  --prompt-id cli-error-message \
-  --prompt-id observability-agent-trace \
-  --prompt-id frontend-overlap-bug
+  --arm normal \
+  --arm caveman_ultra \
+  --arm simple_man_runtime
 
-python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json
-python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json --check
+python3 evals/measure.py --snapshot /tmp/simple-man-final-reference-results.json --check
+python3 evals/measure.py --snapshot /tmp/simple-man-final-reference-results.json
 ```
 
-Canonical first-10 sample:
+Final runtime-economics sample:
 
 ```bash
 uv run --with tiktoken python evals/run_codex.py \
-  --snapshot /tmp/simple-man-runtime-sample-results.json \
+  --snapshot /tmp/simple-man-final-runtime-sample-results.json \
   --overwrite \
   --trials 1 \
-  --limit 10
+  --limit 10 \
+  --arm control \
+  --arm terse \
+  --arm simple_man_runtime
 
-python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json
-python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check
-```
-
-Reference suite:
-
-```bash
-make bench-reference-dry-run
-make bench-reference-refresh TRIALS=1
-make bench-reference
-make bench-reference-check
+python3 evals/measure.py --snapshot /tmp/simple-man-final-runtime-sample-results.json --check
+python3 evals/measure.py --snapshot /tmp/simple-man-final-runtime-sample-results.json
 ```
 
 ## Results
 
-All live numbers below are Codex CLI default model, `trials=1`, visible token
-counts, generated on 2026-05-22. Runtime results are smoke/focused evidence;
-public runtime claims still need the full `40 x 5 x 3` run. Reference results
-use all 10 Caveman README prompts with `trials=1`.
+Live Codex CLI default model, `trials=1`, visible token counts, generated on 2026-05-22.
 
-### Focused 10 Prompt Set
+### Reference Compression
 
-Target: status, risk, code review, implementation, planning, debugging.
-
-| Arm | Output compression vs control | First-turn net | Amortized net at 10 turns |
-| --- | ---: | ---: | ---: |
-| Simple Man runtime | +7.3% | -150.8% | -8.2% |
-| Simple Man skill | +5.6% | -329.2% | -27.8% |
-| Caveman | -28.2% | -711.4% | -76.0% |
-
-Runtime headline:
-
-| Metric | Value |
-| --- | ---: |
-| runtime output compression vs control | +7.3% |
-| runtime output compression vs Caveman | +16.7% |
-| runtime session net, 20 turns | -0.3% |
-| runtime session net, 50 turns | +4.4% |
-| runtime session net, 100 turns | +6.0% |
-
-Focused quality:
-
-- `python3 evals/measure.py --snapshot /tmp/simple-man-runtime-focused-results.json --check` passed
-- Caveman-inclusive quality check also passed
-
-### Canonical First-10 Prompt Sample
-
-| Arm | Output compression vs control | First-turn net | Amortized net at 10 turns |
-| --- | ---: | ---: | ---: |
-| Simple Man runtime | +10.1% | -66.0% | +0.8% |
-| Simple Man skill | +15.9% | -144.8% | -3.6% |
-| Caveman | -6.7% | -330.4% | -32.6% |
-
-Runtime headline:
-
-| Metric | Value |
-| --- | ---: |
-| runtime output compression vs control | +10.1% |
-| runtime output compression vs Caveman | +10.4% |
-| runtime session net, 20 turns | +4.5% |
-| runtime session net, 50 turns | +6.8% |
-| runtime session net, 100 turns | +7.5% |
-
-First-10 quality:
-
-- `python3 evals/measure.py --snapshot /tmp/simple-man-runtime-sample-results.json --check` passed
-- Caveman-inclusive quality check also passed
-
-### Reference Compression Sample
-
-Snapshot: `/tmp/simple-man-reference-results.json`
-
-Codex-calibrated verbose normal baseline; output-only tokens; 10 Caveman README
-prompts; `trials=1`.
+Snapshot: `/tmp/simple-man-final-reference-results.json`
 
 Check:
 
-- `python3 evals/measure.py --snapshot /tmp/simple-man-reference-results.json --check` passed
+- `python3 evals/measure.py --snapshot /tmp/simple-man-final-reference-results.json --check` passed
 
 Headline:
 
 | Arm | Output compression vs normal | Mean output tokens |
 | --- | ---: | ---: |
-| Caveman full | +79.9% | 235.6 |
-| Caveman ultra | +81.1% | 220.0 |
-| Simple Man runtime | +63.0% | 410.4 |
-| Simple Man skill | +62.6% | 486.7 |
+| Caveman ultra | +79.7% | 195.1 |
+| Simple Man runtime | +67.7% | 310.0 |
 
 Per prompt:
 
-| Prompt | Normal out | Caveman ultra | Simple Man runtime |
+| Prompt | Normal out | Caveman ultra out | Caveman ultra vs normal | Simple Man runtime out | Simple Man runtime vs normal |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| async-refactor | 241 | 130 | +46.1% | 172 | +28.6% |
+| auth-middleware-fix | 600 | 128 | +78.7% | 294 | +51.0% |
+| docker-multi-stage | 525 | 161 | +69.3% | 207 | +60.6% |
+| error-boundary | 973 | 247 | +74.6% | 422 | +56.6% |
+| git-rebase-merge | 2596 | 223 | +91.4% | 303 | +88.3% |
+| microservices-monolith | 3457 | 183 | +94.7% | 404 | +88.3% |
+| postgres-pool | 3052 | 450 | +85.3% | 487 | +84.0% |
+| pr-security-review | 1019 | 90 | +91.2% | 150 | +85.3% |
+| race-condition-debug | 907 | 244 | +73.1% | 459 | +49.4% |
+| react-rerender | 1352 | 95 | +93.0% | 202 | +85.1% |
+
+Interpretation:
+
+- Simple Man runtime now compresses output substantially: `+67.7%` vs verbose normal.
+- Caveman ultra is still shorter on this suite: `+79.7%`.
+- Simple Man runtime mean output improved from the previous PR reference result `410.4` to `310.0` tokens: `24.5%` shorter than the old runtime policy on the calibrated reference suite shape.
+
+### Runtime Economics
+
+Snapshot: `/tmp/simple-man-final-runtime-sample-results.json`
+
+Check:
+
+- `python3 evals/measure.py --snapshot /tmp/simple-man-final-runtime-sample-results.json --check` passed
+
+Headline:
+
+| Metric | Value |
+| --- | ---: |
+| Runtime output compression vs control | +14.6% |
+| Runtime session net, 20 turns | +2.5% |
+| Runtime session net, 50 turns | +6.7% |
+| Runtime session net, 100 turns | +8.2% |
+
+Summary:
+
+| Arm | Output compression | First-turn net | Amortized net at 10 turns |
 | --- | ---: | ---: | ---: |
-| async-refactor | 315 | +58.7% | +42.9% |
-| auth-middleware-fix | 1069 | +86.3% | +74.4% |
-| docker-multi-stage | 673 | +72.2% | +53.2% |
-| error-boundary | 943 | +66.9% | +40.9% |
-| git-rebase-merge | 3497 | +93.5% | +91.3% |
-| microservices-monolith | 4127 | +93.9% | +85.7% |
-| postgres-pool | 2650 | +78.7% | +70.5% |
-| pr-security-review | 676 | +88.0% | +54.0% |
-| race-condition-debug | 1811 | +88.6% | +75.6% |
-| react-rerender | 592 | +84.3% | +41.0% |
+| Simple Man runtime | +14.6% | -132.9% | -4.7% |
 
-## Interpretation
+Interpretation:
 
-The GPT review was directionally right: the full skill should not be treated as
-the always-on runtime. After the split, runtime overhead is small enough that
-session net becomes positive in the first-10 sample and near break-even by 20
-turns in the focused sample.
+- First isolated turns are still net-negative because any always-on policy has input overhead.
+- On this 10-prompt runtime sample, the promoted runtime becomes net-positive by 20 turns and improves with longer sessions.
 
-The runtime arm is also shorter than Caveman on both live samples:
+## Quality Notes
 
-- focused: runtime beats Caveman by +16.7% output compression
-- first-10: runtime beats Caveman by +10.4% output compression
+Manual spot review focused on the weakest or riskiest prompts:
 
-The full skill still compresses output on some prompts, but its input overhead
-is too large for headline economics. Keep it as explicit install/use surface,
-not always-on project runtime.
+- `pr-security-review`: preserved SQL injection, parameterized query, authorization/IDOR, overexposure, validation, and error handling.
+- `race-condition-debug`: preserved atomic `UPDATE ... RETURNING`, bad read-modify-write pattern, upsert, and `FOR UPDATE` transaction fallback.
+- `error-boundary`: preserved fallback UI, retry, `componentDidCatch`, logging hook, and React boundary limitations.
+- `async-refactor`: preserved `async/await`, parameterized query, not-found path, callback-only wrapper, and caller `try/catch`.
 
-The new reference suite fixes the earlier Caveman mismatch: on README-like
-tasks Caveman ultra now shows `+81.1%` output compression, so Simple Man can be
-compared on a calibrated output-compression benchmark. In that calibrated
-suite, Simple Man runtime cuts `+63.0%` output vs verbose normal, but remains
-less compressed than Caveman ultra by about `18.1` percentage points.
-
-## Open Questions
-
-1. Should public docs publish only `simple_man_runtime` numbers and keep
-   `simple_man_skill` as diagnostic appendix?
-2. Should full benchmark snapshots be committed after a `600`-call run, or kept
-   out of git with reports only?
-3. Should the next eval add a long-session simulation with prompt caching,
-   rather than only isolated `codex exec` turns?
+No material quality loss found in these checked pairs.
