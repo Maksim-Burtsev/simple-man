@@ -91,26 +91,32 @@ Prompt: inspect a Python payment ledger where retrying with the same idempotency
 <tr>
 <td>
 <p><strong>Root cause</strong></p>
-<p><code>PaymentLedger.charge</code> only recorded successful gateway responses. If the provider accepted the first charge but the client saw a <code>GatewayTimeout</code>, the ledger had no local record for that idempotency key, so retrying called the gateway again and created a second remote charge.</p>
-<p><strong>Files changed</strong></p>
+<p>The charge path was append-only. After a gateway timeout, the fake provider had already accepted a charge, but retrying with the same idempotency key created a new provider charge and the ledger had no local idempotency lookup to return an existing local charge.</p>
+<p><strong>Files Changed</strong></p>
 <ul>
-<li><code>ledger.py</code>: added an idempotency-key index, reused existing local charges, and reconciled timeout-after-acceptance cases from the gateway's accepted remote charge list before re-raising.</li>
-<li><code>test_ledger.py</code>: added coverage that a completed idempotency key is returned without another gateway call.</li>
+<li><code>ledger.py</code>: added idempotency-key indexes in <code>FakeGateway</code> and <code>PaymentLedger</code>.
+<ul>
+<li>Provider retries now replay the original remote charge.</li>
+<li>Ledger retries now return the existing local charge instead of appending another.</li>
+</ul>
+</li>
+<li><code>test_ledger.py</code>: extended the retry test to verify no extra gateway call or local charge is created after the local charge exists.</li>
 </ul>
 <p><strong>Validation</strong></p>
-<p><code>python3 -m unittest test_ledger.py</code> passed: 2 tests ran OK.</p>
-<p><strong>Remaining risk</strong></p>
-<p>This fixture models reconciliation through the fake gateway's in-memory <code>remote_charges</code>. A production implementation still needs durable idempotency-key storage and provider-side lookup semantics that survive process restarts and network partitions.</p>
+<p>Command: <code>PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v</code></p>
+<p>Result: passed, 1 test run.</p>
+<p><strong>Remaining Risk</strong></p>
+<p>This is still an in-memory implementation. A production version would need persistent idempotency storage with transaction/concurrency protection, and likely validation that reused idempotency keys match the original customer and amount.</p>
 </td>
 <td>
-<p>Root cause: <code>PaymentLedger.charge()</code> only stored successful gateway responses. If the provider accepted the charge and the response timed out, the retry had no local idempotency record and created a second remote charge.</p>
+<p>Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally, and retries created new charge records.</p>
 <p>Files changed:</p>
 <ul>
-<li><code>ledger.py</code></li>
-<li><code>test_ledger.py</code></li>
+<li><code>ledger.py</code>: added provider/local idempotency maps; same key returns existing charge; mismatched reuse raises <code>ValueError</code>.</li>
+<li><code>test_ledger.py</code>: added regression for repeated same-key retry.</li>
 </ul>
-<p>Validation: <code>python3 -m unittest test_ledger.py</code> passed, 2 tests.</p>
-<p>Remaining risk: this fixture uses the fake gateway's in-memory accepted charge list for timeout reconciliation. A real gateway path still needs durable idempotency storage and provider lookup/reconciliation semantics.</p>
+<p>Validation: <code>PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v</code> -&gt; passed, 2 tests.</p>
+<p>Remaining risk: idempotency state is in-memory only; no durable/concurrent store in this fixture.</p>
 </td>
 </tr>
 <tr>
