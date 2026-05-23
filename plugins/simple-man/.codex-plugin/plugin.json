@@ -25,8 +25,8 @@
     "capabilities": [
       "Write"
     ],
-    "composerIcon": "./assets/icon.svg",
-    "logo": "./assets/icon.svg",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
     "websiteURL": "https://github.com/Maksim-Burtsev/simple-man",
     "defaultPrompt": [
       "Use Simple Man: minimum user-facing words; same work quality."
