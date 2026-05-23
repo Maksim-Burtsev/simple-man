@@ -1,0 +1,8 @@
+{
+  "name": "node-auth-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/auth.test.js"
+  }
+}

@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "evals"))
 
 import benchmark_lib as bench  # noqa: E402
 import run_codex  # noqa: E402
+import run_skill_comparison  # noqa: E402
 
 
 class BenchmarkLibTests(unittest.TestCase):
@@ -329,6 +330,40 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertEqual(prompts[0]["id"], "react-rerender")
         self.assertEqual(prompts[-1]["id"], "error-boundary")
         self.assertTrue(all(prompt.get("checks") for prompt in prompts))
+
+    def test_skill_comparison_seed_fixtures_are_real_failing_projects(self):
+        for project in run_skill_comparison.PROJECTS:
+            with self.subTest(project=project.key):
+                project_root = run_skill_comparison.SEEDS / project.key
+                self.assertTrue(project_root.exists())
+
+                result = run_skill_comparison.run(project.check, cwd=project_root)
+
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_reports_do_not_include_local_user_paths(self):
+        paths = [
+            ROOT / "evals" / "reports" / "codex-skill-comparison.md",
+            ROOT / "evals" / "reports" / "gpt-pro-benchmark-brief.md",
+            ROOT / "evals" / "run_codex.py",
+            ROOT / "evals" / "run_skill_comparison.py",
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text()
+                self.assertNotIn("/" + "Users/", text)
+                self.assertNotIn("za" + "dro", text)
+
+    def test_readme_examples_are_wrapped_comparison_tables(self):
+        readme = (ROOT / "README.md").read_text()
+        examples = readme.split("## Examples", 1)[1].split("## Agent support", 1)[0]
+
+        self.assertIn("<table>", examples)
+        self.assertIn("No Simple Man", examples)
+        self.assertIn("With Simple Man", examples)
+        self.assertNotIn("```", examples)
+        self.assertNotIn("<pre", examples.lower())
 
     def test_snapshot_age_warning_uses_generated_at(self):
         old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=45)).isoformat()
