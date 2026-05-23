@@ -14,6 +14,7 @@
 *.log
 tmp/
 temp/
+.local-fixtures/
 
 # Python
 __pycache__/

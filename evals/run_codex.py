@@ -29,7 +29,19 @@ DEFAULT_RUNTIME_SNAPSHOT = ROOT / "evals" / "snapshots" / "codex-results.json"
 DEFAULT_REFERENCE_SNAPSHOT = ROOT / "evals" / "snapshots" / "reference-results.json"
 TOKENIZER_NAME = "o200k_base"
 LOCAL_CAVEMAN_SKILL = Path(
-    "/Users/zadro/.codex/.tmp/marketplaces/caveman-repo/skills/caveman/SKILL.md"
+    os.environ.get(
+        "CAVEMAN_SKILL",
+        str(
+            Path.home()
+            / ".codex"
+            / ".tmp"
+            / "marketplaces"
+            / "caveman-repo"
+            / "skills"
+            / "caveman"
+            / "SKILL.md"
+        ),
+    )
 )
 
 NORMAL_INSTRUCTIONS = (

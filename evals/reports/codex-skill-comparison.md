@@ -2,16 +2,16 @@
 
 This report compares real Codex coding-agent behavior on three small, reproducible bug-fix projects. Each scenario was run three times from the same failing seed state: no brevity skill, Caveman ultra, and Simple Man.
 
-The tables below show only benchmark-relevant facts and the full final Codex answers. Raw Codex JSONL logs, stderr warnings, disposable run copies, and generated fixtures were kept local and are not part of this PR diff.
+The tables below show only benchmark-relevant facts and the full final Codex answers. Seed fixtures are tracked under `evals/fixtures/skill-comparison`; raw Codex JSONL logs, stderr warnings, and disposable run copies stay local.
 
 ## Method
 
 - Generated: `2026-05-23 18:47:33 +04`
-- Base branch: `codex/benchmark-simple-man` / PR #2 head
+- Base branch: `master`
 - Model: `gpt-5.5`
 - Reasoning effort: `xhigh`
-- Caveman source: `/Users/zadro/.codex/.tmp/marketplaces/caveman-repo/skills/caveman/SKILL.md`
-- Simple Man source: `/Users/zadro/open-source/simple-man/skills/simple-man/SKILL.md`
+- Caveman source: `~/.codex/.tmp/marketplaces/caveman-repo/skills/caveman/SKILL.md`
+- Simple Man source: `skills/simple-man/SKILL.md`
 - Isolation: one disposable git repo per scenario per mode; seed files were committed before Codex ran, so changed-file lists show actual Codex edits.
 - Capture: final answers came from `codex exec --output-last-message`; validation was rerun outside Codex after each run.
 - Baseline column: no brevity/persona skill injected.

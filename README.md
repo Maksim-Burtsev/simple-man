@@ -41,63 +41,115 @@ It must not reduce:
 
 ## Examples
 
-Same model, same repository fixture, same prompt. Only Simple Man is changed.
+Same model, same failing mini-project, same task. Only the communication policy changed. These are real captured Codex final answers from [`evals/reports/codex-skill-comparison.md`](./evals/reports/codex-skill-comparison.md).
 
-### Merge-readiness update
+### Expired-session auth bug
 
-Prompt: write a Slack update to an engineering manager about whether an auth
-branch can merge today after inspecting auth code plus test and lint reports.
+Prompt: inspect a Node auth API where expired sessions are still accepted, fix it, run tests, and hand off root cause, files changed, validation, and remaining risk.
 
-Without Simple Man:
+<table>
+<tr>
+<th width="50%">No Simple Man</th>
+<th width="50%">With Simple Man</th>
+</tr>
+<tr>
+<td>
+<p><strong>Engineering Handoff</strong></p>
+<p><strong>Root cause:</strong> <code>authenticate</code> accepted any session returned by <code>store.get(token)</code> and never checked <code>session.expiresAt</code> against the store clock.</p>
+<p><strong>Files changed:</strong></p>
+<ul>
+<li><code>src/middleware.js</code>: rejects sessions with missing/non-numeric <code>expiresAt</code> or <code>expiresAt &lt;= store.now()</code>.</li>
+<li><code>test/auth.test.js</code>: added coverage for the expiration boundary where <code>expiresAt === now</code>.</li>
+</ul>
+<p><strong>Validation:</strong> <code>npm test</code> passed, 3/3 tests.</p>
+<p><strong>Remaining risk:</strong> This assumes <code>expiresAt</code> and <code>store.now()</code> use the same timestamp unit, and that auth store implementations provide the existing <code>now()</code> API.</p>
+</td>
+<td>
+<p>Fixed.</p>
+<ul>
+<li>Root cause: <code>authenticate</code> trusted <code>store.get(token)</code> and never checked <code>session.expiresAt</code>.</li>
+<li>Files changed: <code>src/middleware.js</code></li>
+<li>Validation: <code>npm test</code> -&gt; pass, <code>2/2</code> tests.</li>
+<li>Remaining risk: none identified.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="2"><strong>Result:</strong> both fixed the bug and passed <code>npm test</code>. Answer length: 601 chars vs 221 chars, 63% shorter.</td>
+</tr>
+</table>
 
-```md
-Slack-ready update:
+### Payment idempotency retry bug
 
-Auth branch is **not safe to merge as-is today**. The test report is green: `pnpm test` passed for `src/auth/middleware.test.ts` and `src/billing/charges.test.ts` with 11 tests passing. However, lint is failing in `src/auth/session.ts:35` because `auditSessionRefresh(refreshed.id)` is called without `await`, `.catch`, or `void`.
+Prompt: inspect a Python payment ledger where retrying with the same idempotency key creates another local charge, fix it, run tests, and hand off root cause, files changed, validation, and remaining risk.
 
-Main risks:
-- CI/lint is not clean, so this should block merge.
-- `refreshSession` returns before the audit request completes, and audit failures could become unhandled promise rejections or silently lose audit coverage.
-- `authMiddleware` accepts any session returned by `getSession`, but `getSession` does not check `expiresAt`; if an expired session remains in the map, it can still authenticate.
+<table>
+<tr>
+<th width="50%">No Simple Man</th>
+<th width="50%">With Simple Man</th>
+</tr>
+<tr>
+<td>
+<p><strong>Root cause</strong></p>
+<p><code>PaymentLedger.charge</code> only recorded successful gateway responses. If the provider accepted the first charge but the client saw a <code>GatewayTimeout</code>, the ledger had no local record for that idempotency key, so retrying called the gateway again and created a second remote charge.</p>
+<p><strong>Files changed</strong></p>
+<ul>
+<li><code>ledger.py</code>: added an idempotency-key index, reused existing local charges, and reconciled timeout-after-acceptance cases from the gateway's accepted remote charge list before re-raising.</li>
+<li><code>test_ledger.py</code>: added coverage that a completed idempotency key is returned without another gateway call.</li>
+</ul>
+<p><strong>Validation</strong></p>
+<p><code>python3 -m unittest test_ledger.py</code> passed: 2 tests ran OK.</p>
+<p><strong>Remaining risk</strong></p>
+<p>This fixture models reconciliation through the fake gateway's in-memory <code>remote_charges</code>. A production implementation still needs durable idempotency-key storage and provider-side lookup semantics that survive process restarts and network partitions.</p>
+</td>
+<td>
+<p>Root cause: <code>PaymentLedger.charge()</code> only stored successful gateway responses. If the provider accepted the charge and the response timed out, the retry had no local idempotency record and created a second remote charge.</p>
+<p>Files changed:</p>
+<ul>
+<li><code>ledger.py</code></li>
+<li><code>test_ledger.py</code></li>
+</ul>
+<p>Validation: <code>python3 -m unittest test_ledger.py</code> passed, 2 tests.</p>
+<p>Remaining risk: this fixture uses the fake gateway's in-memory accepted charge list for timeout reconciliation. A real gateway path still needs durable idempotency storage and provider lookup/reconciliation semantics.</p>
+</td>
+</tr>
+<tr>
+<td colspan="2"><strong>Result:</strong> both fixed the retry bug and passed <code>python3 -m unittest -v</code>. Answer length: 1022 chars vs 520 chars, 49% shorter.</td>
+</tr>
+</table>
 
-Next steps before merge:
-- Fix the floating promise in `refreshSession` by either awaiting audit, handling failures, or explicitly marking it fire-and-forget with `void` plus error handling.
-- Confirm/implement expired-session rejection in `getSession` or `authMiddleware`.
-- Re-run lint and tests. If both are green after those fixes, this branch could still be mergeable today.
-```
+### Unsafe migration rollout order
 
-With Simple Man:
+Prompt: inspect a SQLite rollout where a migration drops <code>legacy_sessions.expires_at</code> before the backup reads it, fix it, run tests, and hand off root cause, files changed, validation, and remaining risk.
 
-```md
-Slack draft:
-
-> Auth branch is not merge-ready today yet. Tests are green (`pnpm test`: 2 files / 11 tests passed), but lint is failing on `src/auth/session.ts:35` because `auditSessionRefresh(refreshed.id)` is an unhandled promise.
->
-> I would not merge while lint is red. There's also an auth risk: sessions have `expiresAt`, but `getSession` / `authMiddleware` never reject expired sessions, so an expired token can still authenticate if it remains in the session map.
->
-> Next: handle/await the audit promise, enforce session expiry, add an expired-session test, then rerun lint + tests.
-```
-
-### Deploy-channel safety reply
-
-Prompt: reply to a deploy-channel suggestion to run a destructive drop-column
-migration before taking the backup.
-
-Without Simple Man:
-
-```md
-Reply with:
-
-> Not approved to run the drop-column migration before the backup. Risk: the migration drops `legacy_sessions.expires_at`, and the backup script selects that same column, so a backup afterward would no longer be possible from `legacy_sessions`. Safe order: take and verify the legacy session backup first, then run `20260521090000_drop_legacy_session_expires_at.sql`, then deploy.
-```
-
-With Simple Man:
-
-```md
-Reply:
-
-> Not approved as proposed. Risk: `expires_at` is dropped by the migration, and `scripts/backup-legacy-sessions.sql` selects `expires_at`, so backup afterward may fail or lose the legacy expiry data. Safe order: take/export the legacy session backup first, verify it, then run `20260521090000_drop_legacy_session_expires_at.sql`, then deploy.
-```
+<table>
+<tr>
+<th width="50%">No Simple Man</th>
+<th width="50%">With Simple Man</th>
+</tr>
+<tr>
+<td>
+<p><strong>Root Cause</strong></p>
+<p><code>rollout.py</code> applied <code>migrations/001_drop_expires_at.sql</code> before running <code>backup_legacy_sessions.sql</code>. The backup query still selects <code>legacy_sessions.expires_at</code>, so the column was gone before the backup could read it.</p>
+<p><strong>Files Changed</strong></p>
+<p><code>rollout.py</code>: moved <code>backup_legacy_sessions(conn)</code> before <code>apply_drop_migration(conn)</code>.</p>
+<p><strong>Validation</strong></p>
+<p>Command: <code>python3 -m unittest test_rollout.py</code></p>
+<p>Result: passed, 1 test ran OK.</p>
+<p><strong>Remaining Risk</strong></p>
+<p>The focused test now covers the required order: backup reads <code>expires_at</code>, then the migration drops it. Remaining risk is limited to behavior outside this small rollout path, such as real backup storage durability or additional migrations not represented in the current test.</p>
+</td>
+<td>
+<p>Root cause: <code>rollout()</code> ran <code>apply_drop_migration()</code> before <code>backup_legacy_sessions()</code>, so <code>expires_at</code> was dropped before the backup query selected it.</p>
+<p>Files changed: <code>rollout.py</code></p>
+<p>Validation: <code>python3 -m unittest test_rollout.py</code> passed, 1 test.</p>
+<p>Remaining risk: none known; only the focused repo test exists and was run.</p>
+</td>
+</tr>
+<tr>
+<td colspan="2"><strong>Result:</strong> both fixed the rollout order and passed <code>python3 -m unittest -v</code>. Answer length: 736 chars vs 324 chars, 56% shorter.</td>
+</tr>
+</table>
 
 ## Agent support
 

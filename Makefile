@@ -15,7 +15,7 @@ LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
 test:
 	$(PYTHON) -m unittest discover -s tests
-	$(PYTHON) -m py_compile evals/benchmark_lib.py evals/measure.py evals/run_codex.py
+	$(PYTHON) -m py_compile evals/benchmark_lib.py evals/measure.py evals/run_codex.py evals/run_skill_comparison.py
 	$(PYTHON) evals/run_codex.py --dry-run --limit 1
 	$(PYTHON) evals/run_codex.py --suite reference_compression --dry-run --limit 1
 

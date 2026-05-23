@@ -1,7 +1,7 @@
 # Simple Man Runtime Benchmark Brief
 
 Date: 2026-05-22
-Repo: `/Users/zadro/open-source/simple-man`
+Repo: `Maksim-Burtsev/simple-man`
 Branch: `codex/benchmark-simple-man`
 PR: https://github.com/Maksim-Burtsev/simple-man/pull/2
 
