@@ -1,0 +1,1718 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Skill Comparison: Caveman Ultra vs Simple Man</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --ink: #1f2933;
+      --muted: #5f6b7a;
+      --line: #d8dee8;
+      --accent: #0f766e;
+      --code: #101828;
+      --code-bg: #f2f4f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1600px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+    h1, h2 { line-height: 1.2; margin: 0 0 12px; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 22px; }
+    p { margin: 8px 0; }
+    .intro, .project {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .intro dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 6px 14px;
+      margin: 16px 0 0;
+    }
+    dt { color: var(--muted); }
+    dd { margin: 0; }
+    code {
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin-top: 16px;
+    }
+    th, td {
+      vertical-align: top;
+      border: 1px solid var(--line);
+      padding: 12px;
+      width: 33.333%;
+    }
+    th {
+      text-align: left;
+      background: #eef6f5;
+      color: #134e4a;
+      font-size: 14px;
+    }
+    .mode-title {
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: normal;
+      background: var(--code-bg);
+      color: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    pre.meta {
+      color: var(--muted);
+      background: #fbfcfe;
+      margin-bottom: 10px;
+    }
+    details { margin-top: 12px; }
+    summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+    @media (max-width: 900px) {
+      table, thead, tbody, tr, th, td { display: block; width: 100%; }
+      thead { display: none; }
+      td { margin-bottom: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="intro">
+      <h1>Codex Skill Comparison: Caveman Ultra vs Simple Man</h1>
+      <p>Three real mini-projects were run through Codex with the same task in three isolated modes. Final answers are shown in full, untrimmed.</p>
+      <dl>
+        <dt>Generated</dt><dd>2026-05-23 16:23:28 +04</dd>
+        <dt>Base branch</dt><dd><code>codex/benchmark-simple-man</code> / PR #2 head</dd>
+        <dt>Model</dt><dd><code>gpt-5.5</code></dd>
+        <dt>Reasoning effort</dt><dd><code>xhigh</code></dd>
+        <dt>Caveman source</dt><dd><code>/Users/zadro/.codex/.tmp/marketplaces/caveman-repo/skills/caveman/SKILL.md</code></dd>
+        <dt>Simple Man source</dt><dd><code>/Users/zadro/open-source/simple-man/skills/simple-man/SKILL.md</code></dd>
+      </dl>
+    </section>
+
+            <section class="project">
+              <h2>Node auth API</h2>
+              <p><strong>Task:</strong> We have an auth bug: expired sessions are still accepted.
+
+Please inspect the project, fix the bug, run the relevant tests, and
+give me a concise engineering handoff with:
+- root cause
+- files changed
+- validation command and result
+- any remaining risk</p>
+              <p><strong>Seed validation:</strong> expected failing/risky fixture, command
+              <code>npm test</code>, exit
+              <code>1</code>.</p>
+              <details>
+                <summary>Seed validation output</summary>
+                <pre>
+&gt; node-auth-api@1.0.0 test
+&gt; node --test test/auth.test.js
+
+✔ accepts a valid session (0.693292ms)
+✖ rejects an expired session (0.428875ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 39.09925
+
+✖ failing tests:
+
+test at test/auth.test.js:16:1
+✖ rejects an expired session (0.428875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  200 !== 401
+
+      at TestContext.&lt;anonymous&gt; (/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/seeds/node-auth-api/test/auth.test.js:20:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+      at Test.postRun (node:internal/test_runner/test:1173:19)
+      at Test.run (node:internal/test_runner/test:1101:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:297:3) {
+    generatedMessage: true,
+    code: &#x27;ERR_ASSERTION&#x27;,
+    actual: 200,
+    expected: 401,
+    operator: &#x27;strictEqual&#x27;
+  }
+</pre>
+              </details>
+              <table>
+                <thead>
+                  <tr>
+                    <th>No brevity skill</th>
+                    <th>Caveman ultra</th>
+                    <th>Simple Man</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                <td>
+                  <div class="mode-title">No brevity skill</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (npm test, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/baseline
+Changed files:
+?? package.json
+?? src/
+?? test/
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:10:22.643201Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:10:22.678967Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.678977Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.679409Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.679412Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.679812Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.679817Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.680305Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.680309Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.680722Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.680726Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.681711Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:22.681715Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.042538Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.042604Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043117Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043122Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043547Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043551Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043976Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.043979Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.044441Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.044446Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.045539Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:33.045543Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.152393Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.152837Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153209Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153213Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153570Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153574Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153934Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.153937Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.154285Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.154287Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.155117Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:41.155120Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.090269Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.090290Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.090940Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.090944Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.091288Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.091290Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.091662Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.091665Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.092037Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.092040Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.093398Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:10:49.093402Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.580510Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.580523Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581074Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581077Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581412Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581414Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581757Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.581760Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.582091Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.582093Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.582911Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:08.582913Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.528597Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.528607Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529130Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529133Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529491Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529493Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529837Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.529840Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.530183Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.530186Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.531030Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:15.531033Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.466810Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.466829Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.467382Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.467387Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.467784Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.467787Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.468181Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.468184Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.468571Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.468574Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.469416Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:11:38.469418Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.218218Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.218227Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.218832Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.218836Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219196Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219199Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219567Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219572Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219948Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.219951Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.220799Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:04.220801Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>Root cause: `createSessionStore().get()` returned stored sessions without checking `expiresAt`, so `authenticate()` treated expired records as valid.
+
+Files changed: [src/session.js](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/baseline/src/session.js:8) now rejects sessions where `expiresAt &lt;= clock()` and removes them from the store.
+
+Validation: `npm test` passed: 2 tests, 0 failures.
+
+Remaining risk: coverage is limited to the focused auth test file; malformed sessions with missing/non-numeric `expiresAt` are not explicitly tested.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Caveman ultra</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (npm test, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/caveman-ultra
+Changed files:
+?? package.json
+?? src/
+?? test/
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:12:23.673680Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:12:27.148936Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.148963Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.149304Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.149310Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.149657Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.149664Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.150020Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.150027Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.150364Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.150367Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.151098Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:27.151105Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909193Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909210Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909561Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909565Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909912Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.909914Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.910256Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.910259Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.910597Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.910601Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.911360Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:32.911367Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.570791Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.570808Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.571276Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.571283Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.571759Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.571763Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.572202Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.572205Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.572672Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.572679Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.573628Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:36.573632Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.070585Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.070593Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.070977Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.070981Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.071362Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.071366Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.071750Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.071753Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.072144Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.072146Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.073006Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:38.073010Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.841847Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.841858Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.842325Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.842331Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.842838Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.842842Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.843295Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.843299Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.843757Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.843761Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.844788Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:39.844793Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.446407Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.446426Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.446931Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.446934Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447279Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447281Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447642Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447645Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447981Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.447983Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.448797Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:55.448800Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.386319Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.386333Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.386785Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.386791Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.387231Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.387235Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.387711Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.387715Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.388190Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.388194Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.389149Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:57.389153Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.581561Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.581574Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.581896Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.581899Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582218Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582221Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582531Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582533Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582852Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.582854Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.583546Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:12:59.583551Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.372180Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.372191Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.372725Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.372732Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.373243Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.373248Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.373713Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.373717Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.374212Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.374216Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.375358Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:01.375362Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.459413Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.459424Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.459776Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.459779Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460149Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460153Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460519Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460522Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460879Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.460882Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.461701Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:04.461704Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.961141Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.961154Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.961554Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.961560Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962020Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962024Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962436Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962441Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962848Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.962852Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.963777Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:10.963782Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.747199Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.747211Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.747753Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.747756Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748108Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748111Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748489Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748491Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748823Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.748826Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.749630Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:32.749633Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.330526Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.330539Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.330934Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.330938Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.331379Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.331383Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.331773Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.331775Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.332158Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.332163Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.333057Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:34.333060Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.720613Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.720623Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.720975Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.720978Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.721321Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.721324Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.721690Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.721693Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.722042Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.722046Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.722821Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:37.722827Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>Root cause: `authenticate()` trusted any `store.get(token)` result. No `expiresAt` check → expired session returned `200`.
+
+Files changed:
+- [src/middleware.js](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/caveman-ultra/src/middleware.js:7): reject missing/non-finite expiry + `expiresAt &lt;= store.now()`.
+- [test/auth.test.js](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/caveman-ultra/test/auth.test.js:26): added expiry-boundary + missing-expiry tests.
+
+Validation: `npm test` → pass. `4` tests, `0` fail.
+
+Remaining risk: expired sessions still remain in store; auth rejects them, no purge. Worktree files are untracked: `?? package.json`, `?? src/`, `?? test/`.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Simple Man</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (npm test, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/simple-man
+Changed files:
+?? package.json
+?? src/
+?? test/
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:13:55.391633Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:13:58.917672Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.917680Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918046Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918051Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918413Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918416Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918795Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.918798Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.919201Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.919207Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.920115Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:13:58.920117Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.618875Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.618886Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619229Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619233Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619576Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619579Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619936Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.619939Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.620335Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.620339Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.621144Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:06.621147Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.662856Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.662870Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663242Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663246Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663618Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663623Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663988Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.663992Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.664373Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.664376Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.665224Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:12.665227Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.662733Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.662758Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.663198Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.663202Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.663629Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.663633Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.664044Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.664048Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.664454Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.664457Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.665213Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:24.665216Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.002559Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.002569Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.002978Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.002981Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.003348Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.003351Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.003745Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.003750Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.004120Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.004123Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.004975Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:28.004977Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.848379Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.848390Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.848759Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.848764Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849113Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849116Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849476Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849481Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849868Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.849873Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.850621Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:31.850625Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.587341Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.587358Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.587800Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.587803Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.588461Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.588463Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.588861Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.588864Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.589229Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.589232Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.590035Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:14:53.590038Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.866785Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.866793Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.867233Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.867236Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.867891Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.867893Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.868215Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.868217Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.868536Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.868538Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.869353Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:02.869356Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.612340Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.612351Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.612782Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.612784Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.613462Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.613465Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.613779Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.613782Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.614098Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.614101Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.614904Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:11.614907Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.491840Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.491850Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492152Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492155Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492453Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492456Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492755Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.492758Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.493049Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.493052Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.493699Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:19.493702Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>Root cause: `authenticate()` returned `200` after `store.get(token)` without checking `session.expiresAt`.
+
+Files changed:
+- [src/middleware.js](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/simple-man/src/middleware.js:7): reject missing/non-finite/expired `expiresAt`.
+- [test/auth.test.js](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/node-auth-api/simple-man/test/auth.test.js:26): added expiry-boundary and missing-expiry coverage.
+
+Validation: `npm test` -&gt; pass, `4/4`.
+
+Remaining risk: expired sessions are rejected but not purged from `createSessionStore`, so stale entries can accumulate. Repo files are currently untracked in git.</pre>
+                </td>
+                </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="project">
+              <h2>Python payment ledger</h2>
+              <p><strong>Task:</strong> We have a duplicate-charge retry bug. A gateway timeout can happen
+after the provider accepted the charge, and retrying with the same
+idempotency key currently creates another local charge.
+
+Please inspect the project, fix the idempotency bug, run the relevant
+tests, and give me a concise engineering handoff with:
+- root cause
+- files changed
+- validation command and result
+- any remaining risk</p>
+              <p><strong>Seed validation:</strong> expected failing/risky fixture, command
+              <code>/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v</code>, exit
+              <code>1</code>.</p>
+              <details>
+                <summary>Seed validation output</summary>
+                <pre>test_retry_with_same_key_does_not_create_second_remote_charge (test_ledger.PaymentLedgerTests.test_retry_with_same_key_does_not_create_second_remote_charge) ... FAIL
+
+======================================================================
+FAIL: test_retry_with_same_key_does_not_create_second_remote_charge (test_ledger.PaymentLedgerTests.test_retry_with_same_key_does_not_create_second_remote_charge)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File &quot;/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/seeds/python-payment-ledger/test_ledger.py&quot;, line 16, in test_retry_with_same_key_does_not_create_second_remote_charge
+    self.assertEqual(charge[&quot;provider_id&quot;], &quot;ch_1&quot;)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: &#x27;ch_2&#x27; != &#x27;ch_1&#x27;
+- ch_2
+?    ^
++ ch_1
+?    ^
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+</pre>
+              </details>
+              <table>
+                <thead>
+                  <tr>
+                    <th>No brevity skill</th>
+                    <th>Caveman ultra</th>
+                    <th>Simple Man</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                <td>
+                  <div class="mode-title">No brevity skill</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/baseline
+Changed files:
+?? README.md
+?? __pycache__/
+?? ledger.py
+?? test_ledger.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:15:32.537293Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.537302Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.537868Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.537872Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.538282Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.538285Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.538654Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.538659Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.539043Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.539047Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.539982Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.539986Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:32.969849Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:15:33.566718Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.566728Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.567172Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.567175Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.567641Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.567644Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.568104Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.568109Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.568550Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.568554Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.569501Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:33.569505Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.385779Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.385791Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386193Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386196Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386558Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386563Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386933Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.386938Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.387289Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.387293Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.388095Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:40.388098Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.359487Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.359495Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.359854Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.359857Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360218Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360221Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360574Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360578Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360933Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.360936Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.361762Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:46.361765Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971030Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971042Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971424Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971430Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971812Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.971815Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.972207Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.972212Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.972585Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.972587Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.973359Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:48.973362Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.389062Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.389076Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.389596Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.389604Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390052Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390056Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390523Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390528Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390957Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.390961Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.391854Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:15:52.391857Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.804743Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.804758Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.805257Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.805260Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.805693Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.805698Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.806056Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.806059Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.806400Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.806403Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.807218Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:27.807220Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.715251Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.715262Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.715867Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.715871Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716250Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716253Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716586Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716590Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716920Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.716923Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.717717Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:34.717720Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251325Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251334Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251702Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251706Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251996Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.251998Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.252279Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.252282Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.252589Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.252592Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.253234Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:37.253236Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.841442Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.841457Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.841823Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.841827Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842201Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842206Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842568Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842572Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842937Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.842940Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.843742Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:44.843745Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511098Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511111Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511516Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511521Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511903Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.511907Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.512266Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.512270Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.512631Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.512635Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.513408Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:16:49.513411Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.490390Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.490400Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.490938Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.490941Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.491340Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.491343Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.491702Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.491704Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.492073Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.492076Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.492974Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:00.492976Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.627756Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.627764Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628295Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628298Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628645Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628647Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628995Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.628998Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.629348Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.629350Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.630198Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:03.630201Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.339696Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.339707Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.340147Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.340152Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.340634Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.340638Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.341086Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.341093Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.341560Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.341565Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.342564Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:07.342568Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498045Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498055Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498404Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498408Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498735Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.498738Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.499063Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.499066Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.499402Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.499405Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.500219Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:13.500224Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>**Root Cause**
+`PaymentLedger.charge()` had no local idempotency lookup, so a repeated key could create another local charge. The fake gateway also did not model provider idempotency after an accepted-but-timed-out charge, so retrying returned `ch_2` instead of the original `ch_1`.
+
+**Files Changed**
+- [ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/baseline/ledger.py:5): added idempotency-key tracking in `FakeGateway` and `PaymentLedger`.
+- [test_ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/baseline/test_ledger.py:20): added regression coverage for retrying after a local charge already exists.
+
+**Validation**
+`python3 -m unittest test_ledger.py`
+
+Result: `Ran 2 tests in 0.000s - OK`
+
+**Remaining Risk**
+The idempotency store is still in-memory and not concurrency-safe. A real service would need a durable unique constraint or transactional idempotency table keyed by idempotency key, plus handling for same key with conflicting charge parameters.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Caveman ultra</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/caveman-ultra
+Changed files:
+?? README.md
+?? __pycache__/
+?? ledger.py
+?? test_ledger.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:17:24.645742Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.645751Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.646256Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.646261Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.646738Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.646742Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.647266Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.647269Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.647853Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.647855Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.648784Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:24.648787Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.245293Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:17:25.667862Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.667869Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.668335Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.668339Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.668781Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.668784Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.669246Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.669249Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.669701Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.669704Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.670682Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:25.670685Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.690644Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.690658Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691021Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691025Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691385Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691388Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691746Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.691749Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.692110Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.692114Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.692891Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:32.692893Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110019Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110029Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110359Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110362Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110691Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.110694Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.111019Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.111024Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.111353Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.111355Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.112073Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:38.112076Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534248Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534258Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534588Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534591Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534917Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.534919Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.535255Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.535257Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.535591Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.535593Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.536365Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:44.536369Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.012296Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.012304Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.012709Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.012712Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013168Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013172Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013572Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013576Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013982Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.013985Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.014845Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:17:57.014848Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.347695Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.347705Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348022Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348025Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348336Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348339Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348715Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.348720Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.349106Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.349109Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.349943Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:03.349947Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616089Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616098Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616641Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616644Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616983Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.616986Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.617345Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.617347Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.617707Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.617709Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.618524Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:42.618527Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.317819Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.317826Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.318388Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.318391Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.318717Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.318720Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.319039Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.319042Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.319362Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.319364Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.320141Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:50.320144Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.952557Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.952566Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.952889Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.952891Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953216Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953221Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953549Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953552Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953859Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.953862Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.954566Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:18:52.954570Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.173572Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.173580Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.173958Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.173963Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.174317Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.174319Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.174698Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.174701Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.175086Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.175089Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.175927Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:04.175930Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>**Handoff**
+- Root cause: `FakeGateway.charge()` ignored `idempotency_key`; timeout accepted `ch_1`, retry made `ch_2`. `PaymentLedger.charge()` also lacked local replay guard.
+- Files changed: [ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/caveman-ultra/ledger.py:5), [test_ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/caveman-ultra/test_ledger.py:7)
+- Fix: provider idempotency cache + local idempotency cache. Same key/same params returns existing charge. Same key/diff params raises `ValueError`.
+- Validation: `python3 -m unittest -v` → `Ran 2 tests ... OK`
+- Remaining risk: in-memory only. Real DB path needs durable unique constraint/txn on `idempotency_key` for concurrent workers.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Simple Man</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/simple-man
+Changed files:
+?? README.md
+?? __pycache__/
+?? ledger.py
+?? test_ledger.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:19:18.637496Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.637507Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.638683Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.638687Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.639451Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.639455Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.639812Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.639815Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.640204Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.640206Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.641104Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.641107Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:18.885244Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:19:19.558802Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.558811Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.559253Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.559256Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.559697Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.559701Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.560137Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.560142Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.560587Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.560590Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.561543Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:19.561547Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372233Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372243Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372597Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372600Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372949Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.372953Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.373316Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.373321Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.373678Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.373681Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.374461Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:25.374464Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.030473Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.030484Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.030815Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.030818Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031124Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031127Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031450Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031454Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031780Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.031783Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.032463Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:31.032465Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203165Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203178Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203586Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203592Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203974Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.203978Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.204391Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.204393Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.204755Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.204759Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.205581Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:36.205584Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601159Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601176Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601553Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601559Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601943Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.601947Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.602304Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.602308Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.602661Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.602665Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.603465Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:44.603469Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.668471Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.668481Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.668862Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.668866Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.669249Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.669253Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.669654Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.669659Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.670048Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.670051Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.670924Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:19:49.670927Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.404308Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.404316Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.404748Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.404752Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.405373Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.405375Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.405700Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.405703Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.406020Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.406022Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.406790Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:17.406793Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.669973Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.669981Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.670416Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.670419Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671090Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671093Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671422Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671425Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671745Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.671747Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.672588Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:25.672591Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.330350Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.330362Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.330760Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.330763Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331086Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331091Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331460Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331464Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331827Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.331830Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.332701Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:28.332705Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.136643Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.136653Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137012Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137015Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137372Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137374Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137716Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.137719Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.138069Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.138072Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.138840Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:32.138844Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.244844Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.244858Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.245257Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.245260Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.245644Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.245647Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.246015Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.246018Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.246456Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.246460Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.247256Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:37.247259Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>Root cause: gateway replay and ledger local replay both missed idempotency-key lookup.
+
+Files changed: [ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/simple-man/ledger.py), [test_ledger.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/python-payment-ledger/simple-man/test_ledger.py)
+
+Validation: `python3 -m unittest -v` -&gt; 3 tests OK. `python` was unavailable.
+
+Remaining risk: in-memory only; no cross-process concurrency/DB uniqueness protection.</pre>
+                </td>
+                </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="project">
+              <h2>SQLite rollout runner</h2>
+              <p><strong>Task:</strong> We have an unsafe rollout order: the migration drops
+legacy_sessions.expires_at before the backup reads that column.
+
+Please inspect the project, fix the rollout order, run the relevant
+tests, and give me a concise engineering handoff with:
+- root cause
+- files changed
+- validation command and result
+- any remaining risk</p>
+              <p><strong>Seed validation:</strong> expected failing/risky fixture, command
+              <code>/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v</code>, exit
+              <code>1</code>.</p>
+              <details>
+                <summary>Seed validation output</summary>
+                <pre>test_backup_runs_before_drop_column_migration (test_rollout.RolloutTests.test_backup_runs_before_drop_column_migration) ... ERROR
+
+======================================================================
+ERROR: test_backup_runs_before_drop_column_migration (test_rollout.RolloutTests.test_backup_runs_before_drop_column_migration)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File &quot;/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/seeds/sqlite-rollout-runner/test_rollout.py&quot;, line 12, in test_backup_runs_before_drop_column_migration
+    result = rollout(conn)
+  File &quot;/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/seeds/sqlite-rollout-runner/rollout.py&quot;, line 32, in rollout
+    backup = backup_legacy_sessions(conn)
+  File &quot;/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/seeds/sqlite-rollout-runner/rollout.py&quot;, line 23, in backup_legacy_sessions
+    return [tuple(row) for row in conn.execute(sql).fetchall()]
+                                  ~~~~~~~~~~~~^^^^^
+sqlite3.OperationalError: no such column: expires_at
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (errors=1)
+</pre>
+              </details>
+              <table>
+                <thead>
+                  <tr>
+                    <th>No brevity skill</th>
+                    <th>Caveman ultra</th>
+                    <th>Simple Man</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                <td>
+                  <div class="mode-title">No brevity skill</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/baseline
+Changed files:
+?? __pycache__/
+?? backup_legacy_sessions.sql
+?? migrations/
+?? rollout.py
+?? test_rollout.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:20:52.175529Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.175538Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176067Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176070Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176408Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176411Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176752Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.176754Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.177090Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.177093Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.177921Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.177928Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:52.681698Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:20:53.134023Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.134033Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.134481Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.134485Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.134925Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.134928Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.135409Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.135413Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.135835Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.135838Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.136775Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:20:53.136779Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.359966Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.359981Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.360328Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.360332Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.360688Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.360691Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.361037Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.361040Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.361383Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.361386Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.362170Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:02.362173Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.222636Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.222645Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223017Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223020Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223389Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223392Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223771Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.223776Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.224144Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.224148Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.225079Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:10.225084Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.976698Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.976706Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977109Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977114Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977521Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977524Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977906Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.977910Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.978328Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.978332Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.979177Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:14.979179Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.423293Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.423303Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.423652Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.423657Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424001Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424004Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424341Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424344Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424670Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.424673Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.425412Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:18.425416Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.500545Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.500555Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.500943Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.500946Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.501386Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.501389Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.501793Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.501796Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.502174Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.502179Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.503001Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:21.503005Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.406386Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.406396Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.406759Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.406763Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407115Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407118Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407486Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407489Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407847Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.407850Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.408676Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:26.408679Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.712299Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.712310Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.712697Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.712702Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713092Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713096Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713479Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713482Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713874Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.713877Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.714750Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:31.714753Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>**Root Cause**
+`rollout()` dropped `legacy_sessions.expires_at` before running `backup_legacy_sessions.sql`, which still selects that column.
+
+**Files Changed**
+[rollout.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/baseline/rollout.py:30): backup now runs before `apply_drop_migration()`.
+
+**Validation**
+`python3 -m unittest test_rollout.py`
+
+Result: passed, `Ran 1 test in 0.002s`, `OK`.
+
+**Remaining Risk**
+No known remaining risk in this fixture. Only the focused rollout test was run.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Caveman ultra</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/caveman-ultra
+Changed files:
+?? __pycache__/
+?? backup_legacy_sessions.sql
+?? migrations/
+?? rollout.py
+?? test_rollout.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:21:41.194685Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.194696Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195221Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195225Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195560Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195563Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195939Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.195942Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.196284Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.196286Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.197163Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.197167Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:41.725155Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:21:42.294464Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.294476Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.294920Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.294923Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.295360Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.295364Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.295797Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.295800Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.296226Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.296229Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.297144Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:42.297147Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.749395Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.749402Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.749715Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.749718Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750030Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750033Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750335Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750338Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750638Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.750640Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.751297Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:48.751299Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.470601Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.470609Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.470940Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.470944Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.471309Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.471312Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.471662Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.471665Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.472047Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.472050Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.472791Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:21:54.472794Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.712595Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.712609Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713143Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713147Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713494Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713496Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713838Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.713841Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.714183Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.714185Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.715006Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:02.715008Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.690430Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.690440Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.690801Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.690804Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691184Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691187Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691543Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691546Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691916Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.691918Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.692707Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:07.692710Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.304354Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.304365Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.304741Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.304745Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305153Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305158Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305551Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305557Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305951Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.305955Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.306786Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:13.306789Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.241889Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.241897Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.242258Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.242263Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.242629Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.242632Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.243009Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.243012Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.243381Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.243385Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.244237Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:16.244240Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.208645Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.208661Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209103Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209108Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209531Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209535Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209963Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.209966Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.210395Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.210400Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.211221Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:19.211224Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.401961Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.401970Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.402362Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.402368Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.402737Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.402742Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.403112Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.403116Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.403506Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.403509Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.404359Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:23.404362Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.465523Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.465534Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.465944Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.465949Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.466325Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.466330Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.466689Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.466692Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.467067Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.467070Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.467905Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:27.467909Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>**Handoff**
+- Root cause: `rollout()` dropped `legacy_sessions.expires_at` before `backup_legacy_sessions.sql` selected it → `sqlite3.OperationalError: no such column: expires_at`.
+- Files changed: [rollout.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/caveman-ultra/rollout.py:30) now backs up first, drops after.
+- Validation: `python3 -m unittest -v` → `Ran 1 test`, `OK`.
+- Remaining risk: focused in-memory SQLite test only; no txn/rollback coverage for larger rollout failure paths.</pre>
+                </td>
+
+                <td>
+                  <div class="mode-title">Simple Man</div>
+                  <pre class="meta">Codex exit: 0
+Post-run validation: PASS (/opt/homebrew/opt/python@3.13/bin/python3.13 -m unittest -v, exit 0)
+Run copy: /Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/simple-man
+Changed files:
+?? __pycache__/
+?? backup_legacy_sessions.sql
+?? migrations/
+?? rollout.py
+?? test_rollout.py
+
+
+Codex stderr:
+Reading additional input from stdin...
+2026-05-23T12:22:39.858159Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.858167Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.858737Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.858740Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.859191Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.859195Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.859595Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.859597Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.860016Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.860019Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.861040Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:39.861043Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:40.321836Z  WARN codex_core_plugins::startup_remote_sync: startup remote plugin sync failed; will retry on next app-server start error=remote marketplace `oai-maintained-plugins` is not available locally
+2026-05-23T12:22:41.518541Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.518551Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.518982Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.518985Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.519409Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.519413Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.519916Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.519921Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.520412Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.520422Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.521430Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:41.521434Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.298815Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.298826Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299185Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299189Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299559Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299562Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299910Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.299912Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.300275Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.300278Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.301046Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:48.301051Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.577506Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.577518Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.577872Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.577876Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.578249Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.578252Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.578625Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.578630Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.579067Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.579070Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.579971Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:22:54.579974Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.951429Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.951440Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.951782Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.951785Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952118Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952121Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952456Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952459Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952798Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.952800Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.953553Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:01.953557Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.158736Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.158744Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159122Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159126Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159545Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159548Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159922Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.159925Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.160308Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.160311Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.161112Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:05.161115Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.142385Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.142395Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.142719Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.142722Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143053Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143055Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143384Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143387Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143714Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.143716Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.144427Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:10.144430Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.368552Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.368564Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.368957Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.368963Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.369364Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.369367Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.369754Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.369757Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.370185Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.370188Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.371126Z  WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain &#x27;..&#x27;
+2026-05-23T12:23:16.371131Z  WARN codex_core_skills::loader: ignoring interface.icon_large: icon path must not contain &#x27;..&#x27;
+
+</pre>
+                  <pre>Root cause: `rollout()` dropped `legacy_sessions.expires_at` before `backup_legacy_sessions()` selected it.
+
+Files changed: [rollout.py](/Users/zadro/open-source/simple-man/.local-fixtures/skill-comparison/runs/sqlite-rollout-runner/simple-man/rollout.py:30)
+
+Validation: `python3 -m unittest test_rollout.py` -&gt; pass, `Ran 1 test`, `OK`.
+
+Remaining risk: none found. `python` is not installed; used `python3`.</pre>
+                </td>
+                </tr>
+                </tbody>
+              </table>
+            </section>
+
+  </main>
+</body>
+</html>
