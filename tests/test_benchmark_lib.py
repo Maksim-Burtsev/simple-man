@@ -367,6 +367,37 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertNotIn("```", examples)
         self.assertNotIn("<pre", examples.lower())
 
+    def test_readme_examples_match_captured_codex_answers(self):
+        readme = (ROOT / "README.md").read_text()
+        examples = readme.split("## Examples", 1)[1].split("## Agent support", 1)[0]
+        report = (ROOT / "evals" / "reports" / "codex-skill-comparison.md").read_text()
+
+        captured_phrases = [
+            "`authenticate` accepted any session returned by `store.get(token)`",
+            "Fixed.\n\n- Root cause: `authenticate` trusted `store.get(token)`",
+            "After a gateway timeout, the fake provider had already accepted a charge",
+            "Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally",
+            "`rollout.py` applied `migrations/001_drop_expires_at.sql` before running `backup_legacy_sessions.sql`",
+            "Root cause: `rollout()` ran `apply_drop_migration()` before `backup_legacy_sessions()`",
+        ]
+
+        for phrase in captured_phrases:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, report)
+
+        rendered_phrases = [
+            "<code>authenticate</code> accepted any session returned by <code>store.get(token)</code>",
+            "Fixed.",
+            "After a gateway timeout, the fake provider had already accepted a charge",
+            "Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally",
+            "<code>rollout.py</code> applied <code>migrations/001_drop_expires_at.sql</code> before running <code>backup_legacy_sessions.sql</code>",
+            "Root cause: <code>rollout()</code> ran <code>apply_drop_migration()</code> before <code>backup_legacy_sessions()</code>",
+        ]
+
+        for phrase in rendered_phrases:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, examples)
+
     def test_installer_is_idempotent_and_enables_global_codex_policy(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
