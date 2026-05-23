@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/Maksim-Burtsev/simple-man",
   "repository": "https://github.com/Maksim-Burtsev/simple-man",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "keywords": [
     "communication",
     "brevity",
@@ -21,7 +21,7 @@
     "shortDescription": "Minimum user-facing words; same work quality.",
     "longDescription": "Always-on professional communication policy for Codex. Removes filler from user-facing responses without reducing repository search, validation, or implementation effort.",
     "developerName": "Maksim Burtsev",
-    "category": "Productivity",
+    "category": "Development & Workflow",
     "capabilities": [
       "Write"
     ],
