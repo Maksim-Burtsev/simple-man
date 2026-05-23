@@ -1,16 +1,20 @@
 # Install
 
-Simple Man has one behavior source:
+Simple Man has two activation surfaces:
 
-- `skills/simple-man/SKILL.md`
+- `skills/simple-man/SKILL.md` for explicit skill installs
+- `AGENTS.md.snippet` for tiny always-on project runtime policy
 
-The root files are lightweight auto-discovery hints for agents that read project instructions:
+The root files are lightweight runtime policies for agents that read project instructions:
 
 - `AGENTS.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 
-Agent-specific dotdir rule files are not committed by default. They are project-local activation files, not the skill source. Add them to a target project only when you want Simple Man always-on there.
+Always-on project files inline the runtime policy instead of invoking
+`$simple-man`, so agents do not need to load the full skill on every turn.
+
+Agent-specific dotdir rule files are not committed by default. They are project-local activation files. Add them to a target project only when you want Simple Man always-on there.
 
 ## Global Skill Installs
 
