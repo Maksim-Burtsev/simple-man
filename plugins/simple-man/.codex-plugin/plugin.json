@@ -1,0 +1,33 @@
+{
+  "name": "simple-man",
+  "version": "0.1.0",
+  "description": "High-compression professional communication mode for Codex.",
+  "author": {
+    "name": "Maksim Burtsev",
+    "url": "https://github.com/Maksim-Burtsev"
+  },
+  "homepage": "https://github.com/Maksim-Burtsev/simple-man",
+  "repository": "https://github.com/Maksim-Burtsev/simple-man",
+  "keywords": [
+    "communication",
+    "brevity",
+    "coding-agent",
+    "productivity"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Simple Man",
+    "shortDescription": "Minimum user-facing words; same work quality.",
+    "longDescription": "Always-on professional communication policy for Codex. Removes filler from user-facing responses without reducing repository search, validation, or implementation effort.",
+    "developerName": "Maksim Burtsev",
+    "category": "Productivity",
+    "capabilities": [
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Maksim-Burtsev/simple-man",
+    "defaultPrompt": [
+      "Use Simple Man: minimum user-facing words; same work quality."
+    ],
+    "brandColor": "#2563EB"
+  }
+}
