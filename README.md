@@ -202,18 +202,18 @@ output-only compression vs `normal`.
 
 See [evals/README.md](./evals/README.md).
 
-## Install as a global skill
+## Install
 
-Copy the canonical skill directory:
+Install Simple Man as an always-on Codex communication policy:
 
 ```bash
-cp -R skills/simple-man ~/.codex/skills/simple-man
-cp -R skills/simple-man ~/.claude/skills/simple-man
-cp -R skills/simple-man ~/.qwen/skills/simple-man
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/install.sh | bash
 ```
+
+**Important: Simple Man is always-on after install. This is expected.**
+
+The installer copies `skills/simple-man` to `~/.codex/skills/simple-man` and writes the compact runtime policy into `~/.codex/AGENTS.md`.
 
 ## Recommended usage
 
-Test it without other brevity/persona skills enabled first.
-
-If using it with other style rules, give Simple Man priority for final user-facing responses.
+Use it as the default communication layer for Codex when you want minimum user-facing words without reducing search, validation, or implementation effort.
