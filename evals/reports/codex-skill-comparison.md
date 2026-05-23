@@ -6,7 +6,7 @@ The tables below show only benchmark-relevant facts and the full final Codex ans
 
 ## Method
 
-- Generated: `2026-05-23 17:14:09 +04`
+- Generated: `2026-05-23 18:46:05 +04`
 - Base branch: `codex/benchmark-simple-man` / PR #2 head
 - Model: `gpt-5.5`
 - Reasoning effort: `xhigh`
@@ -20,9 +20,9 @@ The tables below show only benchmark-relevant facts and the full final Codex ans
 
 | Scenario | Seed check | No brevity skill | Caveman ultra | Simple Man |
 | --- | --- | --- | --- | --- |
-| Node auth API | expected failing seed: exit `1` | PASS<br>`npm test`<br>src/middleware.js<br>test/auth.test.js<br>601 chars | PASS<br>`npm test`<br>src/middleware.js<br>test/auth.test.js<br>422 chars | PASS<br>`npm test`<br>src/middleware.js<br>221 chars |
-| Python payment ledger | expected failing seed: exit `1` | PASS<br>`python3 -m unittest -v`<br>ledger.py<br>test_ledger.py<br>1022 chars | PASS<br>`python3 -m unittest -v`<br>ledger.py<br>test_ledger.py<br>787 chars | PASS<br>`python3 -m unittest -v`<br>ledger.py<br>test_ledger.py<br>520 chars |
-| SQLite rollout runner | expected failing seed: exit `1` | PASS<br>`python3 -m unittest -v`<br>rollout.py<br>736 chars | PASS<br>`python3 -m unittest -v`<br>rollout.py<br>414 chars | PASS<br>`python3 -m unittest -v`<br>rollout.py<br>324 chars |
+| Node auth API | expected failing seed: exit `1` | PASS; `npm test`; src/middleware.js, test/auth.test.js; 601 chars | PASS; `npm test`; src/middleware.js, test/auth.test.js; 422 chars | PASS; `npm test`; src/middleware.js; 221 chars |
+| Python payment ledger | expected failing seed: exit `1` | PASS; `python3 -m unittest -v`; ledger.py, test_ledger.py; 1022 chars | PASS; `python3 -m unittest -v`; ledger.py, test_ledger.py; 787 chars | PASS; `python3 -m unittest -v`; ledger.py, test_ledger.py; 520 chars |
+| SQLite rollout runner | expected failing seed: exit `1` | PASS; `python3 -m unittest -v`; rollout.py; 736 chars | PASS; `python3 -m unittest -v`; rollout.py; 414 chars | PASS; `python3 -m unittest -v`; rollout.py; 324 chars |
 
 ## Scenario: Node auth API
 
@@ -47,13 +47,14 @@ CODEX_HOME directories, raw logs, or absolute run-copy paths.
 - Command: `npm test`
 - Exit: `1`
 
-<details><summary>Seed output</summary>
+Seed output:
 
-<pre>&gt; node-auth-api@1.0.0 test
-&gt; node --test test/auth.test.js
+```text
+> node-auth-api@1.0.0 test
+> node --test test/auth.test.js
 
-✔ accepts a valid session (0.604708ms)
-✖ rejects an expired session (0.413625ms)
+✔ accepts a valid session (0.595ms)
+✖ rejects an expired session (0.394ms)
 ℹ tests 2
 ℹ suites 0
 ℹ pass 1
@@ -61,40 +62,40 @@ CODEX_HOME directories, raw logs, or absolute run-copy paths.
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 40.124792
+ℹ duration_ms 37.323916
 
 ✖ failing tests:
 
 test at test/auth.test.js:16:1
-✖ rejects an expired session (0.413625ms)
+✖ rejects an expired session (0.394ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 
   200 !== 401
 
-      at TestContext.&lt;anonymous&gt; (seeds/node-auth-api/test/auth.test.js:20:10)
+      at TestContext.<anonymous> (seeds/node-auth-api/test/auth.test.js:20:10)
       at Test.runInAsyncScope (node:async_hooks:214:14)
-... (11 more lines)</pre>
-
-</details>
+... (11 more lines)
+```
 
 ### Seed Project Files
 
-<details><summary><code>package.json</code></summary>
+#### `package.json`
 
-<pre>{
+```text
+{
   "name": "node-auth-api",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "test": "node --test test/auth.test.js"
   }
-}</pre>
+}
+```
 
-</details>
+#### `src/middleware.js`
 
-<details><summary><code>src/middleware.js</code></summary>
-
-<pre>function authenticate(store, req) {
+```text
+function authenticate(store, req) {
   const token = req.headers.authorization?.replace("Bearer ", "");
   if (!token) return { status: 401, body: "missing token" };
 
@@ -107,13 +108,13 @@ test at test/auth.test.js:16:1
   };
 }
 
-module.exports = { authenticate };</pre>
+module.exports = { authenticate };
+```
 
-</details>
+#### `src/session.js`
 
-<details><summary><code>src/session.js</code></summary>
-
-<pre>function createSessionStore(clock = () =&gt; Date.now()) {
+```text
+function createSessionStore(clock = () => Date.now()) {
   const sessions = new Map();
 
   return {
@@ -129,19 +130,19 @@ module.exports = { authenticate };</pre>
   };
 }
 
-module.exports = { createSessionStore };</pre>
+module.exports = { createSessionStore };
+```
 
-</details>
+#### `test/auth.test.js`
 
-<details><summary><code>test/auth.test.js</code></summary>
-
-<pre>const test = require("node:test");
+```text
+const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createSessionStore } = require("../src/session");
 const { authenticate } = require("../src/middleware");
 
-test("accepts a valid session", () =&gt; {
-  const store = createSessionStore(() =&gt; 1_000);
+test("accepts a valid session", () => {
+  const store = createSessionStore(() => 1_000);
   store.put({ token: "ok", userId: "u1", expiresAt: 2_000 });
 
   assert.equal(
@@ -150,100 +151,66 @@ test("accepts a valid session", () =&gt; {
   );
 });
 
-test("rejects an expired session", () =&gt; {
-  const store = createSessionStore(() =&gt; 5_000);
+test("rejects an expired session", () => {
+  const store = createSessionStore(() => 5_000);
   store.put({ token: "expired", userId: "u2", expiresAt: 2_000 });
 
   assert.equal(
     authenticate(store, { headers: { authorization: "Bearer expired" } }).status,
     401,
   );
-});</pre>
+});
+```
 
-</details>
+### Mode Results Summary
 
-### Mode Results
+| Mode | Validation | Changed files | Diff stat | Answer length |
+| --- | --- | --- | --- | --- |
+| No brevity skill | PASS; npm test; Codex exit 0 | src/middleware.js; test/auth.test.js | src/middleware.js \|  3 +++;  test/auth.test.js \| 10 ++++++++++;  2 files changed, 13 insertions(+) | 601 chars |
+| Caveman ultra | PASS; npm test; Codex exit 0 | src/middleware.js; test/auth.test.js | src/middleware.js \|  3 +++;  test/auth.test.js \| 11 +++++++++++;  2 files changed, 14 insertions(+) | 422 chars |
+| Simple Man | PASS; npm test; Codex exit 0 | src/middleware.js | src/middleware.js \| 3 +++;  1 file changed, 3 insertions(+) | 221 chars |
 
-<table>
-<thead>
-<tr>
-<th>Mode</th>
-<th>Validation</th>
-<th>Changed files</th>
-<th>Diff stat</th>
-<th>Full final Codex answer</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>No brevity skill</strong></td>
-<td><pre>PASS
-npm test
-Codex exit 0</pre></td>
-<td><pre>src/middleware.js
-test/auth.test.js</pre></td>
-<td><pre>src/middleware.js |  3 +++
- test/auth.test.js | 10 ++++++++++
- 2 files changed, 13 insertions(+)</pre></td>
-<td><details><summary>Full answer</summary>
+### Full Final Answers
 
-<pre>**Engineering Handoff**
+#### No brevity skill
+
+```text
+**Engineering Handoff**
 
 **Root cause:** `authenticate` accepted any session returned by `store.get(token)` and never checked `session.expiresAt` against the store clock.
 
 **Files changed:**
-- `src/middleware.js`: rejects sessions with missing/non-numeric `expiresAt` or `expiresAt &lt;= store.now()`.
+- `src/middleware.js`: rejects sessions with missing/non-numeric `expiresAt` or `expiresAt <= store.now()`.
 - `test/auth.test.js`: added coverage for the expiration boundary where `expiresAt === now`.
 
 **Validation:** `npm test` passed, 3/3 tests.
 
-**Remaining risk:** This assumes `expiresAt` and `store.now()` use the same timestamp unit, and that auth store implementations provide the existing `now()` API.</pre>
+**Remaining risk:** This assumes `expiresAt` and `store.now()` use the same timestamp unit, and that auth store implementations provide the existing `now()` API.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Caveman ultra</strong></td>
-<td><pre>PASS
-npm test
-Codex exit 0</pre></td>
-<td><pre>src/middleware.js
-test/auth.test.js</pre></td>
-<td><pre>src/middleware.js |  3 +++
- test/auth.test.js | 11 +++++++++++
- 2 files changed, 14 insertions(+)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Caveman ultra
 
-<pre>Done.
+```text
+Done.
 
 - Root cause: `authenticate` checked token existence only. It ignored `session.expiresAt`, so expired session → `200`.
 - Files changed: `src/middleware.js`, `test/auth.test.js`
-- Fix: reject when `session.expiresAt &lt;= store.now()`, return `401`.
+- Fix: reject when `session.expiresAt <= store.now()`, return `401`.
 - Validation: `npm test` → pass. `3` tests, `0` fail.
-- Remaining risk: expired sessions still stay in memory store; auth rejects them, but no cleanup/purge logic added.</pre>
+- Remaining risk: expired sessions still stay in memory store; auth rejects them, but no cleanup/purge logic added.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Simple Man</strong></td>
-<td><pre>PASS
-npm test
-Codex exit 0</pre></td>
-<td><pre>src/middleware.js</pre></td>
-<td><pre>src/middleware.js | 3 +++
- 1 file changed, 3 insertions(+)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Simple Man
 
-<pre>Fixed.
+```text
+Fixed.
 
 - Root cause: `authenticate` trusted `store.get(token)` and never checked `session.expiresAt`.
 - Files changed: `src/middleware.js`
-- Validation: `npm test` -&gt; pass, `2/2` tests.
-- Remaining risk: none identified.</pre>
+- Validation: `npm test` -> pass, `2/2` tests.
+- Remaining risk: none identified.
+```
 
-</details></td>
-</tr>
-</tbody>
-</table>
 
 ## Scenario: Python payment ledger
 
@@ -270,9 +237,10 @@ CODEX_HOME directories, raw logs, or absolute run-copy paths.
 - Command: `python3 -m unittest -v`
 - Exit: `1`
 
-<details><summary>Seed output</summary>
+Seed output:
 
-<pre>test_retry_with_same_key_does_not_create_second_remote_charge (test_ledger.PaymentLedgerTests.test_retry_with_same_key_does_not_create_second_remote_charge) ... FAIL
+```text
+test_retry_with_same_key_does_not_create_second_remote_charge (test_ledger.PaymentLedgerTests.test_retry_with_same_key_does_not_create_second_remote_charge) ... FAIL
 
 ======================================================================
 FAIL: test_retry_with_same_key_does_not_create_second_remote_charge (test_ledger.PaymentLedgerTests.test_retry_with_same_key_does_not_create_second_remote_charge)
@@ -291,23 +259,23 @@ AssertionError: 'ch_2' != 'ch_1'
 ----------------------------------------------------------------------
 Ran 1 test in 0.001s
 
-FAILED (failures=1)</pre>
-
-</details>
+FAILED (failures=1)
+```
 
 ### Seed Project Files
 
-<details><summary><code>README.md</code></summary>
+#### `README.md`
 
-<pre># Python payment ledger
+```text
+# Python payment ledger
 
-Minimal duplicate-charge fixture.</pre>
+Minimal duplicate-charge fixture.
+```
 
-</details>
+#### `ledger.py`
 
-<details><summary><code>ledger.py</code></summary>
-
-<pre>class GatewayTimeout(Exception):
+```text
+class GatewayTimeout(Exception):
     pass
 
 
@@ -345,13 +313,13 @@ class PaymentLedger:
             "idempotency_key": idempotency_key,
         }
         self.local_charges.append(charge)
-        return charge</pre>
+        return charge
+```
 
-</details>
+#### `test_ledger.py`
 
-<details><summary><code>test_ledger.py</code></summary>
-
-<pre>import unittest
+```text
+import unittest
 
 from ledger import FakeGateway, GatewayTimeout, PaymentLedger
 
@@ -372,36 +340,23 @@ class PaymentLedgerTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()</pre>
+    unittest.main()
+```
 
-</details>
+### Mode Results Summary
 
-### Mode Results
+| Mode | Validation | Changed files | Diff stat | Answer length |
+| --- | --- | --- | --- | --- |
+| No brevity skill | PASS; python3 -m unittest -v; Codex exit 0 | ledger.py; test_ledger.py | ledger.py      \| 28 ++++++++++++++++++++--------;  test_ledger.py \|  7 +++++++;  2 files changed, 27 insertions(+), 8 deletions(-) | 1022 chars |
+| Caveman ultra | PASS; python3 -m unittest -v; Codex exit 0 | ledger.py; test_ledger.py | ledger.py      \| 27 ++++++++++++++++++++++++---;  test_ledger.py \| 11 +++++++++++;  2 files changed, 35 insertions(+), 3 deletions(-) | 787 chars |
+| Simple Man | PASS; python3 -m unittest -v; Codex exit 0 | ledger.py; test_ledger.py | ledger.py      \| 36 ++++++++++++++++++++++++++++--------;  test_ledger.py \| 15 +++++++++++++++;  2 files changed, 43 insertions(+), 8 deletions(-) | 520 chars |
 
-<table>
-<thead>
-<tr>
-<th>Mode</th>
-<th>Validation</th>
-<th>Changed files</th>
-<th>Diff stat</th>
-<th>Full final Codex answer</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>No brevity skill</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>ledger.py
-test_ledger.py</pre></td>
-<td><pre>ledger.py      | 28 ++++++++++++++++++++--------
- test_ledger.py |  7 +++++++
- 2 files changed, 27 insertions(+), 8 deletions(-)</pre></td>
-<td><details><summary>Full answer</summary>
+### Full Final Answers
 
-<pre>**Root Cause**
+#### No brevity skill
+
+```text
+**Root Cause**
 The charge path was append-only. After a gateway timeout, the fake provider had already accepted a charge, but retrying with the same idempotency key created a new provider charge and the ledger had no local idempotency lookup to return an existing local charge.
 
 **Files Changed**
@@ -416,23 +371,13 @@ Command: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v`
 Result: passed, 1 test run.
 
 **Remaining Risk**
-This is still an in-memory implementation. A production version would need persistent idempotency storage with transaction/concurrency protection, and likely validation that reused idempotency keys match the original customer and amount.</pre>
+This is still an in-memory implementation. A production version would need persistent idempotency storage with transaction/concurrency protection, and likely validation that reused idempotency keys match the original customer and amount.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Caveman ultra</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>ledger.py
-test_ledger.py</pre></td>
-<td><pre>ledger.py      | 27 ++++++++++++++++++++++++---
- test_ledger.py | 11 +++++++++++
- 2 files changed, 35 insertions(+), 3 deletions(-)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Caveman ultra
 
-<pre>**Root Cause**
+```text
+**Root Cause**
 `FakeGateway` ignored `idempotency_key` on retry → timeout after accepted charge replayed as new provider charge. `PaymentLedger.charge` also had no local idempotency check → repeat successful call could append duplicate local charge.
 
 **Files Changed**
@@ -449,36 +394,23 @@ test_ledger.py</pre></td>
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest` → pass, 2 tests.
 
 **Remaining Risk**
-Idempotency state still in-memory. Real DB impl needs unique constraint/transaction around `idempotency_key` for concurrent workers/processes.</pre>
+Idempotency state still in-memory. Real DB impl needs unique constraint/transaction around `idempotency_key` for concurrent workers/processes.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Simple Man</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>ledger.py
-test_ledger.py</pre></td>
-<td><pre>ledger.py      | 36 ++++++++++++++++++++++++++++--------
- test_ledger.py | 15 +++++++++++++++
- 2 files changed, 43 insertions(+), 8 deletions(-)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Simple Man
 
-<pre>Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally, and retries created new charge records.
+```text
+Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally, and retries created new charge records.
 
 Files changed:
 - `ledger.py`: added provider/local idempotency maps; same key returns existing charge; mismatched reuse raises `ValueError`.
 - `test_ledger.py`: added regression for repeated same-key retry.
 
-Validation: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v` -&gt; passed, 2 tests.
+Validation: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v` -> passed, 2 tests.
 
-Remaining risk: idempotency state is in-memory only; no durable/concurrent store in this fixture.</pre>
+Remaining risk: idempotency state is in-memory only; no durable/concurrent store in this fixture.
+```
 
-</details></td>
-</tr>
-</tbody>
-</table>
 
 ## Scenario: SQLite rollout runner
 
@@ -504,9 +436,10 @@ CODEX_HOME directories, raw logs, or absolute run-copy paths.
 - Command: `python3 -m unittest -v`
 - Exit: `1`
 
-<details><summary>Seed output</summary>
+Seed output:
 
-<pre>test_backup_runs_before_drop_column_migration (test_rollout.RolloutTests.test_backup_runs_before_drop_column_migration) ... ERROR
+```text
+test_backup_runs_before_drop_column_migration (test_rollout.RolloutTests.test_backup_runs_before_drop_column_migration) ... ERROR
 
 ======================================================================
 ERROR: test_backup_runs_before_drop_column_migration (test_rollout.RolloutTests.test_backup_runs_before_drop_column_migration)
@@ -524,27 +457,27 @@ sqlite3.OperationalError: no such column: expires_at
 ----------------------------------------------------------------------
 Ran 1 test in 0.002s
 
-FAILED (errors=1)</pre>
-
-</details>
+FAILED (errors=1)
+```
 
 ### Seed Project Files
 
-<details><summary><code>backup_legacy_sessions.sql</code></summary>
+#### `backup_legacy_sessions.sql`
 
-<pre>SELECT id, user_id, expires_at FROM legacy_sessions ORDER BY id;</pre>
+```text
+SELECT id, user_id, expires_at FROM legacy_sessions ORDER BY id;
+```
 
-</details>
+#### `migrations/001_drop_expires_at.sql`
 
-<details><summary><code>migrations/001_drop_expires_at.sql</code></summary>
+```text
+ALTER TABLE legacy_sessions DROP COLUMN expires_at;
+```
 
-<pre>ALTER TABLE legacy_sessions DROP COLUMN expires_at;</pre>
+#### `rollout.py`
 
-</details>
-
-<details><summary><code>rollout.py</code></summary>
-
-<pre>from pathlib import Path
+```text
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
@@ -576,13 +509,13 @@ def apply_drop_migration(conn):
 def rollout(conn):
     apply_drop_migration(conn)
     backup = backup_legacy_sessions(conn)
-    return {"backup": backup}</pre>
+    return {"backup": backup}
+```
 
-</details>
+#### `test_rollout.py`
 
-<details><summary><code>test_rollout.py</code></summary>
-
-<pre>import sqlite3
+```text
+import sqlite3
 import unittest
 
 from rollout import rollout, setup_database
@@ -601,34 +534,23 @@ class RolloutTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()</pre>
+    unittest.main()
+```
 
-</details>
+### Mode Results Summary
 
-### Mode Results
+| Mode | Validation | Changed files | Diff stat | Answer length |
+| --- | --- | --- | --- | --- |
+| No brevity skill | PASS; python3 -m unittest -v; Codex exit 0 | rollout.py | rollout.py \| 2 +-;  1 file changed, 1 insertion(+), 1 deletion(-) | 736 chars |
+| Caveman ultra | PASS; python3 -m unittest -v; Codex exit 0 | rollout.py | rollout.py \| 2 +-;  1 file changed, 1 insertion(+), 1 deletion(-) | 414 chars |
+| Simple Man | PASS; python3 -m unittest -v; Codex exit 0 | rollout.py | rollout.py \| 2 +-;  1 file changed, 1 insertion(+), 1 deletion(-) | 324 chars |
 
-<table>
-<thead>
-<tr>
-<th>Mode</th>
-<th>Validation</th>
-<th>Changed files</th>
-<th>Diff stat</th>
-<th>Full final Codex answer</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>No brevity skill</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>rollout.py</pre></td>
-<td><pre>rollout.py | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)</pre></td>
-<td><details><summary>Full answer</summary>
+### Full Final Answers
 
-<pre>**Root Cause**
+#### No brevity skill
+
+```text
+**Root Cause**
 
 `rollout.py` applied `migrations/001_drop_expires_at.sql` before running `backup_legacy_sessions.sql`. The backup query still selects `legacy_sessions.expires_at`, so the column was gone before the backup could read it.
 
@@ -644,21 +566,13 @@ Result: passed, 1 test ran OK.
 
 **Remaining Risk**
 
-The focused test now covers the required order: backup reads `expires_at`, then the migration drops it. Remaining risk is limited to behavior outside this small rollout path, such as real backup storage durability or additional migrations not represented in the current test.</pre>
+The focused test now covers the required order: backup reads `expires_at`, then the migration drops it. Remaining risk is limited to behavior outside this small rollout path, such as real backup storage durability or additional migrations not represented in the current test.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Caveman ultra</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>rollout.py</pre></td>
-<td><pre>rollout.py | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Caveman ultra
 
-<pre>**Root Cause**
+```text
+**Root Cause**
 `rollout()` ran `apply_drop_migration(conn)` before `backup_legacy_sessions(conn)`. Migration dropped `legacy_sessions.expires_at`; backup SQL then queried missing col.
 
 **Files Changed**
@@ -668,29 +582,17 @@ Codex exit 0</pre></td>
 `python3 -m unittest test_rollout.py` → PASS, 1 test.
 
 **Remaining Risk**
-Focused unit coverage only. No broader integration suite found/run.</pre>
+Focused unit coverage only. No broader integration suite found/run.
+```
 
-</details></td>
-</tr>
-<tr>
-<td><strong>Simple Man</strong></td>
-<td><pre>PASS
-python3 -m unittest -v
-Codex exit 0</pre></td>
-<td><pre>rollout.py</pre></td>
-<td><pre>rollout.py | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)</pre></td>
-<td><details><summary>Full answer</summary>
+#### Simple Man
 
-<pre>Root cause: `rollout()` ran `apply_drop_migration()` before `backup_legacy_sessions()`, so `expires_at` was dropped before the backup query selected it.
+```text
+Root cause: `rollout()` ran `apply_drop_migration()` before `backup_legacy_sessions()`, so `expires_at` was dropped before the backup query selected it.
 
 Files changed: `rollout.py`
 
 Validation: `python3 -m unittest test_rollout.py` passed, 1 test.
 
-Remaining risk: none known; only the focused repo test exists and was run.</pre>
-
-</details></td>
-</tr>
-</tbody>
-</table>
+Remaining risk: none known; only the focused repo test exists and was run.
+```
