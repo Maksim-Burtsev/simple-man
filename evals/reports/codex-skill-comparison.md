@@ -6,7 +6,7 @@ The tables below show only benchmark-relevant facts and the full final Codex ans
 
 ## Method
 
-- Generated: `2026-05-23 18:46:05 +04`
+- Generated: `2026-05-23 18:47:33 +04`
 - Base branch: `codex/benchmark-simple-man` / PR #2 head
 - Model: `gpt-5.5`
 - Reasoning effort: `xhigh`
@@ -53,8 +53,8 @@ Seed output:
 > node-auth-api@1.0.0 test
 > node --test test/auth.test.js
 
-✔ accepts a valid session (0.595ms)
-✖ rejects an expired session (0.394ms)
+✔ accepts a valid session (0.410292ms)
+✖ rejects an expired session (0.389166ms)
 ℹ tests 2
 ℹ suites 0
 ℹ pass 1
@@ -62,12 +62,12 @@ Seed output:
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 37.323916
+ℹ duration_ms 38.706833
 
 ✖ failing tests:
 
 test at test/auth.test.js:16:1
-✖ rejects an expired session (0.394ms)
+✖ rejects an expired session (0.389166ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 
   200 !== 401
@@ -174,7 +174,6 @@ test("rejects an expired session", () => {
 
 #### No brevity skill
 
-```text
 **Engineering Handoff**
 
 **Root cause:** `authenticate` accepted any session returned by `store.get(token)` and never checked `session.expiresAt` against the store clock.
@@ -186,11 +185,9 @@ test("rejects an expired session", () => {
 **Validation:** `npm test` passed, 3/3 tests.
 
 **Remaining risk:** This assumes `expiresAt` and `store.now()` use the same timestamp unit, and that auth store implementations provide the existing `now()` API.
-```
 
 #### Caveman ultra
 
-```text
 Done.
 
 - Root cause: `authenticate` checked token existence only. It ignored `session.expiresAt`, so expired session → `200`.
@@ -198,18 +195,15 @@ Done.
 - Fix: reject when `session.expiresAt <= store.now()`, return `401`.
 - Validation: `npm test` → pass. `3` tests, `0` fail.
 - Remaining risk: expired sessions still stay in memory store; auth rejects them, but no cleanup/purge logic added.
-```
 
 #### Simple Man
 
-```text
 Fixed.
 
 - Root cause: `authenticate` trusted `store.get(token)` and never checked `session.expiresAt`.
 - Files changed: `src/middleware.js`
 - Validation: `npm test` -> pass, `2/2` tests.
 - Remaining risk: none identified.
-```
 
 
 ## Scenario: Python payment ledger
@@ -355,7 +349,6 @@ if __name__ == "__main__":
 
 #### No brevity skill
 
-```text
 **Root Cause**
 The charge path was append-only. After a gateway timeout, the fake provider had already accepted a charge, but retrying with the same idempotency key created a new provider charge and the ledger had no local idempotency lookup to return an existing local charge.
 
@@ -372,11 +365,9 @@ Result: passed, 1 test run.
 
 **Remaining Risk**
 This is still an in-memory implementation. A production version would need persistent idempotency storage with transaction/concurrency protection, and likely validation that reused idempotency keys match the original customer and amount.
-```
 
 #### Caveman ultra
 
-```text
 **Root Cause**
 `FakeGateway` ignored `idempotency_key` on retry → timeout after accepted charge replayed as new provider charge. `PaymentLedger.charge` also had no local idempotency check → repeat successful call could append duplicate local charge.
 
@@ -395,11 +386,9 @@ This is still an in-memory implementation. A production version would need persi
 
 **Remaining Risk**
 Idempotency state still in-memory. Real DB impl needs unique constraint/transaction around `idempotency_key` for concurrent workers/processes.
-```
 
 #### Simple Man
 
-```text
 Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally, and retries created new charge records.
 
 Files changed:
@@ -409,7 +398,6 @@ Files changed:
 Validation: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v` -> passed, 2 tests.
 
 Remaining risk: idempotency state is in-memory only; no durable/concurrent store in this fixture.
-```
 
 
 ## Scenario: SQLite rollout runner
@@ -455,7 +443,7 @@ Traceback (most recent call last):
 sqlite3.OperationalError: no such column: expires_at
 
 ----------------------------------------------------------------------
-Ran 1 test in 0.002s
+Ran 1 test in 0.003s
 
 FAILED (errors=1)
 ```
@@ -549,7 +537,6 @@ if __name__ == "__main__":
 
 #### No brevity skill
 
-```text
 **Root Cause**
 
 `rollout.py` applied `migrations/001_drop_expires_at.sql` before running `backup_legacy_sessions.sql`. The backup query still selects `legacy_sessions.expires_at`, so the column was gone before the backup could read it.
@@ -567,11 +554,9 @@ Result: passed, 1 test ran OK.
 **Remaining Risk**
 
 The focused test now covers the required order: backup reads `expires_at`, then the migration drops it. Remaining risk is limited to behavior outside this small rollout path, such as real backup storage durability or additional migrations not represented in the current test.
-```
 
 #### Caveman ultra
 
-```text
 **Root Cause**
 `rollout()` ran `apply_drop_migration(conn)` before `backup_legacy_sessions(conn)`. Migration dropped `legacy_sessions.expires_at`; backup SQL then queried missing col.
 
@@ -583,11 +568,9 @@ The focused test now covers the required order: backup reads `expires_at`, then 
 
 **Remaining Risk**
 Focused unit coverage only. No broader integration suite found/run.
-```
 
 #### Simple Man
 
-```text
 Root cause: `rollout()` ran `apply_drop_migration()` before `backup_legacy_sessions()`, so `expires_at` was dropped before the backup query selected it.
 
 Files changed: `rollout.py`
@@ -595,4 +578,3 @@ Files changed: `rollout.py`
 Validation: `python3 -m unittest test_rollout.py` passed, 1 test.
 
 Remaining risk: none known; only the focused repo test exists and was run.
-```
