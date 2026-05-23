@@ -1,5 +1,7 @@
 import datetime as dt
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -364,6 +366,34 @@ class BenchmarkLibTests(unittest.TestCase):
         self.assertIn("With Simple Man", examples)
         self.assertNotIn("```", examples)
         self.assertNotIn("<pre", examples.lower())
+
+    def test_installer_is_idempotent_and_enables_global_codex_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["HOME"] = tmp
+            env.pop("CODEX_HOME", None)
+
+            for _ in range(2):
+                result = subprocess.run(
+                    ["bash", str(ROOT / "install.sh")],
+                    cwd=ROOT,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+
+            home = Path(tmp) / ".codex"
+            skill = home / "skills" / "simple-man" / "SKILL.md"
+            metadata = home / "skills" / "simple-man" / "agents" / "openai.yaml"
+            agents = (home / "AGENTS.md").read_text()
+
+            self.assertTrue(skill.exists())
+            self.assertTrue(metadata.exists())
+            self.assertIn("Simple Man is always-on after install", result.stdout)
+            self.assertEqual(agents.count("simple-man-always-on-begin"), 1)
+            self.assertEqual(agents.count("simple-man-always-on-end"), 1)
+            self.assertIn("Apply Simple Man to user-facing responses by default.", agents)
 
     def test_snapshot_age_warning_uses_generated_at(self):
         old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=45)).isoformat()

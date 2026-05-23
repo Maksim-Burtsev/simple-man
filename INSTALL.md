@@ -1,34 +1,30 @@
 # Install
 
-Simple Man has two activation surfaces:
+Simple Man is designed to be always-on.
 
-- `skills/simple-man/SKILL.md` for explicit skill installs
-- `AGENTS.md.snippet` for tiny always-on project runtime policy
+**Important: Simple Man is always-on after install. This is expected.**
 
-The root files are lightweight runtime policies for agents that read project instructions:
-
-- `AGENTS.md`
-- `CLAUDE.md`
-- `GEMINI.md`
-
-Always-on project files inline the runtime policy instead of invoking
-`$simple-man`, so agents do not need to load the full skill on every turn.
-
-Agent-specific dotdir rule files are not committed by default. They are project-local activation files. Add them to a target project only when you want Simple Man always-on there.
-
-## Global Skill Installs
+## Codex
 
 ```bash
-cp -R skills/simple-man ~/.codex/skills/simple-man
-cp -R skills/simple-man ~/.claude/skills/simple-man
-cp -R skills/simple-man ~/.qwen/skills/simple-man
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/install.sh | bash
 ```
 
-## Project Installs
+The installer:
+
+- copies `skills/simple-man` to `~/.codex/skills/simple-man`
+- writes a managed Simple Man block into `~/.codex/AGENTS.md`
+- replaces that managed block on rerun without duplicating it
+
+Restart Codex after installing so new sessions load the global instructions.
+
+## Project Files
+
+This repo also ships lightweight always-on project policies for agents that read repository instructions:
 
 | Agent/tool | Recommended project setup |
 | --- | --- |
-| OpenAI Codex | Commit `AGENTS.md`; optional: copy `skills/simple-man` to `~/.codex/skills/simple-man` |
+| OpenAI Codex | Commit `AGENTS.md`; optional: run the global Codex installer above |
 | Claude Code | Commit `CLAUDE.md`; optional: copy `skills/simple-man` to `~/.claude/skills/simple-man` |
 | Gemini CLI | Commit `GEMINI.md`, or configure Gemini to read `AGENTS.md` |
 | Qwen Code | Commit `AGENTS.md`; optional: copy `skills/simple-man` to `~/.qwen/skills/simple-man` |
@@ -42,6 +38,4 @@ cp -R skills/simple-man ~/.qwen/skills/simple-man
 | Aider | Configure Aider to read `AGENTS.md` |
 | Amp / OpenCode / Kilo / Roo / other AGENTS.md agents | Commit `AGENTS.md` |
 
-## Qwen Note
-
-Qwen Code supports both `QWEN.md` and `.qwen/skills/<name>/SKILL.md`, but this repo does not commit Qwen-specific mirrors. Qwen already reads `AGENTS.md`, and global skills belong in `~/.qwen/skills/simple-man`.
+Always-on project files inline the runtime policy instead of invoking `$simple-man`, so agents do not need to load the full skill on every turn.
