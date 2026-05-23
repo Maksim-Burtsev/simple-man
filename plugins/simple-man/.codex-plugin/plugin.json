@@ -8,6 +8,7 @@
   },
   "homepage": "https://github.com/Maksim-Burtsev/simple-man",
   "repository": "https://github.com/Maksim-Burtsev/simple-man",
+  "license": "UNLICENSED",
   "keywords": [
     "communication",
     "brevity",
@@ -24,6 +25,8 @@
     "capabilities": [
       "Write"
     ],
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
     "websiteURL": "https://github.com/Maksim-Burtsev/simple-man",
     "defaultPrompt": [
       "Use Simple Man: minimum user-facing words; same work quality."
