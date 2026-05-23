@@ -214,6 +214,17 @@ curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/in
 
 The installer copies `skills/simple-man` to `~/.codex/skills/simple-man` and writes the compact runtime policy into `~/.codex/AGENTS.md`.
 
+## Codex plugin package
+
+To add the repo-local plugin package to Codex:
+
+```bash
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref master
+codex plugin add simple-man@simple-man
+```
+
+Plugin install makes the skill available in Codex. Always-on behavior comes from the installer writing global Codex instructions.
+
 ## Recommended usage
 
 Use it as the default communication layer for Codex when you want minimum user-facing words without reducing search, validation, or implementation effort.

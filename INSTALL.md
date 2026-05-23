@@ -18,6 +18,15 @@ The installer:
 
 Restart Codex after installing so new sessions load the global instructions.
 
+## Codex Plugin Package
+
+```bash
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref master
+codex plugin add simple-man@simple-man
+```
+
+Plugin install makes the skill available in Codex. Always-on behavior comes from the installer writing global Codex instructions.
+
 ## Project Files
 
 This repo also ships lightweight always-on project policies for agents that read repository instructions:

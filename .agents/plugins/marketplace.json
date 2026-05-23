@@ -1,0 +1,20 @@
+{
+  "name": "simple-man",
+  "interface": {
+    "displayName": "Simple Man"
+  },
+  "plugins": [
+    {
+      "name": "simple-man",
+      "source": {
+        "source": "local",
+        "path": "./plugins/simple-man"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

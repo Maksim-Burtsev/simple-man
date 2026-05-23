@@ -395,6 +395,28 @@ class BenchmarkLibTests(unittest.TestCase):
             self.assertEqual(agents.count("simple-man-always-on-end"), 1)
             self.assertIn("Apply Simple Man to user-facing responses by default.", agents)
 
+    def test_codex_plugin_skill_copy_matches_canonical_skill(self):
+        canonical = ROOT / "skills" / "simple-man"
+        plugin_skill = ROOT / "plugins" / "simple-man" / "skills" / "simple-man"
+
+        for rel in ("SKILL.md", "agents/openai.yaml"):
+            with self.subTest(rel=rel):
+                self.assertEqual(
+                    (plugin_skill / rel).read_text(),
+                    (canonical / rel).read_text(),
+                )
+
+        manifest = json.loads(
+            (ROOT / "plugins" / "simple-man" / ".codex-plugin" / "plugin.json").read_text()
+        )
+        marketplace = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text())
+
+        self.assertEqual(manifest["name"], "simple-man")
+        self.assertEqual(manifest["version"], "0.1.0")
+        self.assertEqual(manifest["skills"], "./skills/")
+        self.assertEqual(marketplace["name"], "simple-man")
+        self.assertEqual(marketplace["plugins"][0]["name"], "simple-man")
+
     def test_snapshot_age_warning_uses_generated_at(self):
         old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=45)).isoformat()
         snapshot = {"metadata": {"generated_at": old}}
