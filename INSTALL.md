@@ -12,8 +12,8 @@ curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/in
 
 The installer:
 
-- copies `skills/simple-man` to `~/.codex/skills/simple-man`
-- writes a managed Simple Man block into `~/.codex/AGENTS.md`
+- copies `skills/simple-man` to `$CODEX_HOME/skills/simple-man` (default: `~/.codex`)
+- writes a managed Simple Man block into `$CODEX_HOME/AGENTS.md`
 - replaces that managed block on rerun without duplicating it
 
 Restart Codex after installing so new sessions load the global instructions.
@@ -27,13 +27,15 @@ codex plugin add simple-man@simple-man
 
 Plugin install makes the skill available in Codex. Always-on behavior comes from the installer writing global Codex instructions.
 
+Current Codex can see user skills under `$CODEX_HOME/skills` and repo-local `.agents/skills` when present. Do not install duplicate Simple Man skill copies just for discovery.
+
 ## Project Files
 
 This repo also ships lightweight always-on project policies for agents that read repository instructions:
 
 | Agent/tool | Recommended project setup |
 | --- | --- |
-| OpenAI Codex | Commit `AGENTS.md`; optional: run the global Codex installer above |
+| OpenAI Codex | Commit `AGENTS.md` for project policy, or run the global Codex installer above |
 | Claude Code | Commit `CLAUDE.md`; optional: copy `skills/simple-man` to `~/.claude/skills/simple-man` |
 | Gemini CLI | Commit `GEMINI.md`, or configure Gemini to read `AGENTS.md` |
 | Qwen Code | Commit `AGENTS.md`; optional: copy `skills/simple-man` to `~/.qwen/skills/simple-man` |

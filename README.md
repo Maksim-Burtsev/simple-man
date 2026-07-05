@@ -218,7 +218,7 @@ curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/in
 
 **Important: Simple Man is always-on after install. This is expected.**
 
-The installer copies `skills/simple-man` to `~/.codex/skills/simple-man` and writes the compact runtime policy into `~/.codex/AGENTS.md`.
+The installer copies `skills/simple-man` to `$CODEX_HOME/skills/simple-man` (default: `~/.codex`) and writes the compact runtime policy into `$CODEX_HOME/AGENTS.md`.
 
 ## Codex plugin package
 
@@ -230,6 +230,8 @@ codex plugin add simple-man@simple-man
 ```
 
 Plugin install makes the skill available in Codex. Always-on behavior comes from the installer writing global Codex instructions.
+
+Current Codex can see user skills under `$CODEX_HOME/skills` and repo-local `.agents/skills` when present. Do not install duplicate Simple Man skill copies just for discovery.
 
 ## Recommended usage
 

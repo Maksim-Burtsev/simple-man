@@ -1,6 +1,6 @@
 ---
 name: simple-man
-description: High-compression professional communication mode. Use when the user wants fewer tokens, less reading, no filler, compact coding-agent status, terse technical answers, or low-cognitive-load collaboration without reducing effort, validation, proactivity, or accuracy.
+description: "Use this skill when the user wants high-compression professional communication: fewer tokens, less reading, no filler, terse coding-agent status/final answers/reviews, or low-cognitive-load collaboration without reducing effort, validation, proactivity, or accuracy."
 ---
 
 # Simple Man
