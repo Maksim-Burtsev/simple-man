@@ -1,0 +1,827 @@
+{
+  "schema_version": 2,
+  "metadata": {
+    "suite": "runtime_economics",
+    "generated_at": "2026-07-05T14:14:44.273493+00:00",
+    "runner": "codex exec",
+    "codex_cli_version": "codex-cli 0.142.5",
+    "model": "default",
+    "trials": 1,
+    "arms": [
+      "control",
+      "terse",
+      "simple_man_runtime"
+    ],
+    "prompt_count": 10,
+    "prompt_corpus_sha256": "0f0ca63fda758bf1b851c33fb3b707fce73ae9838f328f595fa8808dbb56cc64",
+    "skill_sha256": "ac5bf862d48fafe2a5834984d1b2fcaeb1f9a8c88103cd803a9ea2e79d00305a",
+    "runtime_sha256": "4deec7f8ae7e45a9b33ec01ddf2d1a5ca50d0e5b997b89aad37e5a8ab7148734",
+    "candidate_sha256": "a3892ddfea423fb3df350464b68939cedbf1d84a08ce75ac1042f4509f2d80d8",
+    "skill_hashes": {
+      "simple_man_runtime": "4deec7f8ae7e45a9b33ec01ddf2d1a5ca50d0e5b997b89aad37e5a8ab7148734",
+      "simple_man_candidate": "a3892ddfea423fb3df350464b68939cedbf1d84a08ce75ac1042f4509f2d80d8",
+      "simple_man_skill": "ac5bf862d48fafe2a5834984d1b2fcaeb1f9a8c88103cd803a9ea2e79d00305a",
+      "caveman": "6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593",
+      "caveman_full": "6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593",
+      "caveman_ultra": "6a93e68b5d843ab6da3290dfe81cfdf26de166be7f3feca5acb52744f63db593"
+    },
+    "git_commit": "4371a797b61e69113e3c755d7f4cf513ac9dbde6",
+    "disable_codex_features": true,
+    "tokenizer": "tiktoken o200k_base",
+    "primary_metric": "visible_input_tokens + visible_output_tokens",
+    "notes": "Primary metric uses the controlled benchmark prompt plus final answer. Raw Codex usage is recorded separately because hidden harness/cache overhead can vary across exec runs."
+  },
+  "prompts": [
+    {
+      "id": "react-rerender-object-prop",
+      "category": "explanation",
+      "prompt": "Why does my React component re-render every time the parent updates? The child receives an object prop built inline in the parent render.",
+      "checks": {
+        "must_include_any": [
+          [
+            "useMemo",
+            "memoize",
+            "stable reference"
+          ],
+          [
+            "React.memo",
+            "memo"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "jwt-expiry-date-now",
+      "category": "debugging",
+      "prompt": "My Express auth middleware lets expired JWT tokens through. It compares Date.now() to the token exp field. What's wrong and how do I fix it?",
+      "checks": {
+        "must_include_any": [
+          [
+            "seconds",
+            "milliseconds",
+            "1000"
+          ],
+          [
+            "reject",
+            "401",
+            "expired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "postgres-pool-node",
+      "category": "implementation",
+      "prompt": "How do I set up a PostgreSQL connection pool in Node.js with timeout, error handling, and graceful shutdown?",
+      "checks": {
+        "must_include_any": [
+          [
+            "Pool",
+            "pg"
+          ],
+          [
+            "SIGTERM",
+            "shutdown",
+            "end()"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "git-rebase-merge",
+      "category": "explanation",
+      "prompt": "Explain the difference between git rebase and git merge. When should I use each, and what are the risks?",
+      "checks": {
+        "must_include_any": [
+          [
+            "history",
+            "commit graph"
+          ],
+          [
+            "force push",
+            "shared branch",
+            "public branch"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "async-await-refactor",
+      "category": "implementation",
+      "prompt": "Refactor this callback-based Node.js function to async/await:\n\nfunction getUser(id, callback) {\n  db.query('SELECT * FROM users WHERE id = ?', [id], function(err, rows) {\n    if (err) return callback(err);\n    if (!rows.length) return callback(new Error('Not found'));\n    callback(null, rows[0]);\n  });\n}",
+      "checks": {
+        "must_include_any": [
+          [
+            "async function",
+            "async"
+          ],
+          [
+            "await"
+          ],
+          [
+            "throw"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "django-monolith-split",
+      "category": "planning",
+      "prompt": "We have a monolithic Django app getting slow. The team is debating microservices. What should we evaluate before splitting it?",
+      "checks": {
+        "must_include_any": [
+          [
+            "database",
+            "data ownership"
+          ],
+          [
+            "observability",
+            "deploy",
+            "operational"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "express-sql-review",
+      "category": "code-review",
+      "prompt": "Review this Express route handler for security issues:\n\napp.get('/api/users/:id', (req, res) => {\n  const query = `SELECT * FROM users WHERE id = ${req.params.id}`;\n  db.query(query).then(user => res.json(user));\n});",
+      "checks": {
+        "must_include_any": [
+          [
+            "SQL injection",
+            "injection"
+          ],
+          [
+            "parameterized",
+            "prepared",
+            "id = ?"
+          ],
+          [
+            "authorization",
+            "auth",
+            "access control",
+            "permission"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "docker-typescript-multistage",
+      "category": "implementation",
+      "prompt": "Write a multi-stage Dockerfile for a Node.js TypeScript app using npm. It should compile TypeScript and keep the final image small.",
+      "checks": {
+        "must_include_any": [
+          [
+            "builder",
+            "multi-stage"
+          ],
+          [
+            "npm ci"
+          ],
+          [
+            "dist",
+            "build"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "postgres-counter-race",
+      "category": "debugging",
+      "prompt": "A Node.js API endpoint increments a PostgreSQL counter but concurrent requests sometimes return the same value. How do I fix the race condition?",
+      "checks": {
+        "must_include_any": [
+          [
+            "UPDATE",
+            "RETURNING"
+          ],
+          [
+            "transaction",
+            "lock",
+            "atomic"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "react-error-boundary",
+      "category": "implementation",
+      "prompt": "Implement a React error boundary that catches render errors, shows a fallback UI with a retry button, and logs details.",
+      "checks": {
+        "must_include_any": [
+          [
+            "componentDidCatch",
+            "getDerivedStateFromError"
+          ],
+          [
+            "reset",
+            "retry"
+          ]
+        ]
+      }
+    }
+  ],
+  "runs": [
+    {
+      "prompt_id": "react-rerender-object-prop",
+      "category": "explanation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 86,
+      "visible_output_tokens": 135,
+      "visible_total_tokens": 221,
+      "text": "Inline object prop creates a new object identity on every parent render:\n\n```jsx\n<Child options={{ sort: \"name\" }} />\n```\n\nEven if contents match, `{} !== {}`. React sees prop changed -> `Child` re-renders, especially with `React.memo`.\n\nFix: memoize object or pass primitives.\n\n```jsx\nconst options = useMemo(() => ({ sort: \"name\" }), []);\n\nreturn <Child options={options} />;\n```\n\nIf object depends on state:\n\n```jsx\nconst options = useMemo(() => ({ sort }), [sort]);\n```\n\nRule: stable refs for object/array/function props when child render cost matters.",
+      "usage": {
+        "input_tokens": 23821,
+        "cached_input_tokens": 19712,
+        "output_tokens": 279,
+        "reasoning_output_tokens": 68
+      },
+      "duration_ms": 9411,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:14:44.627485Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.628087Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.629069Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.629372Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.630004Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.630295Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.631212Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.631542Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.632536Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.633472Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.633743Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.634641Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.635555Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.636072Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.636981Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.637537Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.637832Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.638136Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.639023Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.639953Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.641022Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.641949Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.642876Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.644059Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:44.644930Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "react-rerender-object-prop",
+      "category": "explanation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 102,
+      "visible_output_tokens": 134,
+      "visible_total_tokens": 236,
+      "text": "Because inline object literal creates a new ref on every parent render:\n\n```jsx\n<Child options={{ theme, size }} />\n```\n\nReact compares props by identity. New object ref -> prop changed -> memoized child still re-renders.\n\nFix: memoize object in parent:\n\n```jsx\nconst options = useMemo(() => ({ theme, size }), [theme, size]);\n\nreturn <Child options={options} />;\n```\n\nAlso wrap child only if needed:\n\n```jsx\nexport default React.memo(Child);\n```\n\nRule: inline objects/arrays/functions are “new” every render. Use `useMemo` / `useCallback`, or pass primitives directly.",
+      "usage": {
+        "input_tokens": 35787,
+        "cached_input_tokens": 31360,
+        "output_tokens": 368,
+        "reasoning_output_tokens": 74
+      },
+      "duration_ms": 11394,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:14:54.066480Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.067109Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.068077Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.068386Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.068811Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.069087Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.070035Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.070362Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.071453Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.072334Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.072638Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.073527Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.074643Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.075155Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.076045Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.076559Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.076853Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.077142Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.077985Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.078845Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.079762Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.080651Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.081569Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.082493Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:14:54.083393Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "react-rerender-object-prop",
+      "category": "explanation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 485,
+      "visible_output_tokens": 116,
+      "visible_total_tokens": 601,
+      "text": "Because inline object literal creates a new reference every parent render:\n\n```jsx\n<Child options={{ theme, size }} />\n```\n\nEven if values same, `{ theme, size } !== { theme, size }`, so `React.memo`/prop compare sees prop changed -> child re-renders.\n\nFix: memoize object or pass primitives.\n\n```jsx\nconst options = useMemo(() => ({ theme, size }), [theme, size]);\n\nreturn <Child options={options} />;\n```\n\nRule: stable prop refs for memoized children; inline objects/functions defeat shallow memo.",
+      "usage": {
+        "input_tokens": 24600,
+        "cached_input_tokens": 19200,
+        "output_tokens": 243,
+        "reasoning_output_tokens": 50
+      },
+      "duration_ms": 8360,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:15:05.473580Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.474187Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.475272Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.475593Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.475976Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.476320Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.477228Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.477524Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.478462Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.479380Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.479666Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.480710Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.481594Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.482089Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.483072Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.483605Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.483930Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.484224Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.485075Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.485917Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.486935Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.487775Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.488669Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.489765Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:05.490650Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "jwt-expiry-date-now",
+      "category": "debugging",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 88,
+      "visible_output_tokens": 134,
+      "visible_total_tokens": 222,
+      "text": "`exp` is Unix seconds. `Date.now()` is milliseconds.\n\nFix:\n\n```js\nif (decoded.exp * 1000 < Date.now()) {\n  return res.status(401).json({ error: \"Token expired\" });\n}\n```\n\nBetter: let `jsonwebtoken` verify expiry:\n\n```js\njwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {\n  if (err) return res.status(401).json({ error: \"Invalid or expired token\" });\n  req.user = decoded;\n  next();\n});\n```\n\nAlso ensure you are not using `jwt.decode()` for auth; it does not verify signature or expiry.",
+      "usage": {
+        "input_tokens": 35710,
+        "cached_input_tokens": 30848,
+        "output_tokens": 346,
+        "reasoning_output_tokens": 60
+      },
+      "duration_ms": 12406,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:15:13.824150Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.824773Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.825731Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.826040Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.826441Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.826748Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.827684Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.827987Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.828885Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.829884Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.830289Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.831466Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.832374Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.832891Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.833789Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.834350Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.834648Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.834945Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.835834Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.836776Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.837695Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.838558Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.839965Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.840849Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:13.841822Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "jwt-expiry-date-now",
+      "category": "debugging",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 104,
+      "visible_output_tokens": 153,
+      "visible_total_tokens": 257,
+      "text": "`exp` in JWT is seconds since Unix epoch. `Date.now()` is milliseconds.\n\nBug:\n\n```js\nif (Date.now() > decoded.exp) // wrong: ms vs sec\n```\n\nFix:\n\n```js\nif (Date.now() >= decoded.exp * 1000) {\n  return res.status(401).json({ error: 'Token expired' });\n}\n```\n\nBetter: let `jsonwebtoken` enforce it:\n\n```js\njwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {\n  if (err) return res.status(401).json({ error: 'Invalid or expired token' });\n  req.user = decoded;\n  next();\n});\n```\n\nAlso ensure `exp` exists if you manually check it.",
+      "usage": {
+        "input_tokens": 35854,
+        "cached_input_tokens": 32896,
+        "output_tokens": 432,
+        "reasoning_output_tokens": 86
+      },
+      "duration_ms": 13093,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:15:26.231071Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.231696Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.232657Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.232948Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.233387Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.233673Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.234602Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.234895Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.236070Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.237017Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.237346Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.238230Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.239090Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.239581Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.240535Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.241058Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.241359Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.241680Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.242556Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.243482Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.244419Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.245315Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.246494Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.247640Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:26.248528Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "jwt-expiry-date-now",
+      "category": "debugging",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 487,
+      "visible_output_tokens": 120,
+      "visible_total_tokens": 607,
+      "text": "`exp` in JWT = Unix timestamp in **seconds**. `Date.now()` = milliseconds.\n\nBug: comparing ms to sec.\n\nFix:\n\n```js\nconst now = Math.floor(Date.now() / 1000);\n\nif (decoded.exp && decoded.exp < now) {\n  return res.status(401).json({ error: \"Token expired\" });\n}\n```\n\nBetter: let JWT lib verify expiry:\n\n```js\njwt.verify(token, process.env.JWT_SECRET);\n```\n\n`jsonwebtoken.verify()` rejects expired tokens with `TokenExpiredError` unless `ignoreExpiration: true` is set.",
+      "usage": {
+        "input_tokens": 11966,
+        "cached_input_tokens": 8576,
+        "output_tokens": 141,
+        "reasoning_output_tokens": 15
+      },
+      "duration_ms": 4971,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:15:39.318849Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.319473Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.320696Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.321054Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.321501Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.321823Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.323151Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.323491Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.324589Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.325553Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.325855Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.326729Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.327617Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.328115Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.329018Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.329577Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.329860Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.330159Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.331059Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.331932Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.333022Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.334160Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.336353Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.337276Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:39.338095Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-pool-node",
+      "category": "implementation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 79,
+      "visible_output_tokens": 382,
+      "visible_total_tokens": 461,
+      "text": "Install:\n\n```bash\nnpm install pg\n```\n\n```js\n// db.js\nconst { Pool } = require(\"pg\");\n\nconst pool = new Pool({\n  connectionString: process.env.DATABASE_URL,\n\n  max: 10,\n  idleTimeoutMillis: 30_000,\n  connectionTimeoutMillis: 5_000,\n  query_timeout: 10_000,\n  statement_timeout: 10_000,\n});\n\npool.on(\"error\", (err) => {\n  console.error(\"Unexpected idle PostgreSQL client error:\", err);\n});\n\nasync function query(text, params) {\n  const start = Date.now();\n\n  try {\n    const res = await pool.query(text, params);\n    console.log(\"SQL ok\", { ms: Date.now() - start, rows: res.rowCount });\n    return res;\n  } catch (err) {\n    console.error(\"SQL failed\", {\n      ms: Date.now() - start,\n      message: err.message,\n      code: err.code,\n    });\n    throw err;\n  }\n}\n\nasync function shutdown() {\n  console.log(\"Closing PostgreSQL pool...\");\n  await pool.end();\n  console.log(\"PostgreSQL pool closed\");\n}\n\nprocess.on(\"SIGINT\", async () => {\n  await shutdown();\n  process.exit(0);\n});\n\nprocess.on(\"SIGTERM\", async () => {\n  await shutdown();\n  process.exit(0);\n});\n\nmodule.exports = { pool, query, shutdown };\n```\n\nUse:\n\n```js\nconst { query } = require(\"./db\");\n\nconst { rows } = await query(\"select * from users where id = $1\", [userId]);\n```\n\nKey bits: `connectionTimeoutMillis` limits acquiring a DB connection; `query_timeout` / `statement_timeout` limit long queries; `pool.on(\"error\")` catches broken idle clients; `pool.end()` drains pool on shutdown.",
+      "usage": {
+        "input_tokens": 35688,
+        "cached_input_tokens": 33408,
+        "output_tokens": 605,
+        "reasoning_output_tokens": 64
+      },
+      "duration_ms": 16607,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:15:44.297271Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.298117Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.299261Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.299848Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.300557Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.300967Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.303168Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.303674Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.304883Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.306157Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.307070Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.310032Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.312291Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.313402Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.315283Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.316544Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.317212Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.317911Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.319473Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.321415Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.323974Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.324813Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.325643Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.326488Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:15:44.327425Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-pool-node",
+      "category": "implementation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 95,
+      "visible_output_tokens": 456,
+      "visible_total_tokens": 551,
+      "text": "Use `pg`:\n\n```bash\nnpm i pg\n```\n\n```js\n// db.js\nconst { Pool } = require(\"pg\");\n\nconst pool = new Pool({\n  connectionString: process.env.DATABASE_URL,\n\n  max: 10,\n  connectionTimeoutMillis: 5_000,\n  idleTimeoutMillis: 30_000,\n\n  // Server/query guards\n  statement_timeout: 10_000,\n  query_timeout: 12_000,\n});\n\npool.on(\"error\", (err) => {\n  console.error(\"Unexpected PostgreSQL pool error:\", err);\n});\n\nasync function query(text, params) {\n  try {\n    return await pool.query(text, params);\n  } catch (err) {\n    console.error(\"PostgreSQL query failed:\", {\n      message: err.message,\n      code: err.code,\n    });\n    throw err;\n  }\n}\n\nasync function shutdown(signal) {\n  console.log(`${signal}: closing PostgreSQL pool`);\n\n  try {\n    await pool.end();\n    process.exit(0);\n  } catch (err) {\n    console.error(\"Failed to close PostgreSQL pool:\", err);\n    process.exit(1);\n  }\n}\n\nprocess.on(\"SIGINT\", shutdown);\nprocess.on(\"SIGTERM\", shutdown);\n\nmodule.exports = { pool, query };\n```\n\nUsage:\n\n```js\nconst { query } = require(\"./db\");\n\nconst { rows } = await query(\n  \"SELECT * FROM users WHERE id = $1\",\n  [userId]\n);\n```\n\nFor transactions, always release clients:\n\n```js\nconst { pool } = require(\"./db\");\n\nasync function runTransaction() {\n  const client = await pool.connect();\n\n  try {\n    await client.query(\"BEGIN\");\n\n    await client.query(\"INSERT INTO audit_log(message) VALUES ($1)\", [\n      \"created\",\n    ]);\n\n    await client.query(\"COMMIT\");\n  } catch (err) {\n    await client.query(\"ROLLBACK\");\n    throw err;\n  } finally {\n    client.release();\n  }\n}\n```\n\nKey parts: `connectionTimeoutMillis` for connect timeout, `statement_timeout` / `query_timeout` for slow queries, `pool.on(\"error\")` for idle-client failures, `pool.end()` on shutdown.",
+      "usage": {
+        "input_tokens": 35750,
+        "cached_input_tokens": 30848,
+        "output_tokens": 862,
+        "reasoning_output_tokens": 249
+      },
+      "duration_ms": 19905,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:00.931969Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.932541Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.933457Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.933720Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.934148Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.934459Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.935421Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.935707Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.936812Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.937774Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.938066Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.938961Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.940658Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.941525Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.943405Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.944038Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.944554Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.945042Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.945968Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.946873Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.947794Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.948642Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.949522Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.950542Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:00.951503Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-pool-node",
+      "category": "implementation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 478,
+      "visible_output_tokens": 305,
+      "visible_total_tokens": 783,
+      "text": "Install:\n\n```bash\nnpm i pg\n```\n\nMinimal pool:\n\n```js\n// db.js\nconst { Pool } = require('pg');\n\nconst pool = new Pool({\n  connectionString: process.env.DATABASE_URL,\n  max: 10,\n  idleTimeoutMillis: 30_000,\n  connectionTimeoutMillis: 5_000,\n  query_timeout: 10_000,\n  statement_timeout: 10_000,\n});\n\npool.on('error', (err) => {\n  console.error('PostgreSQL pool error:', err);\n});\n\nasync function query(text, params) {\n  try {\n    return await pool.query(text, params);\n  } catch (err) {\n    console.error('PostgreSQL query error:', err);\n    throw err;\n  }\n}\n\nasync function shutdown() {\n  console.log('Closing PostgreSQL pool...');\n  await pool.end();\n  console.log('PostgreSQL pool closed');\n}\n\nprocess.on('SIGINT', async () => {\n  await shutdown();\n  process.exit(0);\n});\n\nprocess.on('SIGTERM', async () => {\n  await shutdown();\n  process.exit(0);\n});\n\nmodule.exports = { pool, query, shutdown };\n```\n\nUse:\n\n```js\nconst { query } = require('./db');\n\nconst { rows } = await query('SELECT * FROM users WHERE id = $1', [userId]);\n```\n\nFor Express shutdown, close HTTP server first, then `await pool.end()` so in-flight reqs can finish.",
+      "usage": {
+        "input_tokens": 24597,
+        "cached_input_tokens": 20224,
+        "output_tokens": 447,
+        "reasoning_output_tokens": 60
+      },
+      "duration_ms": 11420,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:21.069236Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.070719Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.072255Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.072726Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.073604Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.074227Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.077406Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.078490Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.080490Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.081632Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.082081Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.083256Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.084627Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.085491Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.086704Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.087715Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.088087Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.088535Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.090405Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.092292Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.093422Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.094400Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.095928Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.097352Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:21.098467Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "git-rebase-merge",
+      "category": "explanation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 81,
+      "visible_output_tokens": 192,
+      "visible_total_tokens": 273,
+      "text": "`git merge`: combines branches by adding a merge commit. Preserves true history.\n\nUse when:\n- Shared branch / team branch\n- You want audit trail of how work joined\n- Avoid rewriting history\n\nRisk:\n- History gets noisier\n- Conflict resolution happens once, but merge commits can pile up\n\n`git rebase`: moves your commits onto a new base, rewriting commit history. Creates linear history.\n\nUse when:\n- Your local feature branch needs latest `main`\n- Before opening PR, to clean history\n- Branch is not shared, or team agrees rewriting is OK\n\nRisk:\n- Rewrites commit hashes\n- Dangerous on shared branches: others may get broken history\n- Conflicts may happen commit-by-commit\n- Bad rebase can drop/duplicate commits if handled carelessly\n\nRule of thumb:\n\n- Private branch: `rebase`\n- Shared branch: `merge`\n- Unsure: `merge` is safer.",
+      "usage": {
+        "input_tokens": 11560,
+        "cached_input_tokens": 10624,
+        "output_tokens": 221,
+        "reasoning_output_tokens": 23
+      },
+      "duration_ms": 6396,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:32.259684Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.260464Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.261780Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.262097Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.262495Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.262789Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.263829Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.264120Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.265105Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.265969Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.266249Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.267127Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.268076Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.268592Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.269533Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.270051Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.270412Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.270722Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.271737Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.273799Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.275766Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.277026Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.278457Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.279634Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:32.280476Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "git-rebase-merge",
+      "category": "explanation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 97,
+      "visible_output_tokens": 135,
+      "visible_total_tokens": 232,
+      "text": "`git merge`: combines branches with a merge commit. Preserves exact history.\n\nUse when:\n- Shared branch\n- Team history matters\n- You want “feature branch joined here” visible\n\nRisk:\n- Noisy history\n- More complex commit graph\n- Conflict resolution once at merge point\n\n`git rebase`: moves your commits onto a new base. Rewrites commit history.\n\nUse when:\n- Local/private branch\n- Before opening PR\n- You want linear history\n\nRisk:\n- Rewrites commit IDs\n- Dangerous on shared branches\n- Conflicts may repeat commit-by-commit\n\nRule: rebase your own unpublished work; merge shared/public work.",
+      "usage": {
+        "input_tokens": 23842,
+        "cached_input_tokens": 19712,
+        "output_tokens": 284,
+        "reasoning_output_tokens": 64
+      },
+      "duration_ms": 10604,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:38.678358Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.679211Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.680527Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.680940Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.681489Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.681992Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.683583Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.684519Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.686215Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.687231Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.687626Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.688652Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.689974Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.691149Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.692501Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.693299Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.693633Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.693982Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.695210Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.697290Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.699301Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.700812Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.702676Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.703995Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:38.704843Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "git-rebase-merge",
+      "category": "explanation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 480,
+      "visible_output_tokens": 146,
+      "visible_total_tokens": 626,
+      "text": "`git merge`: preserves branch history. Adds a merge commit tying branches together. Use for shared branches, PR integration, release branches, or when you want exact historical context. Risk: noisier graph, harder linear reading.\n\n`git rebase`: rewrites your branch commits onto a new base. Creates linear history. Use on your own local feature branch before PR, or to refresh against `main`. Risk: rewritten commit hashes; dangerous after pushing/shared work because collaborators can get duplicate/diverged commits.\n\nRule: rebase private work, merge shared work.\n\nConflict risk exists in both. Rebase may make you resolve conflicts commit-by-commit; merge usually resolves once. Never rebase public/shared branches unless team explicitly agrees.",
+      "usage": {
+        "input_tokens": 11959,
+        "cached_input_tokens": 10624,
+        "output_tokens": 150,
+        "reasoning_output_tokens": 0
+      },
+      "duration_ms": 5419,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:49.256140Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.256901Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.258123Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.258431Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.258868Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.259185Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.260265Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.260620Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.261597Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.262658Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.262938Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.263825Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.264682Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.265230Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.266123Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.266639Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.266931Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.267249Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.268115Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.268946Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.269913Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.270774Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.271715Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.273034Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:49.273919Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "async-await-refactor",
+      "category": "implementation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 132,
+      "visible_output_tokens": 141,
+      "visible_total_tokens": 273,
+      "text": "```js\nasync function getUser(id) {\n  const rows = await db.query('SELECT * FROM users WHERE id = ?', [id]);\n\n  if (!rows.length) {\n    throw new Error('Not found');\n  }\n\n  return rows[0];\n}\n```\n\nIf `db.query` does not already return a Promise:\n\n```js\nconst { promisify } = require('util');\n\nconst query = promisify(db.query).bind(db);\n\nasync function getUser(id) {\n  const rows = await query('SELECT * FROM users WHERE id = ?', [id]);\n\n  if (!rows.length) {\n    throw new Error('Not found');\n  }\n\n  return rows[0];\n}\n```",
+      "usage": {
+        "input_tokens": 11611,
+        "cached_input_tokens": 8576,
+        "output_tokens": 172,
+        "reasoning_output_tokens": 25
+      },
+      "duration_ms": 5281,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:54.717636Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.719026Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.720313Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.721058Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.721642Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.722333Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.725304Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.726137Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.729116Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.731861Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.732861Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.735091Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.736850Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.737465Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.738730Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.740121Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.741059Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.741736Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.755521Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.758828Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.763258Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.766055Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.770101Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.773259Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:54.776406Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "async-await-refactor",
+      "category": "implementation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 148,
+      "visible_output_tokens": 131,
+      "visible_total_tokens": 279,
+      "text": "```js\nasync function getUser(id) {\n  const rows = await db.query('SELECT * FROM users WHERE id = ?', [id]);\n\n  if (!rows.length) throw new Error('Not found');\n\n  return rows[0];\n}\n```\n\nIf `db.query` is still callback-only:\n\n```js\nconst { promisify } = require('util');\n\nconst query = promisify(db.query).bind(db);\n\nasync function getUser(id) {\n  const rows = await query('SELECT * FROM users WHERE id = ?', [id]);\n\n  if (!rows.length) throw new Error('Not found');\n\n  return rows[0];\n}\n```",
+      "usage": {
+        "input_tokens": 11627,
+        "cached_input_tokens": 8576,
+        "output_tokens": 185,
+        "reasoning_output_tokens": 48
+      },
+      "duration_ms": 10879,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:16:59.968985Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.969700Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.970818Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.971300Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.971789Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.972253Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.973636Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.974016Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.975619Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.976686Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.977089Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.978106Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.979194Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.979743Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.981233Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.982125Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.982482Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.982881Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.983866Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.984842Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.985982Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.987770Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.989455Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.991335Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:16:59.992496Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "async-await-refactor",
+      "category": "implementation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 531,
+      "visible_output_tokens": 50,
+      "visible_total_tokens": 581,
+      "text": "```js\nasync function getUser(id) {\n  const rows = await db.query('SELECT * FROM users WHERE id = ?', [id]);\n  if (!rows.length) throw new Error('Not found');\n  return rows[0];\n}\n```",
+      "usage": {
+        "input_tokens": 24750,
+        "cached_input_tokens": 19200,
+        "output_tokens": 234,
+        "reasoning_output_tokens": 108
+      },
+      "duration_ms": 15540,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:10.833778Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.834373Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.835382Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.835673Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.836220Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.836519Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.837723Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.838045Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.839176Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.841282Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.841740Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.842820Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.843847Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.844417Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.845346Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.845953Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.846264Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.846554Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.847550Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.848787Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.849872Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.851093Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.852561Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.854533Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:10.855870Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "django-monolith-split",
+      "category": "planning",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 82,
+      "visible_output_tokens": 232,
+      "visible_total_tokens": 314,
+      "text": "Before splitting, evaluate:\n\n- Actual bottleneck: DB queries, cache, Celery, N+1s, slow views, infra, deployment, not “monolith” by default.\n- Domain boundaries: clear bounded contexts, ownership, data lifecycle.\n- Data coupling: shared tables, transactions, joins, consistency needs.\n- Team structure: independent teams? On-call? service ownership?\n- Operational maturity: observability, CI/CD, tracing, retries, idempotency, SLOs.\n- Release pain: are teams blocked by shared deploys, or just slow tests/builds?\n- Failure model: network calls, partial failure, timeouts, version skew.\n- Auth/security: cross-service authz, secrets, audit, tenant isolation.\n- Cost: infra, latency, debugging, duplicated code, migrations.\n- Alternatives first: modular monolith, app boundaries, DB indexing, async jobs, caching, read replicas, test parallelism.\n\nRule: split only when a module has clear ownership, clear API, low data coupling, independent scaling/deploy need, and the team can operate it. Otherwise, modularize the Django monolith first.",
+      "usage": {
+        "input_tokens": 23802,
+        "cached_input_tokens": 19200,
+        "output_tokens": 365,
+        "reasoning_output_tokens": 72
+      },
+      "duration_ms": 9863,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:26.381256Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.381879Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.382889Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.383186Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.383558Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.383857Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.384800Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.385122Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.386248Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.387109Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.387394Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.388571Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.389446Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.389993Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.390905Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.391459Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.391762Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.392068Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.392924Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.393768Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.394770Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.395688Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.396909Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.397827Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:26.398788Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "django-monolith-split",
+      "category": "planning",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 98,
+      "visible_output_tokens": 285,
+      "visible_total_tokens": 383,
+      "text": "Evaluate before split:\n\n- Bottleneck: DB queries, N+1s, indexes, cache, sync I/O, templates, external APIs, background jobs, deploy size.\n- Domain seams: clear bounded contexts, owned data, stable interfaces, low cross-domain transactions.\n- Data ownership: who owns each table, migration path, reporting needs, consistency model.\n- Transaction needs: if workflows need ACID across modules, microservices add pain.\n- Team shape: enough teams to own services end-to-end: code, deploy, on-call, SLOs.\n- Ops maturity: CI/CD, observability, tracing, alerts, secrets, service discovery, retries, idempotency.\n- Failure modes: network calls, partial failure, timeouts, duplicate events, rollback complexity.\n- Latency impact: in-process calls become network calls.\n- Release coupling: can services deploy independently, or will changes still require lockstep releases?\n- Test strategy: contract tests, integration envs, fixtures, local dev flow.\n- Security/auth: identity propagation, service auth, audit trails.\n- Cost: infra, staffing, monitoring, debugging, incident load.\n\nRule of thumb: first modularize the Django monolith. Split by app/domain, fix perf, add boundaries, move slow work to queues, improve DB/cache. Extract a service only when one domain has clear ownership, independent scale/deploy needs, and stable contracts.",
+      "usage": {
+        "input_tokens": 11577,
+        "cached_input_tokens": 10624,
+        "output_tokens": 329,
+        "reasoning_output_tokens": 38
+      },
+      "duration_ms": 8850,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:36.252291Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.252919Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.253879Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.254236Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.254803Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.255114Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.256063Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.256429Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.257412Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.258295Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.258614Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.259509Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.260510Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.261023Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.261986Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.262503Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.262836Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.263153Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.264124Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.265088Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.267178Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.270143Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.271059Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.271993Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:36.273108Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "django-monolith-split",
+      "category": "planning",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 481,
+      "visible_output_tokens": 232,
+      "visible_total_tokens": 713,
+      "text": "Evaluate first:\n\n- Actual bottleneck: DB queries, N+1s, cache misses, slow views, Celery queues, external APIs, lock contention.\n- Modular boundaries: can domains be split inside Django first? Apps, service layer, clearer ownership.\n- Data ownership: which service owns which tables? Cross-service joins disappear.\n- Transaction needs: distributed txns, consistency, rollback, retries, idempotency.\n- Team readiness: independent deploys only help if teams own services end-to-end.\n- Ops maturity: CI/CD, observability, tracing, alerting, incident response, versioned APIs.\n- Latency cost: in-process calls become network calls.\n- Failure modes: partial outages, timeouts, retries, backpressure.\n- Auth/security: service-to-service auth, permissions, audit trails.\n- Migration path: strangler pattern, clear first candidate, reversible rollout.\n- Current alternatives: indexing, query fixes, caching, async jobs, read replicas, vertical scaling.\n\nRule: split only when a domain has clear ownership, independent scaling/deploy needs, stable API boundaries, and ops capacity. Otherwise, modular monolith first.",
+      "usage": {
+        "input_tokens": 24584,
+        "cached_input_tokens": 20224,
+        "output_tokens": 355,
+        "reasoning_output_tokens": 41
+      },
+      "duration_ms": 10080,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:45.121261Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.121833Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.122951Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.123348Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.123720Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.124027Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.124937Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.125381Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.126404Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.127381Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.127654Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.128554Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.129472Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.130019Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.130928Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.131464Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.131814Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.132101Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.132965Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.133850Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.134974Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.137049Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.137975Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.139013Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:45.139952Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "express-sql-review",
+      "category": "code-review",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 111,
+      "visible_output_tokens": 78,
+      "visible_total_tokens": 189,
+      "text": "Critical: SQL injection via `req.params.id` string interpolation. Use parameterized query.\n\nCritical: No authz check. Any caller can request any `/api/users/:id` -> user data exposure.\n\nHigh: `SELECT *` may leak sensitive fields. Return allowlisted cols only.\n\nMedium: No error handling -> rejected `db.query` may leak errors or crash depending Express setup.",
+      "usage": {
+        "input_tokens": 11590,
+        "cached_input_tokens": 8576,
+        "output_tokens": 114,
+        "reasoning_output_tokens": 30
+      },
+      "duration_ms": 4328,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:55.260888Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.261879Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.263176Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.263557Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.264000Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.264376Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.265628Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.265992Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.267030Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.267930Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.268235Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.269266Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.270571Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.271222Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.272368Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.273245Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.273549Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.273888Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.274965Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.276143Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.277292Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.278662Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.279995Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.280996Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:55.281912Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "express-sql-review",
+      "category": "code-review",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 127,
+      "visible_output_tokens": 151,
+      "visible_total_tokens": 278,
+      "text": "Critical: SQL injection via `req.params.id` string interpolation. Use parameterized query.\n\n```js\napp.get('/api/users/:id', async (req, res) => {\n  const { rows } = await db.query(\n    'SELECT * FROM users WHERE id = $1',\n    [req.params.id]\n  );\n  res.json(rows[0]);\n});\n```\n\nHigh: Missing authorization. Any caller can request any user by ID unless auth middleware + ownership/admin check exists.\n\nMedium: `SELECT *` may expose sensitive fields like password hashes, tokens, MFA secrets. Select only needed columns.\n\nMedium: No error handling -> rejected query may leak internals or crash depending setup. Add `try/catch` / Express error middleware.",
+      "usage": {
+        "input_tokens": 11606,
+        "cached_input_tokens": 11136,
+        "output_tokens": 174,
+        "reasoning_output_tokens": 17
+      },
+      "duration_ms": 5759,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:17:59.513519Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.514165Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.515258Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.515623Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.516041Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.516363Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.517447Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.517781Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.518705Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.519782Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.520106Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.520987Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.521958Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.522460Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.523943Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.524635Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.524941Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.525388Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.526296Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.527251Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.528540Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.529555Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.530420Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.531352Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:17:59.532366Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "express-sql-review",
+      "category": "code-review",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 510,
+      "visible_output_tokens": 99,
+      "visible_total_tokens": 609,
+      "text": "Critical: SQL injection via `req.params.id` string interpolation. Use parameterized query + validate ID.\n\nCritical: IDOR risk. Route exposes `/api/users/:id` without authz check. Require auth + verify requester can access that user.\n\nMedium: `SELECT *` may leak sensitive fields. Select only needed fields; exclude password hashes, tokens, secrets.\n\nMedium: no error handling. DB errors may crash/leak via default handler. Add `.catch()` with safe error res.",
+      "usage": {
+        "input_tokens": 11989,
+        "cached_input_tokens": 8576,
+        "output_tokens": 126,
+        "reasoning_output_tokens": 21
+      },
+      "duration_ms": 7547,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:05.305204Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.305836Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.306900Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.307212Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.307593Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.307912Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.308872Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.309198Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.310053Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.311137Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.311466Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.312367Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.313307Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.313801Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.314716Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.315211Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.315514Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.315825Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.316774Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.317672Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.318687Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.319544Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.320400Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.321305Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:05.322298Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "docker-typescript-multistage",
+      "category": "implementation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 87,
+      "visible_output_tokens": 161,
+      "visible_total_tokens": 248,
+      "text": "```dockerfile\n# syntax=docker/dockerfile:1\n\nFROM node:22-alpine AS deps\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n\nFROM deps AS build\nCOPY tsconfig.json ./\nCOPY src ./src\nRUN npm run build\nRUN npm prune --omit=dev\n\nFROM node:22-alpine AS runner\nWORKDIR /app\nENV NODE_ENV=production\n\nCOPY --from=build /app/package*.json ./\nCOPY --from=build /app/node_modules ./node_modules\nCOPY --from=build /app/dist ./dist\n\nUSER node\nCMD [\"node\", \"dist/index.js\"]\n```\n\nAdd `.dockerignore`:\n\n```dockerignore\nnode_modules\ndist\n.git\nDockerfile\nnpm-debug.log\n```",
+      "usage": {
+        "input_tokens": 11566,
+        "cached_input_tokens": 8576,
+        "output_tokens": 213,
+        "reasoning_output_tokens": 46
+      },
+      "duration_ms": 7248,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:12.837336Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.837933Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.839047Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.839436Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.839817Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.840161Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.841193Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.841493Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.842387Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.843279Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.843771Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.844901Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.845829Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.846331Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.847248Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.847750Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.848039Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.848325Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.849254Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.850192Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.851118Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.851949Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.852816Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.853696Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:12.854696Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "docker-typescript-multistage",
+      "category": "implementation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 103,
+      "visible_output_tokens": 166,
+      "visible_total_tokens": 269,
+      "text": "```dockerfile\n# syntax=docker/dockerfile:1\n\nFROM node:22-alpine AS deps\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n\nFROM deps AS build\nCOPY tsconfig*.json ./\nCOPY src ./src\nRUN npm run build\nRUN npm prune --omit=dev\n\nFROM node:22-alpine AS runtime\nWORKDIR /app\nENV NODE_ENV=production\n\nCOPY --from=build /app/package*.json ./\nCOPY --from=build /app/node_modules ./node_modules\nCOPY --from=build /app/dist ./dist\n\nUSER node\nCMD [\"node\", \"dist/index.js\"]\n```\n\nAdd `.dockerignore`:\n\n```gitignore\nnode_modules\ndist\n.git\nnpm-debug.log\nDockerfile\n.dockerignore\n```",
+      "usage": {
+        "input_tokens": 23861,
+        "cached_input_tokens": 19200,
+        "output_tokens": 315,
+        "reasoning_output_tokens": 70
+      },
+      "duration_ms": 8717,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:20.074984Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.075598Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.076582Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.076902Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.077272Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.077563Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.078542Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.078893Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.079802Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.080767Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.081128Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.082062Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.083003Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.083490Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.084389Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.084899Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.085187Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.085472Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.086451Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.087380Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.088273Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.089207Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.090020Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.090989Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:20.091899Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "docker-typescript-multistage",
+      "category": "implementation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 486,
+      "visible_output_tokens": 149,
+      "visible_total_tokens": 635,
+      "text": "```Dockerfile\n# syntax=docker/dockerfile:1\n\nFROM node:22-alpine AS deps\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n\nFROM deps AS build\nCOPY tsconfig*.json ./\nCOPY src ./src\nRUN npm run build\n\nFROM node:22-alpine AS prod\nENV NODE_ENV=production\nWORKDIR /app\n\nCOPY package*.json ./\nRUN npm ci --omit=dev && npm cache clean --force\n\nCOPY --from=build /app/dist ./dist\n\nUSER node\nCMD [\"node\", \"dist/index.js\"]\n```\n\nAdd `.dockerignore`:\n\n```gitignore\nnode_modules\ndist\n.git\nDockerfile\nnpm-debug.log\n```",
+      "usage": {
+        "input_tokens": 11965,
+        "cached_input_tokens": 8576,
+        "output_tokens": 221,
+        "reasoning_output_tokens": 66
+      },
+      "duration_ms": 9088,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:28.786290Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.786866Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.787897Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.788185Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.788560Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.788846Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.789892Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.790176Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.791122Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.792014Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.792312Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.793240Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.794336Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.794844Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.795806Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.796330Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.796644Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.796968Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.797950Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.799113Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.800300Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.801352Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.802367Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.803484Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:28.804488Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-counter-race",
+      "category": "debugging",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 84,
+      "visible_output_tokens": 212,
+      "visible_total_tokens": 296,
+      "text": "Use one atomic SQL statement:\n\n```sql\nUPDATE counters\nSET value = value + 1\nWHERE id = $1\nRETURNING value;\n```\n\nNode `pg`:\n\n```js\nconst { rows } = await pool.query(\n  `UPDATE counters\n   SET value = value + 1\n   WHERE id = $1\n   RETURNING value`,\n  [counterId]\n);\n\nres.json({ value: rows[0].value });\n```\n\nAvoid this race:\n\n```js\nSELECT value FROM counters;\nUPDATE counters SET value = value + 1;\n```\n\nThat splits read/write, so concurrent reqs can read same old value.\n\nPostgres row-level lock from `UPDATE` serializes increments. `RETURNING` gives the committed incremented value for that request.\n\nIf counter row may not exist, use atomic upsert:\n\n```sql\nINSERT INTO counters (id, value)\nVALUES ($1, 1)\nON CONFLICT (id)\nDO UPDATE SET value = counters.value + 1\nRETURNING value;\n```",
+      "usage": {
+        "input_tokens": 11563,
+        "cached_input_tokens": 8576,
+        "output_tokens": 257,
+        "reasoning_output_tokens": 39
+      },
+      "duration_ms": 7218,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:37.895731Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.896338Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.897315Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.897618Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.897983Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.898288Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.899217Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.899547Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.900423Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.901272Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.901545Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.902466Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.903459Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.903972Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.904913Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.905471Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.905764Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.906079Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.907000Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.907906Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.908882Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.909775Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.910681Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.911703Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:37.912519Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:44.807954Z  WARN codex_core::shell_snapshot: Failed to delete shell snapshot at AbsolutePathBuf(\"/Users/zadro/.codex/shell_snapshots/019f32a5-3dc3-7482-ab0d-0769ab89c11f.1783261117891467000.sh\"): Os { code: 2, kind: NotFound, message: \"No such file or directory\" }",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-counter-race",
+      "category": "debugging",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 100,
+      "visible_output_tokens": 273,
+      "visible_total_tokens": 373,
+      "text": "Use one atomic SQL statement, not `SELECT` then `UPDATE`.\n\n```sql\nUPDATE counters\nSET value = value + 1\nWHERE id = $1\nRETURNING value;\n```\n\nNode.js example with `pg`:\n\n```js\napp.post(\"/counter/:id/increment\", async (req, res, next) => {\n  try {\n    const { rows } = await pool.query(\n      `\n      UPDATE counters\n      SET value = value + 1\n      WHERE id = $1\n      RETURNING value\n      `,\n      [req.params.id]\n    );\n\n    if (rows.length === 0) {\n      return res.status(404).json({ error: \"counter not found\" });\n    }\n\n    res.json({ value: rows[0].value });\n  } catch (err) {\n    next(err);\n  }\n});\n```\n\nPostgreSQL locks the updated row during `UPDATE`, so concurrent requests serialize correctly and each gets a distinct incremented value.\n\nAvoid this pattern:\n\n```js\nconst current = await SELECT value ...\nawait UPDATE counters SET value = current + 1 ...\n```\n\nThat causes lost updates under concurrency.\n\nIf the endpoint updates multiple related rows, wrap the whole operation in a transaction and lock the counter row:\n\n```sql\nSELECT value FROM counters WHERE id = $1 FOR UPDATE;\n```",
+      "usage": {
+        "input_tokens": 11579,
+        "cached_input_tokens": 11136,
+        "output_tokens": 319,
+        "reasoning_output_tokens": 40
+      },
+      "duration_ms": 8271,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:45.151978Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.152552Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.153668Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.153965Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.154403Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.154696Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.155615Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.155905Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.157079Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.158102Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.158555Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.159509Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.160008Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.160936Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.161473Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.161749Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.162036Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.162945Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.163793Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.164743Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.165630Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.166591Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.167736Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.169226Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:45.170227Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "postgres-counter-race",
+      "category": "debugging",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 483,
+      "visible_output_tokens": 158,
+      "visible_total_tokens": 641,
+      "text": "Use one atomic SQL statement:\n\n```sql\nUPDATE counters\nSET value = value + 1\nWHERE id = $1\nRETURNING value;\n```\n\nNode:\n\n```js\nconst { rows } = await pool.query(\n  `UPDATE counters\n   SET value = value + 1\n   WHERE id = $1\n   RETURNING value`,\n  [counterId]\n);\n\nres.json({ value: rows[0].value });\n```\n\nDo not do:\n\n```js\nSELECT value ...\nUPDATE counters SET value = selected + 1 ...\n```\n\nThat read-modify-write path races. `UPDATE ... SET value = value + 1 RETURNING value` is atomic in PostgreSQL; concurrent reqs serialize on the row lock, each gets a unique incremented value.",
+      "usage": {
+        "input_tokens": 11962,
+        "cached_input_tokens": 8576,
+        "output_tokens": 197,
+        "reasoning_output_tokens": 33
+      },
+      "duration_ms": 6344,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:53.379000Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.379620Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.380601Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.380904Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.381344Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.381628Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.382562Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.382867Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.383776Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.384646Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.384945Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.385862Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.386559Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.387499Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.388006Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.388294Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.388600Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.389440Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.390341Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.391255Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.392170Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.393042Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.393952Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.394995Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:53.395934Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.417912Z  WARN codex_core::shell_snapshot: Failed to delete shell snapshot at AbsolutePathBuf(\"/Users/zadro/.codex/shell_snapshots/019f32a5-7a40-7c13-a3f1-c00ada5f1025.1783261133376324000.sh\"): Os { code: 2, kind: NotFound, message: \"No such file or directory\" }",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "react-error-boundary",
+      "category": "implementation",
+      "arm": "control",
+      "trial": 1,
+      "instruction_sha256": "ee4709bf8c62be6eecd8b1a4794410e89e53dcf913aef3386681b2087b99998e",
+      "visible_input_tokens": 79,
+      "visible_output_tokens": 413,
+      "visible_total_tokens": 492,
+      "text": "```tsx\nimport React from \"react\";\n\ntype Props = {\n  children: React.ReactNode;\n  fallback?: (args: { error: Error; retry: () => void }) => React.ReactNode;\n  onError?: (error: Error, info: React.ErrorInfo) => void;\n};\n\ntype State = {\n  error: Error | null;\n  retryKey: number;\n};\n\nexport class ErrorBoundary extends React.Component<Props, State> {\n  state: State = { error: null, retryKey: 0 };\n\n  static getDerivedStateFromError(error: Error): Partial<State> {\n    return { error };\n  }\n\n  componentDidCatch(error: Error, info: React.ErrorInfo) {\n    this.props.onError?.(error, info);\n\n    console.error(\"Render error caught by ErrorBoundary\", {\n      message: error.message,\n      stack: error.stack,\n      componentStack: info.componentStack,\n    });\n  }\n\n  retry = () => {\n    this.setState(({ retryKey }) => ({\n      error: null,\n      retryKey: retryKey + 1,\n    }));\n  };\n\n  render() {\n    const { error, retryKey } = this.state;\n\n    if (error) {\n      return (\n        <div role=\"alert\">\n          {this.props.fallback ? (\n            this.props.fallback({ error, retry: this.retry })\n          ) : (\n            <>\n              <h2>Something went wrong.</h2>\n              <p>{error.message}</p>\n              <button type=\"button\" onClick={this.retry}>\n                Retry\n              </button>\n            </>\n          )}\n        </div>\n      );\n    }\n\n    return <React.Fragment key={retryKey}>{this.props.children}</React.Fragment>;\n  }\n}\n```\n\nUsage:\n\n```tsx\n<ErrorBoundary onError={(error, info) => reportError(error, info)}>\n  <App />\n</ErrorBoundary>\n```\n\nCatches render/lifecycle/constructor errors below it. Does not catch async errors or event-handler errors.",
+      "usage": {
+        "input_tokens": 48251,
+        "cached_input_tokens": 34944,
+        "output_tokens": 938,
+        "reasoning_output_tokens": 218
+      },
+      "duration_ms": 22572,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:18:59.710111Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.712026Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.713763Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.714456Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.715436Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.716504Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.748812Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.749278Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.750425Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.751659Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.752512Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.754877Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.756043Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.757963Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.758613Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.758999Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.759395Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.761227Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.762373Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.763521Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.767796Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.771707Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.772653Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.773676Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:18:59.781625Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "react-error-boundary",
+      "category": "implementation",
+      "arm": "terse",
+      "trial": 1,
+      "instruction_sha256": "fe2cf5f5d2ba11c1aad49f2430893a60aa13e64aca82a3416ce41bba083cd679",
+      "visible_input_tokens": 95,
+      "visible_output_tokens": 375,
+      "visible_total_tokens": 470,
+      "text": "```tsx\nimport React from \"react\";\n\ntype Props = {\n  children: React.ReactNode;\n  fallback?: (args: { error: Error; retry: () => void }) => React.ReactNode;\n  onError?: (error: Error, info: React.ErrorInfo) => void;\n};\n\ntype State = {\n  error: Error | null;\n  retryKey: number;\n};\n\nexport class ErrorBoundary extends React.Component<Props, State> {\n  state: State = { error: null, retryKey: 0 };\n\n  static getDerivedStateFromError(error: Error): Partial<State> {\n    return { error };\n  }\n\n  componentDidCatch(error: Error, info: React.ErrorInfo) {\n    this.props.onError?.(error, info);\n\n    console.error(\"ErrorBoundary caught render error\", {\n      message: error.message,\n      stack: error.stack,\n      componentStack: info.componentStack,\n    });\n  }\n\n  retry = () => {\n    this.setState(({ retryKey }) => ({\n      error: null,\n      retryKey: retryKey + 1,\n    }));\n  };\n\n  render() {\n    if (this.state.error) {\n      return (\n        <div role=\"alert\">\n          {this.props.fallback ? (\n            this.props.fallback({ error: this.state.error, retry: this.retry })\n          ) : (\n            <>\n              <h2>Something went wrong.</h2>\n              <p>{this.state.error.message}</p>\n              <button type=\"button\" onClick={this.retry}>\n                Retry\n              </button>\n            </>\n          )}\n        </div>\n      );\n    }\n\n    return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;\n  }\n}\n```\n\nUsage:\n\n```tsx\n<ErrorBoundary>\n  <App />\n</ErrorBoundary>\n```",
+      "usage": {
+        "input_tokens": 48977,
+        "cached_input_tokens": 34432,
+        "output_tokens": 957,
+        "reasoning_output_tokens": 171
+      },
+      "duration_ms": 24334,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:19:22.636856Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.639083Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.640740Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.641077Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.641504Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.641823Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.642791Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.643106Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.644088Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.644996Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.645282Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.646161Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.646725Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.647656Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.648193Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.648514Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.648812Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.649669Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.650519Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.651509Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.652645Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.653956Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.654947Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.656005Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:22.656903Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    },
+    {
+      "prompt_id": "react-error-boundary",
+      "category": "implementation",
+      "arm": "simple_man_runtime",
+      "trial": 1,
+      "instruction_sha256": "b1cc1dddc3d3e2909010431643c7a101adacf30123b7a5d99dab439637e7009b",
+      "visible_input_tokens": 478,
+      "visible_output_tokens": 405,
+      "visible_total_tokens": 883,
+      "text": "```tsx\nimport React from \"react\";\n\ntype Props = {\n  children: React.ReactNode;\n  fallback?: (args: { error: Error; retry: () => void }) => React.ReactNode;\n  onError?: (error: Error, info: React.ErrorInfo) => void;\n};\n\ntype State = {\n  error: Error | null;\n  retryKey: number;\n};\n\nexport class ErrorBoundary extends React.Component<Props, State> {\n  state: State = { error: null, retryKey: 0 };\n\n  static getDerivedStateFromError(error: Error): Partial<State> {\n    return { error };\n  }\n\n  componentDidCatch(error: Error, info: React.ErrorInfo) {\n    this.props.onError?.(error, info);\n\n    console.error(\"ErrorBoundary caught render error\", {\n      message: error.message,\n      stack: error.stack,\n      componentStack: info.componentStack,\n    });\n  }\n\n  retry = () => {\n    this.setState((state) => ({\n      error: null,\n      retryKey: state.retryKey + 1,\n    }));\n  };\n\n  render() {\n    const { error, retryKey } = this.state;\n\n    if (error) {\n      if (this.props.fallback) {\n        return this.props.fallback({ error, retry: this.retry });\n      }\n\n      return (\n        <div role=\"alert\">\n          <h2>Something went wrong.</h2>\n          <p>{error.message}</p>\n          <button type=\"button\" onClick={this.retry}>\n            Retry\n          </button>\n        </div>\n      );\n    }\n\n    return <React.Fragment key={retryKey}>{this.props.children}</React.Fragment>;\n  }\n}\n```\n\nUsage:\n\n```tsx\n<ErrorBoundary onError={(error, info) => reportError(error, info)}>\n  <App />\n</ErrorBoundary>\n```\n\nNote: catches render/lifecycle/constructor errors below it, not async errors or event-handler errors.",
+      "usage": {
+        "input_tokens": 62190,
+        "cached_input_tokens": 37376,
+        "output_tokens": 1029,
+        "reasoning_output_tokens": 192
+      },
+      "duration_ms": 40578,
+      "stderr": "Reading additional input from stdin...\n2026-07-05T14:19:46.756788Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.759242Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.761976Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.762663Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.763254Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.763663Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.764982Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.765397Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.766632Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.767939Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.768497Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.770012Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.770879Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.772776Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.774054Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.774613Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.775235Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.776657Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.778642Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.782616Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.783740Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.785051Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.786337Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.787346Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back\n2026-07-05T14:19:46.788397Z  WARN codex_rollout::list: state db discrepancy during find_thread_path_by_id_str_in_subdir: falling_back",
+      "command": "codex --disable apps --disable plugins --disable plugin_hooks --disable tool_search --disable hooks -a never -s read-only exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -C /Users/zadro/.config/superpowers/worktrees/simple-man/benchmark-refresh <prompt>"
+    }
+  ]
+}
