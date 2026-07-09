@@ -8,6 +8,11 @@ different things:
 - `reference_compression`: Caveman README-style output compression, measured
   against a normal helpful baseline and output tokens only.
 
+> **Evidence status:** use the blind communication-review runner for current
+> Simple Man UX evaluation. The older runtime/reference runners below are
+> retained for migration work; they are not authoritative skill-quality
+> evidence until they use the same isolated execution contract.
+
 ## Runtime Economics Suite
 
 Default runner suite: `runtime_economics`.
@@ -83,6 +88,46 @@ The runner records all of them. It does not double-count
 the controlled visible token total.
 
 ## Commands
+
+### Blind communication review
+
+Generate the 10-prompt EN/RU smoke set with two matched low-verbosity arms:
+
+```bash
+make review-smoke-dry-run
+make review-smoke
+make review-serve
+```
+
+The smoke run makes 20 sequential Codex calls: native low verbosity and native
+low verbosity plus the current runtime policy. Override the pinned execution
+inputs explicitly when needed:
+
+```bash
+make review-smoke REVIEW_MODEL=gpt-5.5 REVIEW_EFFORT=high REVIEW_OUTPUT=/tmp/review-run
+```
+
+The runner creates a fresh `HOME`, `CODEX_HOME`, working directory, and temp
+auth state for every answer. It disables optional integrations, uses read-only
+sandboxing, validates the exact model-visible prompt, records raw JSONL and
+usage privately, and supports identity-checked resume.
+
+Review data is split into:
+
+- `public/bundle.json`: opaque shuffled A/B pairs only.
+- `private/manifest.json`: execution contract plus random blinding secret.
+- `private/key.json`: arm mapping, used only after review is sealed.
+- `private/ratings.json` and `private/results.json`: resumable judgments and the
+  final reveal.
+
+Pair IDs, order, and block-balanced left/right assignment use the private HMAC
+secret. The localhost review UI stores side-specific quality flags, survives a
+same-tab refresh, and does not return arm identities before every pair is rated
+and the review is sealed.
+
+This 10-pair run validates the harness and review UX. It is not enough to claim
+a stable skill-quality win; publishable evaluation needs a larger held-out
+corpus, repeated trials, and calibrated judging.
 
 Preview the full run without model calls:
 

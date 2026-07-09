@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'"
+    >
+    <title>Blind Review / Simple Man</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#review-main">Skip to review</a>
+
+    <div class="ambient-grid" aria-hidden="true"></div>
+
+    <section id="security-gate" class="system-gate is-hidden" role="alert" aria-labelledby="gate-title">
+      <div class="gate-mark" aria-hidden="true">!</div>
+      <p class="eyebrow">Access halted</p>
+      <h1 id="gate-title">Review token missing</h1>
+      <p>Open the exact local review URL containing <code>?token=…</code>.</p>
+      <p class="gate-detail">No benchmark data was requested.</p>
+    </section>
+
+    <section id="loading-gate" class="system-gate" aria-live="polite" aria-label="Loading review">
+      <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="eyebrow">Secure local session</p>
+      <h1>Loading blind pairs</h1>
+    </section>
+
+    <div id="app" class="app-shell is-hidden">
+      <header class="masthead">
+        <div class="brand-lockup">
+          <div class="brand-index" aria-hidden="true">SM<br>BR</div>
+          <div>
+            <p class="eyebrow">Simple Man evaluation desk</p>
+            <h1>Blind Review</h1>
+          </div>
+        </div>
+
+        <div class="run-meta" aria-label="Review progress">
+          <div class="run-id-wrap">
+            <span class="meta-label">Run</span>
+            <strong id="run-id">—</strong>
+          </div>
+          <div class="progress-copy">
+            <span id="progress-count">0 / 0 rated</span>
+            <span id="position-count">Pair 0 / 0</span>
+          </div>
+          <progress
+            id="progress-track"
+            class="progress-track"
+            aria-label="Ratings completed"
+            max="1"
+            value="0"
+          ></progress>
+        </div>
+
+        <div class="blind-stamp" id="blind-stamp">
+          <span class="stamp-dot" aria-hidden="true"></span>
+          Arms concealed
+        </div>
+      </header>
+
+      <div id="status-bar" class="status-bar" aria-live="polite">
+        <span id="status-text">Ready</span>
+        <span id="save-state" class="save-state">No unsaved changes</span>
+      </div>
+
+      <main id="review-main">
+        <section id="review-view" class="review-view" aria-labelledby="prompt-heading">
+          <header class="case-header">
+            <div class="case-number" aria-hidden="true">
+              <span>Case</span>
+              <strong id="case-number">00</strong>
+            </div>
+            <div class="prompt-block">
+              <div class="case-tags" aria-label="Pair metadata">
+                <span id="category-tag">Uncategorized</span>
+                <span id="language-tag">—</span>
+                <span id="rated-tag" class="rated-tag">Unrated</span>
+              </div>
+              <h2 id="prompt-heading">Prompt</h2>
+              <pre id="prompt-text" class="prompt-text"></pre>
+            </div>
+          </header>
+
+          <details id="context-panel" class="context-panel is-hidden">
+            <summary>
+              <span>Verified task context</span>
+              <small>Use for factual checks</small>
+            </summary>
+            <pre id="context-text"></pre>
+          </details>
+
+          <section class="answer-grid" aria-label="Anonymous answer comparison">
+            <article class="answer-card" id="left-card">
+              <header>
+                <div>
+                  <p class="eyebrow">Anonymous response</p>
+                  <h2>Answer A</h2>
+                </div>
+                <kbd>A</kbd>
+              </header>
+              <pre id="left-text" class="answer-text" tabindex="0"></pre>
+              <button class="card-select" type="button" data-choice="left" aria-pressed="false">
+                Choose A
+              </button>
+            </article>
+
+            <div class="versus-mark" aria-hidden="true"><span>VS</span></div>
+
+            <article class="answer-card" id="right-card">
+              <header>
+                <div>
+                  <p class="eyebrow">Anonymous response</p>
+                  <h2>Answer B</h2>
+                </div>
+                <kbd>B</kbd>
+              </header>
+              <pre id="right-text" class="answer-text" tabindex="0"></pre>
+              <button class="card-select" type="button" data-choice="right" aria-pressed="false">
+                Choose B
+              </button>
+            </article>
+          </section>
+
+          <section class="decision-panel" aria-labelledby="decision-heading">
+            <div class="decision-intro">
+              <p class="eyebrow">Your verdict</p>
+              <h2 id="decision-heading">Which response works better?</h2>
+              <p>Judge usefulness, factual completeness, clarity. Identity stays hidden until sealing.</p>
+            </div>
+
+            <div class="choice-row" role="group" aria-label="Verdict options">
+              <button type="button" data-choice="left" aria-pressed="false">
+                <kbd>A</kbd><span>A better</span>
+              </button>
+              <button type="button" data-choice="right" aria-pressed="false">
+                <kbd>B</kbd><span>B better</span>
+              </button>
+              <button type="button" data-choice="tie" aria-pressed="false">
+                <kbd>T</kbd><span>Tie</span>
+              </button>
+              <button type="button" data-choice="both_bad" aria-pressed="false">
+                <kbd>X</kbd><span>Both bad</span>
+              </button>
+            </div>
+
+            <fieldset class="flags-fieldset">
+              <legend>What affected the decision? <span>Optional · mark each answer separately</span></legend>
+              <div class="side-flag-groups">
+                <section class="side-flags" aria-labelledby="left-flags-heading">
+                  <h3 id="left-flags-heading"><b>A</b> Answer A</h3>
+                  <div class="flag-grid">
+                    <label><input type="checkbox" data-side="left" value="missing_fact"><span>Missing fact</span></label>
+                    <label><input type="checkbox" data-side="left" value="too_terse"><span>Too terse</span></label>
+                    <label><input type="checkbox" data-side="left" value="too_verbose"><span>Too verbose</span></label>
+                    <label><input type="checkbox" data-side="left" value="hard_to_scan"><span>Hard to scan</span></label>
+                    <label><input type="checkbox" data-side="left" value="needs_followup"><span>Needs follow-up</span></label>
+                    <label><input type="checkbox" data-side="left" value="unsupported_claim"><span>Unsupported claim</span></label>
+                  </div>
+                </section>
+                <section class="side-flags" aria-labelledby="right-flags-heading">
+                  <h3 id="right-flags-heading"><b>B</b> Answer B</h3>
+                  <div class="flag-grid">
+                    <label><input type="checkbox" data-side="right" value="missing_fact"><span>Missing fact</span></label>
+                    <label><input type="checkbox" data-side="right" value="too_terse"><span>Too terse</span></label>
+                    <label><input type="checkbox" data-side="right" value="too_verbose"><span>Too verbose</span></label>
+                    <label><input type="checkbox" data-side="right" value="hard_to_scan"><span>Hard to scan</span></label>
+                    <label><input type="checkbox" data-side="right" value="needs_followup"><span>Needs follow-up</span></label>
+                    <label><input type="checkbox" data-side="right" value="unsupported_claim"><span>Unsupported claim</span></label>
+                  </div>
+                </section>
+              </div>
+            </fieldset>
+
+            <label class="note-field" for="review-note">
+              <span>Reviewer note <small>Optional · saved with verdict</small></span>
+              <textarea id="review-note" rows="3" maxlength="2000" placeholder="Why did this response win? What was lost?"></textarea>
+            </label>
+          </section>
+
+          <nav class="review-nav" aria-label="Pair navigation">
+            <button id="previous-button" class="nav-button" type="button">
+              <span aria-hidden="true">←</span> Previous
+            </button>
+            <div class="shortcut-legend" aria-label="Keyboard shortcuts">
+              <span><kbd>A</kbd>/<kbd>B</kbd> winner</span>
+              <span><kbd>T</kbd> tie</span>
+              <span><kbd>X</kbd> both bad</span>
+              <span><kbd>⌘</kbd><kbd>↵</kbd> save + next</span>
+            </div>
+            <button id="next-button" class="nav-button nav-button-primary" type="button">
+              Save + next <span aria-hidden="true">→</span>
+            </button>
+          </nav>
+
+          <section id="seal-panel" class="seal-panel is-hidden" aria-labelledby="seal-heading">
+            <div>
+              <p class="eyebrow">Review complete</p>
+              <h2 id="seal-heading">Lock ratings. Reveal arms.</h2>
+              <p>Sealing is final. Check prior cases before revealing benchmark identities.</p>
+            </div>
+            <button id="seal-button" type="button">Seal &amp; reveal results</button>
+          </section>
+        </section>
+
+        <section id="results-view" class="results-view is-hidden" aria-labelledby="results-heading">
+          <header class="results-hero">
+            <div>
+              <p class="eyebrow">Review sealed / Arms revealed</p>
+              <h2 id="results-heading">The blind is off.</h2>
+              <p id="results-subtitle">Final benchmark results for this review run.</p>
+            </div>
+            <div class="reveal-seal" aria-hidden="true">REVEALED</div>
+          </header>
+          <div id="results-content" class="results-content"></div>
+        </section>
+      </main>
+
+      <footer class="page-footer">
+        <span>Local review surface</span>
+        <span>No arm identity requested before seal</span>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>
