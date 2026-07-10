@@ -159,8 +159,10 @@ closed.
 
 The runner accepts only production-file changes, requires a production diff
 and clean `git diff --check`, and recognizes only the exact canonical test
-command in the raw trace. After Codex exits and its auth-bearing directory is
-deleted, canonical and hidden validation run in separate pristine copies with a
+command required by each task prompt in the raw trace. Intermediate Codex
+progress messages are allowed, but the trace must end with one terminal answer.
+After Codex exits and its auth-bearing directory is deleted, canonical and
+hidden validation run in separate pristine copies with a
 fresh no-auth environment, disabled network, source/home denies, wall/output/
 file/workspace/patch limits, process-group cleanup, and a read-only workspace.
 Each hidden case gets its own pristine copy and randomized observation worker.

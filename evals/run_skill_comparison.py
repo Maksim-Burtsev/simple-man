@@ -247,7 +247,8 @@ PROJECTS = (
 
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
-            command and result, and any remaining risk. Answer in English.
+            command and result, and any remaining risk. Use exactly `npm test` for
+            validation. Answer in English.
             """
         ).strip(),
         check=("npm", "test"),
@@ -290,7 +291,8 @@ PROJECTS = (
 
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
-            command and result, and any remaining risk. Answer in English.
+            command and result, and any remaining risk. Use exactly
+            `python3 -m unittest -v` for validation. Answer in English.
             """
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
@@ -360,7 +362,8 @@ PROJECTS = (
 
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
-            command and result, and any remaining risk. Answer in English.
+            command and result, and any remaining risk. Use exactly
+            `python3 -m unittest -v` for validation. Answer in English.
             """
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
@@ -600,24 +603,29 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
         if process.poll() is None:
             process.wait()
         return
+    except PermissionError:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        return
     deadline = time.monotonic() + 1
     while time.monotonic() < deadline:
         process.poll()
         try:
             os.killpg(process_group, 0)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             break
         time.sleep(0.05)
     else:
         try:
             os.killpg(process_group, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             pass
         kill_deadline = time.monotonic() + 1
         while time.monotonic() < kill_deadline:
             try:
                 os.killpg(process_group, 0)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 break
             time.sleep(0.05)
     if process.poll() is None:
@@ -626,7 +634,7 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(process_group, signal.SIGKILL)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
             process.wait()
 
@@ -1473,7 +1481,7 @@ def parse_codex_trace(
     size = path.stat().st_size
     if size > max_raw_bytes:
         raise ValueError(f"raw JSONL exceeds byte cap ({size} > {max_raw_bytes})")
-    final_messages: list[str] = []
+    terminal_message: str | None = None
     usage: dict[str, int] = {}
     successful_commands: list[str] = []
     event_count = 0
@@ -1518,11 +1526,12 @@ def parse_codex_trace(
                 raise ValueError(
                     f"raw JSONL line {line_number} has disallowed item type"
                 )
+            terminal_message = None
         if event["type"] == "item.completed":
             if item.get("type") == "agent_message" and isinstance(
                 item.get("text"), str
             ):
-                final_messages.append(item["text"])
+                terminal_message = item["text"]
             if (
                 item.get("type") == "command_execution"
                 and item.get("exit_code") == 0
@@ -1541,8 +1550,8 @@ def parse_codex_trace(
                 for key, value in raw_usage.items()
                 if isinstance(value, int) and not isinstance(value, bool)
             }
-    if len(final_messages) != 1 or not final_messages[0].strip():
-        raise ValueError("Codex JSONL must have exactly one final agent_message")
+    if terminal_message is None or not terminal_message.strip():
+        raise ValueError("Codex JSONL must end with a final agent_message")
     if not usage:
         raise ValueError("Codex JSONL has no turn.completed usage")
     if (
@@ -1552,7 +1561,7 @@ def parse_codex_trace(
     ):
         raise ValueError("Codex JSONL must have one thread and one turn")
     return {
-        "answer": final_messages[0],
+        "answer": terminal_message,
         "usage": usage,
         "event_count": event_count,
         "successful_commands": successful_commands,

@@ -574,6 +574,12 @@ class ContractTests(RunnerFixture):
                     json.dumps(
                         {
                             "type": "item.completed",
+                            "item": {"type": "agent_message", "text": "progress"},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
                             "item": {
                                 "type": "command_execution",
                                 "command": "/bin/sh -lc 'npm test'",
@@ -601,6 +607,7 @@ class ContractTests(RunnerFixture):
             raw, expected_test_command=("npm", "test"), max_raw_bytes=100_000
         )
         self.assertTrue(parsed["tests_invoked"])
+        self.assertEqual(parsed["answer"], "done")
 
         duplicate_terminal = valid_trace.splitlines()
         duplicate_terminal.insert(
