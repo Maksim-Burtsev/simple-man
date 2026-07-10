@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from review_lib import private_key_commitment_sha256
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = ROOT / "evals" / "review_app"
@@ -108,6 +110,14 @@ class ReviewStore:
             raise ValueError("bundle run_id must be a non-empty string")
         if self.key.get("run_id") != run_id:
             raise ValueError("bundle and key run_id differ")
+        metadata = self.bundle.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError("bundle metadata must be an object")
+        commitment = metadata.get("key_commitment_sha256")
+        if not isinstance(commitment, str):
+            raise ValueError("bundle metadata has no key commitment")
+        if commitment != private_key_commitment_sha256(self.key):
+            raise ValueError("private key differs from public bundle commitment")
 
         pairs = self.bundle.get("pairs")
         key_pairs = self.key.get("pairs")
@@ -131,7 +141,9 @@ class ReviewStore:
             if not isinstance(pair, dict):
                 raise ValueError("each bundle pair must be an object")
             pair_id = pair.get("id")
-            if not isinstance(pair_id, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,200}", pair_id):
+            if not isinstance(pair_id, str) or not re.fullmatch(
+                r"[A-Za-z0-9._-]{1,200}", pair_id
+            ):
                 raise ValueError("each bundle pair id must be 1-200 safe characters")
             ids.append(pair_id)
             unknown_pair_fields = set(pair) - allowed_pair_fields
@@ -149,7 +161,9 @@ class ReviewStore:
             for field, limit in required_strings.items():
                 value = pair.get(field)
                 if not isinstance(value, str) or not value or len(value) > limit:
-                    raise ValueError(f"{pair_id}: {field} must be a non-empty string <= {limit}")
+                    raise ValueError(
+                        f"{pair_id}: {field} must be a non-empty string <= {limit}"
+                    )
             context = pair.get("verified_context")
             if context is not None and (
                 not isinstance(context, str) or len(context) > 100_000
@@ -159,10 +173,14 @@ class ReviewStore:
                 )
             for side in ("left", "right"):
                 answer = pair.get(side)
-                if not isinstance(answer, dict) or not isinstance(answer.get("text"), str):
+                if not isinstance(answer, dict) or not isinstance(
+                    answer.get("text"), str
+                ):
                     raise ValueError(f"{pair_id}: {side}.text must be a string")
                 if len(answer["text"]) > 1_000_000:
-                    raise ValueError(f"{pair_id}: {side}.text exceeds 1000000 characters")
+                    raise ValueError(
+                        f"{pair_id}: {side}.text exceeds 1000000 characters"
+                    )
                 unknown_answer_fields = set(answer) - {"text"}
                 if unknown_answer_fields:
                     raise ValueError(
@@ -190,7 +208,9 @@ class ReviewStore:
                 )
             for field in ("left_arm", "right_arm"):
                 value = mapping.get(field)
-                if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,99}", value):
+                if not isinstance(value, str) or not re.fullmatch(
+                    r"[a-z][a-z0-9_]{0,99}", value
+                ):
                     raise ValueError(f"{pair_id}: key mapping needs {field}")
             if mapping["left_arm"] == mapping["right_arm"]:
                 raise ValueError(f"{pair_id}: left_arm and right_arm must differ")
@@ -242,7 +262,9 @@ class ReviewStore:
             if unknown:
                 raise ValueError(f"ratings contain unknown pair ids: {sorted(unknown)}")
             sealed_at = ratings.get("sealed_at")
-            if sealed_at is not None and (not isinstance(sealed_at, str) or not sealed_at):
+            if sealed_at is not None and (
+                not isinstance(sealed_at, str) or not sealed_at
+            ):
                 raise ValueError("ratings sealed_at must be null or a non-empty string")
             for pair_id, rating in ratings["ratings"].items():
                 self._validate_rating(pair_id, rating)
@@ -270,7 +292,11 @@ class ReviewStore:
             total = len(self._pairs)
             if requested_index is None:
                 requested_index = next(
-                    (index for index, pair in enumerate(self._pairs) if pair["id"] not in ratings),
+                    (
+                        index
+                        for index, pair in enumerate(self._pairs)
+                        if pair["id"] not in ratings
+                    ),
                     max(total - 1, 0),
                 )
             if requested_index < 0 or requested_index >= total:
@@ -299,7 +325,9 @@ class ReviewStore:
                 raise ValueError(f"rating has unknown fields: {sorted(unknown)}")
             choice = payload.get("choice")
             if choice not in ALLOWED_CHOICES:
-                raise ValueError(f"choice must be one of: {', '.join(sorted(ALLOWED_CHOICES))}")
+                raise ValueError(
+                    f"choice must be one of: {', '.join(sorted(ALLOWED_CHOICES))}"
+                )
             flags = payload.get("flags", {"left": [], "right": []})
             self._validate_flags(flags, prefix="rating")
             note = payload.get("note", "")
@@ -370,7 +398,9 @@ class ReviewStore:
             mapping = self.key["pairs"][pair_id]
             choice = rating["choice"]
             verdicts[choice] += 1
-            winner = mapping.get(f"{choice}_arm") if choice in {"left", "right"} else None
+            winner = (
+                mapping.get(f"{choice}_arm") if choice in {"left", "right"} else None
+            )
             if winner is not None:
                 wins[winner] += 1
             side_flags = rating["flags"]
@@ -494,7 +524,10 @@ def make_handler(store: ReviewStore, token: str, app_dir: Path = APP_DIR):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
+            )
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")

@@ -26,12 +26,20 @@ DEFAULT_ARMS = (NATIVE_LOW_ARM, SIMPLE_MAN_RUNTIME_ARM)
 
 _PROMPT_CONTAMINATION_PATTERNS = (
     ("Simple Man name", re.compile(r"\bsimple[ _-]+man\b", re.IGNORECASE)),
-    ("Simple Man runtime marker", re.compile(re.escape(SIMPLE_MAN_RUNTIME_MARKER), re.IGNORECASE)),
+    (
+        "Simple Man runtime marker",
+        re.compile(re.escape(SIMPLE_MAN_RUNTIME_MARKER), re.IGNORECASE),
+    ),
     ("native-low arm", re.compile(r"\bnative[ _-]+low\b", re.IGNORECASE)),
-    ("model verbosity treatment", re.compile(r"\bmodel[ _-]+verbosity\b", re.IGNORECASE)),
+    (
+        "model verbosity treatment",
+        re.compile(r"\bmodel[ _-]+verbosity\b", re.IGNORECASE),
+    ),
     (
         "benchmark treatment arm",
-        re.compile(r"\b(?:benchmark|control|treatment|candidate)[ _-]+arm\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:benchmark|control|treatment|candidate)[ _-]+arm\b", re.IGNORECASE
+        ),
     ),
 )
 _SAFE_ENV_KEYS = frozenset(
@@ -59,6 +67,9 @@ _SAFE_ENV_KEYS = frozenset(
 )
 _PROXY_ENV_KEYS = frozenset(
     {"ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "all_proxy", "https_proxy", "http_proxy"}
+)
+_SAFE_PATH = (
+    "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 )
 
 
@@ -165,7 +176,9 @@ def atomic_copy_file(source: Path, destination: Path, *, mode: int = 0o600) -> N
 def load_prompts(path: Path) -> list[dict[str, Any]]:
     prompts: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         try:
@@ -183,12 +196,16 @@ def load_prompts(path: Path) -> list[dict[str, Any]]:
         if task_id in seen:
             raise ValueError(f"{path}:{line_number}: duplicate id: {task_id}")
         if not isinstance(category, str) or not category:
-            raise ValueError(f"{path}:{line_number}: category must be a non-empty string")
+            raise ValueError(
+                f"{path}:{line_number}: category must be a non-empty string"
+            )
         if not isinstance(text, str) or not text.strip():
             raise ValueError(f"{path}:{line_number}: prompt must be a non-empty string")
         language = prompt.get("language")
         if language is not None and (not isinstance(language, str) or not language):
-            raise ValueError(f"{path}:{line_number}: language must be a non-empty string")
+            raise ValueError(
+                f"{path}:{line_number}: language must be a non-empty string"
+            )
         verified_context = prompt.get("verified_context")
         if not isinstance(verified_context, str) or not verified_context.strip():
             raise ValueError(
@@ -208,7 +225,11 @@ def prompt_corpus_sha256(prompts: Sequence[Mapping[str, Any]]) -> str:
 
 
 def prompt_contamination(prompt: str) -> list[str]:
-    return [label for label, pattern in _PROMPT_CONTAMINATION_PATTERNS if pattern.search(prompt)]
+    return [
+        label
+        for label, pattern in _PROMPT_CONTAMINATION_PATTERNS
+        if pattern.search(prompt)
+    ]
 
 
 def validate_prompt_contamination(prompts: Sequence[Mapping[str, Any]]) -> None:
@@ -248,6 +269,31 @@ def private_run_id(config_sha256: str, key: RunKey) -> str:
     return "run_" + sha256_text(canonical_json(identity))[:24]
 
 
+def secret_seeded_execution_schedule(
+    blinding_secret: str,
+    run_keys: Sequence[RunKey],
+) -> list[RunKey]:
+    if len(set(run_keys)) != len(run_keys):
+        raise ValueError("execution schedule run keys must be unique")
+
+    def identity(key: RunKey) -> str:
+        return canonical_json(
+            {
+                "task_id": key.task_id,
+                "arm": key.arm,
+                "trial": key.trial,
+            }
+        )
+
+    return sorted(
+        run_keys,
+        key=lambda key: (
+            _blind_digest(blinding_secret, "execution-order", identity(key)),
+            identity(key),
+        ),
+    )
+
+
 def _blind_digest(secret: str, purpose: str, value: str) -> bytes:
     if not secret:
         raise ValueError("blinding secret must not be empty")
@@ -272,11 +318,14 @@ def public_pair_id(
         "trial": trial,
         "pair_index": pair_index,
     }
-    return "pair_" + _blind_digest(
-        blinding_secret,
-        "pair-id",
-        canonical_json(identity),
-    ).hex()[:24]
+    return (
+        "pair_"
+        + _blind_digest(
+            blinding_secret,
+            "pair-id",
+            canonical_json(identity),
+        ).hex()[:24]
+    )
 
 
 def _blind_rank(blinding_secret: str, purpose: str, pair_id: str) -> bytes:
@@ -309,7 +358,9 @@ def detect_language(text: str) -> str:
     return "ru" if re.search(r"[А-Яа-яЁё]", text) else "en"
 
 
-def _metadata_contains_arm_name(metadata: Mapping[str, Any], arms: Sequence[str]) -> str | None:
+def _metadata_contains_arm_name(
+    metadata: Mapping[str, Any], arms: Sequence[str]
+) -> str | None:
     serialized = canonical_json(metadata).casefold()
     for arm in arms:
         variants = {arm.casefold(), arm.replace("_", " ").casefold()}
@@ -349,7 +400,9 @@ def _public_treatment_leaks(value: Mapping[str, Any], arms: Sequence[str]) -> li
     return sorted(leaks)
 
 
-def _index_results(results: Sequence[Mapping[str, Any]]) -> dict[RunKey, Mapping[str, Any]]:
+def _index_results(
+    results: Sequence[Mapping[str, Any]],
+) -> dict[RunKey, Mapping[str, Any]]:
     indexed: dict[RunKey, Mapping[str, Any]] = {}
     private_run_ids: set[str] = set()
     for result in results:
@@ -384,6 +437,8 @@ def build_blind_bundle(
         raise ValueError("at least two arms are required")
     if len(set(arms)) != len(arms):
         raise ValueError("arms must be unique")
+    if "key_commitment_sha256" in metadata:
+        raise ValueError("key_commitment_sha256 is reserved public metadata")
     leaked_arm = _metadata_contains_arm_name(metadata, arms)
     if leaked_arm:
         raise ValueError(f"public metadata contains arm name: {leaked_arm}")
@@ -392,7 +447,9 @@ def build_blind_bundle(
     for prompt in prompts:
         verified_context = prompt.get("verified_context")
         if not isinstance(verified_context, str) or not verified_context.strip():
-            raise ValueError(f"verified_context must be a non-empty string: {prompt['id']}")
+            raise ValueError(
+                f"verified_context must be a non-empty string: {prompt['id']}"
+            )
 
     public_pairs: list[dict[str, Any]] = []
     private_pairs: dict[str, dict[str, str]] = {}
@@ -464,12 +521,26 @@ def build_blind_bundle(
 
     expected_results = len(prompts) * len(arms) * trials
     if len(indexed) != expected_results:
-        raise ValueError(f"unexpected results: expected {expected_results}, got {len(indexed)}")
+        raise ValueError(
+            f"unexpected results: expected {expected_results}, got {len(indexed)}"
+        )
 
+    private = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": public_run_id,
+        "commitment_nonce": hmac.new(
+            blinding_secret.encode("utf-8"),
+            f"key-commitment\0{public_run_id}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest(),
+        "pairs": private_pairs,
+    }
+    public_metadata = dict(metadata)
+    public_metadata["key_commitment_sha256"] = private_key_commitment_sha256(private)
     public = {
         "schema_version": SCHEMA_VERSION,
         "run_id": public_run_id,
-        "metadata": dict(metadata),
+        "metadata": public_metadata,
         "pairs": public_pairs,
     }
     public_leaks = _public_treatment_leaks(public, arms)
@@ -477,28 +548,44 @@ def build_blind_bundle(
         raise ValueError(
             "public bundle contains treatment name: " + ", ".join(public_leaks)
         )
-    private = {
-        "schema_version": SCHEMA_VERSION,
-        "run_id": public_run_id,
-        "pairs": private_pairs,
-    }
     return public, private
 
 
-def assert_arm_environment(spec: ArmSpec, environment: IsolatedCodexEnvironment) -> None:
+def private_key_commitment_sha256(private_key: Mapping[str, Any]) -> str:
+    nonce = private_key.get("commitment_nonce")
+    if not isinstance(nonce, str) or re.fullmatch(r"[0-9a-f]{64}", nonce) is None:
+        raise ValueError("private key commitment_nonce must be a 256-bit hex value")
+    return sha256_text(canonical_json(private_key))
+
+
+def assert_arm_environment(
+    spec: ArmSpec, environment: IsolatedCodexEnvironment
+) -> None:
     instruction_files = list(environment.home.rglob("AGENTS.md"))
     instruction_texts = [path.read_text(encoding="utf-8") for path in instruction_files]
-    marker_count = sum(text.count(SIMPLE_MAN_RUNTIME_MARKER) for text in instruction_texts)
-    name_count = sum(len(re.findall(r"\bsimple[ _-]+man\b", text, re.IGNORECASE)) for text in instruction_texts)
+    marker_count = sum(
+        text.count(SIMPLE_MAN_RUNTIME_MARKER) for text in instruction_texts
+    )
+    name_count = sum(
+        len(re.findall(r"\bsimple[ _-]+man\b", text, re.IGNORECASE))
+        for text in instruction_texts
+    )
 
-    if spec.name == SIMPLE_MAN_RUNTIME_ARM:
+    if spec.agents_text is not None:
         expected_path = environment.codex_home / "AGENTS.md"
         if instruction_files != [expected_path]:
-            raise ValueError("Simple Man arm must have exactly one CODEX_HOME/AGENTS.md")
-        if marker_count != 1:
-            raise ValueError("Simple Man arm must have exactly one runtime marker")
-        if name_count < 1:
-            raise ValueError("Simple Man arm runtime name is missing")
+            raise ValueError(f"{spec.name} must have exactly one CODEX_HOME/AGENTS.md")
+        if instruction_texts != [spec.agents_text]:
+            raise ValueError(
+                f"{spec.name} AGENTS.md differs from the configured policy"
+            )
+        if spec.name == SIMPLE_MAN_RUNTIME_ARM:
+            if marker_count != 1:
+                raise ValueError("Simple Man arm must have exactly one runtime marker")
+            if name_count < 1:
+                raise ValueError("Simple Man arm runtime name is missing")
+        elif marker_count or name_count:
+            raise ValueError(f"{spec.name} policy contains Simple Man instructions")
     elif marker_count or name_count or instruction_files:
         raise ValueError(f"{spec.name} arm contains Simple Man instructions")
 
@@ -514,6 +601,7 @@ def safe_environment() -> dict[str, str]:
             raise ValueError(
                 f"{key} contains proxy credentials; use a credential-free proxy URL"
             )
+    env["PATH"] = _SAFE_PATH
     return env
 
 
@@ -565,27 +653,63 @@ def isolated_codex_environment(
 
 
 def parse_codex_jsonl(path: Path) -> tuple[str, dict[str, int]]:
-    final_text = ""
-    usage: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    allowed_event_types = {
+        "thread.started",
+        "turn.started",
+        "item.started",
+        "item.completed",
+        "turn.completed",
+    }
+    allowed_item_types = {"agent_message", "reasoning"}
+    final_messages: list[str] = []
+    usage: dict[str, int] | None = None
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
         if not line.strip():
             continue
+        if usage is not None:
+            raise ValueError("Codex JSONL contains an event after turn.completed")
         try:
             event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if event.get("type") == "item.completed":
-            item = event.get("item") or {}
-            if item.get("type") == "agent_message":
-                final_text = str(item.get("text", ""))
-        elif event.get("type") == "turn.completed":
-            usage = {
-                key: int(value)
-                for key, value in (event.get("usage") or {}).items()
-                if isinstance(value, int) and not isinstance(value, bool)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Codex JSONL line {line_number} is invalid JSON") from exc
+        if not isinstance(event, dict):
+            raise ValueError(f"Codex JSONL line {line_number} is not an object")
+        event_type = event.get("type")
+        if event_type not in allowed_event_types:
+            raise ValueError(f"Codex JSONL has unexpected event type: {event_type!r}")
+        if event_type in {"item.started", "item.completed"}:
+            item = event.get("item")
+            item_type = item.get("type") if isinstance(item, dict) else None
+            if item_type not in allowed_item_types:
+                raise ValueError(
+                    f"Codex JSONL contains forbidden item type: {item_type!r}"
+                )
+            if event_type == "item.completed" and item_type == "agent_message":
+                text = item.get("text")
+                if not isinstance(text, str):
+                    raise ValueError("Codex agent_message text must be a string")
+                final_messages.append(text)
+        elif event_type == "turn.completed":
+            raw_usage = event.get("usage")
+            if not isinstance(raw_usage, dict) or not raw_usage:
+                raise ValueError("Codex turn.completed has no usage")
+            normalized_usage = {
+                key: value
+                for key, value in raw_usage.items()
+                if isinstance(key, str)
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
             }
-    if not final_text.strip():
-        raise ValueError("Codex JSONL has no final agent_message")
-    if not usage:
+            if normalized_usage != raw_usage:
+                raise ValueError("Codex usage must contain only non-negative integers")
+            usage = normalized_usage
+    if len(final_messages) != 1 or not final_messages[0].strip():
+        raise ValueError(
+            "Codex JSONL must contain exactly one non-empty final agent_message"
+        )
+    if usage is None:
         raise ValueError("Codex JSONL has no turn.completed usage")
-    return final_text, usage
+    return final_messages[0], usage

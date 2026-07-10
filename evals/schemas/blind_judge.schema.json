@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/blind_judge.schema.json",
+  "title": "Anonymous response judgment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "flags",
+    "rationale"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "A",
+        "B",
+        "tie",
+        "both_bad"
+      ]
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "A",
+        "B"
+      ],
+      "properties": {
+        "A": {
+          "$ref": "#/$defs/flagList"
+        },
+        "B": {
+          "$ref": "#/$defs/flagList"
+        }
+      }
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600
+    }
+  },
+  "$defs": {
+    "flagList": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "enum": [
+          "factual_error",
+          "safety_risk",
+          "constraint_violation",
+          "missing_required_content",
+          "unsupported_claim",
+          "unclear",
+          "language_or_tone_mismatch",
+          "unnecessary_content"
+        ]
+      }
+    }
+  }
+}

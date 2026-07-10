@@ -25,12 +25,37 @@ class ReviewStoreTests(unittest.TestCase):
         self.bundle_path = root / "bundle.json"
         self.key_path = root / "key.json"
         self.ratings_path = root / "ratings.json"
+        key = {
+            "schema_version": 1,
+            "run_id": "smoke-1",
+            "commitment_nonce": "a" * 64,
+            "pairs": {
+                "p1": {
+                    "left_arm": "simple_man_runtime",
+                    "right_arm": "native_low",
+                    "left_run_id": "l1",
+                    "right_run_id": "r1",
+                },
+                "p2": {
+                    "left_arm": "native_low",
+                    "right_arm": "simple_man_runtime",
+                    "left_run_id": "l2",
+                    "right_run_id": "r2",
+                },
+            },
+        }
+        write_json(self.key_path, key)
         write_json(
             self.bundle_path,
             {
                 "schema_version": 1,
                 "run_id": "smoke-1",
-                "metadata": {"model": "test"},
+                "metadata": {
+                    "model": "test",
+                    "key_commitment_sha256": review_server.private_key_commitment_sha256(
+                        key
+                    ),
+                },
                 "pairs": [
                     {
                         "id": "p1",
@@ -51,27 +76,6 @@ class ReviewStoreTests(unittest.TestCase):
                         "right": {"text": "Риска нет."},
                     },
                 ],
-            },
-        )
-        write_json(
-            self.key_path,
-            {
-                "schema_version": 1,
-                "run_id": "smoke-1",
-                "pairs": {
-                    "p1": {
-                        "left_arm": "simple_man_runtime",
-                        "right_arm": "native_low",
-                        "left_run_id": "l1",
-                        "right_run_id": "r1",
-                    },
-                    "p2": {
-                        "left_arm": "native_low",
-                        "right_arm": "simple_man_runtime",
-                        "left_run_id": "l2",
-                        "right_run_id": "r2",
-                    },
-                },
             },
         )
         self.store = review_server.ReviewStore(
@@ -132,7 +136,26 @@ class ReviewStoreTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "public left has unknown fields"):
             review_server.ReviewStore(
-                self.bundle_path, self.key_path, self.ratings_path.with_name("other.json")
+                self.bundle_path,
+                self.key_path,
+                self.ratings_path.with_name("other.json"),
+            )
+
+    def test_public_bundle_commitment_rejects_swapped_key(self):
+        key = json.loads(self.key_path.read_text())
+        mapping = key["pairs"]["p1"]
+        mapping["left_arm"], mapping["right_arm"] = (
+            mapping["right_arm"],
+            mapping["left_arm"],
+        )
+        write_json(self.key_path, key)
+        with self.assertRaisesRegex(
+            ValueError, "differs from public bundle commitment"
+        ):
+            review_server.ReviewStore(
+                self.bundle_path,
+                self.key_path,
+                self.ratings_path.with_name("other.json"),
             )
 
     def test_rating_validation_rejects_unknown_choice_and_flag(self):
@@ -207,11 +230,28 @@ class ReviewHTTPTests(unittest.TestCase):
         root = Path(self.temp.name)
         bundle = root / "bundle.json"
         key = root / "key.json"
+        key_payload = {
+            "schema_version": 1,
+            "run_id": "http-1",
+            "commitment_nonce": "b" * 64,
+            "pairs": {
+                "p1": {
+                    "left_arm": "native_low",
+                    "right_arm": "simple_man_runtime",
+                }
+            },
+        }
+        write_json(key, key_payload)
         write_json(
             bundle,
             {
                 "schema_version": 1,
                 "run_id": "http-1",
+                "metadata": {
+                    "key_commitment_sha256": review_server.private_key_commitment_sha256(
+                        key_payload
+                    )
+                },
                 "pairs": [
                     {
                         "id": "p1",
@@ -223,19 +263,6 @@ class ReviewHTTPTests(unittest.TestCase):
                         "right": {"text": "B"},
                     }
                 ],
-            },
-        )
-        write_json(
-            key,
-            {
-                "schema_version": 1,
-                "run_id": "http-1",
-                "pairs": {
-                    "p1": {
-                        "left_arm": "native_low",
-                        "right_arm": "simple_man_runtime",
-                    }
-                },
             },
         )
         store = review_server.ReviewStore(bundle, key, root / "ratings.json")
@@ -251,7 +278,9 @@ class ReviewHTTPTests(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temp.cleanup()
 
-    def request(self, path: str, *, token: str | None = None, method: str = "GET", data=None):
+    def request(
+        self, path: str, *, token: str | None = None, method: str = "GET", data=None
+    ):
         headers = {}
         if token:
             headers["X-Review-Token"] = token
@@ -259,7 +288,9 @@ class ReviewHTTPTests(unittest.TestCase):
         if body is not None:
             headers["Content-Type"] = "application/json"
         return urllib.request.urlopen(
-            urllib.request.Request(self.base + path, data=body, headers=headers, method=method)
+            urllib.request.Request(
+                self.base + path, data=body, headers=headers, method=method
+            )
         )
 
     def test_api_requires_token_and_never_leaks_arm_before_seal(self):
@@ -277,7 +308,9 @@ class ReviewHTTPTests(unittest.TestCase):
         with self.request("/") as response:
             body = response.read().decode()
             self.assertEqual(response.headers["Referrer-Policy"], "no-referrer")
-            self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+            self.assertIn(
+                "frame-ancestors 'none'", response.headers["Content-Security-Policy"]
+            )
         self.assertIn('<meta name="referrer" content="no-referrer">', body)
 
         with self.assertRaises(urllib.error.HTTPError) as denied:

@@ -18,10 +18,16 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
 from review_lib import DEFAULT_ARMS, SCHEMA_VERSION, ArmSpec, RunKey
-from review_lib import atomic_copy_file, atomic_write_json, atomic_write_text, build_arm_specs
+from review_lib import (
+    atomic_copy_file,
+    atomic_write_json,
+    atomic_write_text,
+    build_arm_specs,
+)
 from review_lib import build_blind_bundle, canonical_json, isolated_codex_environment
 from review_lib import load_prompts, parse_codex_jsonl, private_run_id
 from review_lib import prompt_corpus_sha256, sha256_file, sha256_text
+from review_lib import secret_seeded_execution_schedule
 from review_lib import validate_prompt_contamination
 
 
@@ -29,8 +35,27 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPTS = ROOT / "evals" / "prompts" / "review_smoke.jsonl"
 DEFAULT_POLICY = ROOT / "AGENTS.md.snippet"
 DEFAULT_OUTPUT = ROOT / ".local-fixtures" / "blind-review"
-DISABLED_FEATURES = ("apps", "plugins", "plugin_hooks", "tool_search", "hooks")
-EXECUTION_CONTRACT_VERSION = 2
+DISABLED_FEATURES = (
+    "apps",
+    "plugins",
+    "plugin_hooks",
+    "tool_search",
+    "hooks",
+    "shell_tool",
+    "unified_exec",
+    "shell_snapshot",
+    "multi_agent",
+    "browser_use",
+    "browser_use_external",
+    "browser_use_full_cdp_access",
+    "in_app_browser",
+    "computer_use",
+    "image_generation",
+    "workspace_dependencies",
+    "goals",
+    "memories",
+)
+EXECUTION_CONTRACT_VERSION = 3
 EXECUTION_CONTRACT = {
     "version": EXECUTION_CONTRACT_VERSION,
     "schema_version": SCHEMA_VERSION,
@@ -47,6 +72,7 @@ EXECUTION_CONTRACT = {
     "skip_git_repo_check": True,
     "prompt_transport": "stdin",
     "prompt_input_preflight": "codex debug prompt-input",
+    "tool_events": "fail_closed",
     "isolation": "fresh HOME, CODEX_HOME, cwd per arm/task/trial",
     "output_lock": "nonblocking advisory lock for one live writer",
     "auth_refresh": "atomic copy through temp-only run cache",
@@ -98,6 +124,37 @@ def codex_version(executable: str) -> str:
     if not version:
         raise RuntimeError("Codex CLI returned an empty version")
     return version
+
+
+def source_git_provenance(repository: Path) -> tuple[str, bool]:
+    try:
+        commit_process = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        status_process = subprocess.run(
+            [
+                "git",
+                "-c",
+                "status.showUntrackedFiles=normal",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=normal",
+            ],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(f"cannot determine source Git provenance: {exc}") from exc
+    commit = commit_process.stdout.strip()
+    if not commit or "\n" in commit:
+        raise RuntimeError("Git returned an invalid source commit")
+    return commit, bool(status_process.stdout.strip())
 
 
 def toml_string(value: str) -> str:
@@ -195,11 +252,15 @@ def preflight_model_visible_input(
         timeout=timeout_seconds,
     )
     if process.returncode != 0:
-        raise RuntimeError(f"Codex prompt-input preflight failed with exit {process.returncode}")
+        raise RuntimeError(
+            f"Codex prompt-input preflight failed with exit {process.returncode}"
+        )
     try:
         model_input = json.loads(process.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Codex prompt-input preflight returned invalid JSON") from exc
+        raise RuntimeError(
+            "Codex prompt-input preflight returned invalid JSON"
+        ) from exc
     if not isinstance(model_input, list):
         raise RuntimeError("Codex prompt-input preflight did not return a message list")
 
@@ -211,7 +272,9 @@ def preflight_model_visible_input(
             if isinstance(content, dict) and isinstance(content.get("text"), str):
                 text_parts.append(content["text"])
     if not text_parts or text_parts[-1] != prompt:
-        raise RuntimeError("Codex prompt-input preflight did not preserve the exact task prompt")
+        raise RuntimeError(
+            "Codex prompt-input preflight did not preserve the exact task prompt"
+        )
 
     context = "\n".join(text_parts[:-1])
     marker_count = context.count("## Simple Man runtime policy")
@@ -256,7 +319,17 @@ def config_payload(
     effort: str,
     cli_version: str,
     runner_sha256: str,
+    source_git_commit: str,
+    source_git_dirty: bool,
+    timeout_seconds: int = 600,
+    max_calls: int = 100,
+    max_total_reported_tokens: int = 1_500_000,
+    require_clean_source: bool = False,
 ) -> dict[str, Any]:
+    if not source_git_commit:
+        raise ValueError("source_git_commit must not be empty")
+    if not isinstance(source_git_dirty, bool):
+        raise ValueError("source_git_dirty must be a boolean")
     return {
         "schema_version": SCHEMA_VERSION,
         "prompt_corpus_sha256": prompt_corpus_sha256(prompts),
@@ -277,6 +350,14 @@ def config_payload(
         "execution_contract_sha256": EXECUTION_CONTRACT_SHA256,
         "execution_contract": EXECUTION_CONTRACT,
         "runner_sha256": runner_sha256,
+        "source_git_commit": source_git_commit,
+        "source_git_dirty": source_git_dirty,
+        "limits": {
+            "timeout_seconds": timeout_seconds,
+            "max_calls": max_calls,
+            "max_total_reported_tokens": max_total_reported_tokens,
+        },
+        "require_clean_source": require_clean_source,
     }
 
 
@@ -306,6 +387,75 @@ def load_or_create_manifest(
     if not dry_run:
         atomic_write_json(path, manifest)
     return manifest
+
+
+def execution_schedule_payload(
+    *,
+    run_id: str,
+    config_sha256: str,
+    run_keys: Sequence[RunKey],
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": run_id,
+        "config_sha256": config_sha256,
+        "runs": [
+            {
+                "task_id": key.task_id,
+                "arm": key.arm,
+                "trial": key.trial,
+            }
+            for key in run_keys
+        ],
+    }
+
+
+def load_or_create_execution_schedule(
+    path: Path,
+    *,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    config_sha256: str,
+    run_keys: Sequence[RunKey],
+) -> list[RunKey]:
+    blinding_secret = manifest.get("blinding_secret")
+    if not isinstance(blinding_secret, str) or not blinding_secret:
+        raise RuntimeError("private manifest has no blinding secret")
+    run_id = manifest.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise RuntimeError("private manifest has no run id")
+
+    expected_schedule = secret_seeded_execution_schedule(blinding_secret, run_keys)
+    expected_payload = execution_schedule_payload(
+        run_id=run_id,
+        config_sha256=config_sha256,
+        run_keys=expected_schedule,
+    )
+    expected_sha256 = sha256_text(canonical_json(expected_payload))
+    committed_sha256 = manifest.get("execution_schedule_sha256")
+    if committed_sha256 is not None and committed_sha256 != expected_sha256:
+        raise RuntimeError("private manifest execution schedule hash mismatch")
+
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("private execution schedule is invalid JSON") from exc
+        if sha256_text(canonical_json(payload)) != expected_sha256:
+            raise RuntimeError("private execution schedule hash mismatch")
+        if payload != expected_payload:
+            raise RuntimeError(
+                "private execution schedule differs from seeded schedule"
+            )
+    else:
+        if committed_sha256 is not None:
+            raise RuntimeError("committed private execution schedule is missing")
+        atomic_write_json(path, expected_payload)
+
+    if committed_sha256 is None:
+        manifest["execution_schedule_sha256"] = expected_sha256
+        atomic_write_json(manifest_path, manifest)
+    return expected_schedule
 
 
 def result_identity(
@@ -344,23 +494,49 @@ def load_resumable_result(
 ) -> dict[str, Any] | None:
     if not path.exists():
         return None
-    result = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"resume result is invalid JSON: {path.name}") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError(f"resume result is not an object: {path.name}")
+    expected_fields = set(expected_identity) | {
+        "text",
+        "usage",
+        "duration_ms",
+        "raw_sha256",
+    }
+    if set(result) != expected_fields:
+        raise RuntimeError(f"resume result fields differ: {path.name}")
     mismatches = [
         key
         for key, expected in expected_identity.items()
         if result.get(key) != expected
     ]
     if mismatches:
-        raise RuntimeError(f"resume result identity mismatch ({path.name}): {', '.join(mismatches)}")
+        raise RuntimeError(
+            f"resume result identity mismatch ({path.name}): {', '.join(mismatches)}"
+        )
     if not raw_path.is_file():
         raise RuntimeError(f"resume raw JSONL missing: {raw_path.name}")
     if result.get("raw_sha256") != sha256_file(raw_path):
         raise RuntimeError(f"resume raw JSONL hash mismatch: {raw_path.name}")
-    if not isinstance(result.get("text"), str) or not result["text"].strip():
-        raise RuntimeError(f"resume result has empty text: {path.name}")
-    if not isinstance(result.get("usage"), dict) or not result["usage"]:
-        raise RuntimeError(f"resume result has no usage: {path.name}")
+    parsed_text, parsed_usage = parse_codex_jsonl(raw_path)
+    if result.get("text") != parsed_text or result.get("usage") != parsed_usage:
+        raise RuntimeError(f"resume parsed result differs from raw JSONL: {path.name}")
+    if not isinstance(result.get("duration_ms"), int) or result["duration_ms"] < 0:
+        raise RuntimeError(f"resume duration is invalid: {path.name}")
     return result
+
+
+def reported_tokens(usage: Mapping[str, int]) -> int:
+    if "total_tokens" in usage:
+        return usage["total_tokens"]
+    if "input_tokens" in usage and "output_tokens" in usage:
+        return usage["input_tokens"] + usage["output_tokens"]
+    raise ValueError(
+        "answer usage must contain total_tokens or both input_tokens and output_tokens"
+    )
 
 
 def _run_with_atomic_stdout(
@@ -373,7 +549,9 @@ def _run_with_atomic_stdout(
     timeout_seconds: int,
 ) -> tuple[subprocess.CompletedProcess[str], int]:
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=f".{raw_path.name}.", dir=raw_path.parent)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{raw_path.name}.", dir=raw_path.parent
+    )
     temporary = Path(temporary_name)
     started = time.monotonic()
     try:
@@ -487,7 +665,9 @@ def default_prompts_file() -> Path:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run hermetic Codex answers for blind A/B review.")
+    parser = argparse.ArgumentParser(
+        description="Run hermetic Codex answers for blind A/B review."
+    )
     parser.add_argument("--prompts", type=Path, default=default_prompts_file())
     parser.add_argument("--runtime-policy", type=Path, default=DEFAULT_POLICY)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
@@ -500,6 +680,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prompt-id", action="append")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument("--max-calls", type=int, default=100)
+    parser.add_argument("--max-total-reported-tokens", type=int, default=1_500_000)
+    parser.add_argument(
+        "--require-clean-source",
+        action="store_true",
+        help="Fail before live calls unless the source commit is clean and unchanged.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--resume",
@@ -514,13 +701,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--trials must be >= 1")
     if args.limit < 0:
         parser.error("--limit must be >= 0")
-    if args.timeout_seconds < 1:
-        parser.error("--timeout-seconds must be >= 1")
+    for field in ("timeout_seconds", "max_calls", "max_total_reported_tokens"):
+        if getattr(args, field) < 1:
+            parser.error(f"--{field.replace('_', '-')} must be >= 1")
     return args
 
 
 def _main(args: argparse.Namespace) -> int:
-    prompts = select_prompts(load_prompts(args.prompts), args.prompt_id, limit=args.limit)
+    prompts = select_prompts(
+        load_prompts(args.prompts), args.prompt_id, limit=args.limit
+    )
     validate_prompt_contamination(prompts)
 
     runtime_policy = args.runtime_policy.read_text(encoding="utf-8")
@@ -532,8 +722,16 @@ def _main(args: argparse.Namespace) -> int:
     if len(arm_names) < 2 or len(set(arm_names)) != len(arm_names):
         raise ValueError("select at least two unique arms")
     selected_specs = [arm_specs[arm] for arm in arm_names]
+    total = len(prompts) * len(selected_specs) * args.trials
+    if total > args.max_calls:
+        raise ValueError(
+            f"planned calls exceed --max-calls ({total} > {args.max_calls})"
+        )
 
     cli_version = codex_version(args.codex)
+    source_git_commit, source_git_dirty = source_git_provenance(ROOT)
+    if args.require_clean_source and not args.dry_run and source_git_dirty:
+        raise RuntimeError("live blind-review run requires a clean source Git checkout")
     runner_sha256 = sha256_text(
         Path(__file__).read_text(encoding="utf-8")
         + (ROOT / "evals" / "review_lib.py").read_text(encoding="utf-8")
@@ -546,6 +744,12 @@ def _main(args: argparse.Namespace) -> int:
         effort=args.effort,
         cli_version=cli_version,
         runner_sha256=runner_sha256,
+        source_git_commit=source_git_commit,
+        source_git_dirty=source_git_dirty,
+        timeout_seconds=args.timeout_seconds,
+        max_calls=args.max_calls,
+        max_total_reported_tokens=args.max_total_reported_tokens,
+        require_clean_source=args.require_clean_source,
     )
     config_sha256 = sha256_text(canonical_json(config))
     private_root = args.output_dir / "private"
@@ -561,12 +765,21 @@ def _main(args: argparse.Namespace) -> int:
                     "prompts": len(prompts),
                     "arms": arm_names,
                     "trials": args.trials,
-                    "codex_calls": len(prompts) * len(arm_names) * args.trials,
-                    "pairs": len(prompts) * (len(arm_names) * (len(arm_names) - 1) // 2) * args.trials,
+                    "codex_calls": total,
+                    "pairs": len(prompts)
+                    * (len(arm_names) * (len(arm_names) - 1) // 2)
+                    * args.trials,
                     "model": args.model,
                     "effort": args.effort,
                     "codex_cli_version": cli_version,
+                    "source_git_commit": source_git_commit,
+                    "source_git_dirty": source_git_dirty,
                     "output_dir": str(args.output_dir),
+                    "cost_caps": {
+                        "max_calls": args.max_calls,
+                        "max_total_reported_tokens": args.max_total_reported_tokens,
+                        "timeout_seconds": args.timeout_seconds,
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -577,12 +790,18 @@ def _main(args: argparse.Namespace) -> int:
     if not args.auth_file.is_file():
         raise FileNotFoundError("Codex auth file not found")
     manifest = load_or_create_manifest(manifest_path, config=config, dry_run=False)
-    if not isinstance(manifest.get("blinding_secret"), str) or not manifest["blinding_secret"]:
+    if (
+        not isinstance(manifest.get("blinding_secret"), str)
+        or not manifest["blinding_secret"]
+    ):
         raise RuntimeError("private manifest has no blinding secret")
     public_run_id = str(manifest["run_id"])
-    total = len(prompts) * len(selected_specs) * args.trials
     results: list[dict[str, Any]] = []
-    planned: list[tuple[dict[str, Any], ArmSpec, RunKey, str, Path, Path, Path]] = []
+    total_reported_tokens = 0
+    planned_by_key: dict[
+        RunKey,
+        tuple[dict[str, Any], ArmSpec, RunKey, str, Path, Path, Path],
+    ] = {}
 
     for prompt in prompts:
         for spec in selected_specs:
@@ -592,12 +811,31 @@ def _main(args: argparse.Namespace) -> int:
                 raw_path = private_root / "raw" / f"{run_id}.jsonl"
                 stderr_path = private_root / "raw" / f"{run_id}.stderr.txt"
                 result_path = private_root / "runs" / f"{run_id}.json"
-                planned.append((prompt, spec, key, run_id, raw_path, stderr_path, result_path))
+                planned_by_key[key] = (
+                    prompt,
+                    spec,
+                    key,
+                    run_id,
+                    raw_path,
+                    stderr_path,
+                    result_path,
+                )
+
+    schedule = load_or_create_execution_schedule(
+        private_root / "execution-schedule.json",
+        manifest_path=manifest_path,
+        manifest=manifest,
+        config_sha256=config_sha256,
+        run_keys=list(planned_by_key),
+    )
+    planned = [planned_by_key[key] for key in schedule]
 
     if not args.resume:
         existing = [item[-1].name for item in planned if item[-1].exists()]
         if existing:
-            raise RuntimeError(f"completed runs already exist: {', '.join(existing[:3])}")
+            raise RuntimeError(
+                f"completed runs already exist: {', '.join(existing[:3])}"
+            )
 
     with tempfile.TemporaryDirectory(prefix="codex-auth-") as auth_temporary:
         auth_cache = Path(auth_temporary) / "auth.json"
@@ -654,6 +892,17 @@ def _main(args: argparse.Namespace) -> int:
                     flush=True,
                 )
             results.append(result)
+            total_reported_tokens += reported_tokens(result["usage"])
+            if total_reported_tokens > args.max_total_reported_tokens:
+                raise RuntimeError(
+                    "answer usage exceeded --max-total-reported-tokens "
+                    f"({total_reported_tokens} > {args.max_total_reported_tokens})"
+                )
+
+    if args.require_clean_source:
+        ending_commit, ending_dirty = source_git_provenance(ROOT)
+        if ending_dirty or ending_commit != source_git_commit:
+            raise RuntimeError("source Git checkout changed during blind-review run")
 
     public_metadata = {
         "generated_at": manifest["created_at"],

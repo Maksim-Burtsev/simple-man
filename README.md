@@ -190,6 +190,9 @@ This repo includes two Codex-based token benchmark suites:
   verbose normal helpful baseline.
 
 ```bash
+make review-automatic
+make review-quality
+make review-auto
 make bench-dry-run
 make bench-refresh
 make bench
@@ -200,6 +203,10 @@ make bench-reference-refresh
 make bench-reference
 make bench-reference-check
 ```
+
+`review-automatic` runs the repo-quality gate first, then the held-out
+communication gate. Both save replayable raw evidence and must pass before the
+candidate policy is promoted or human blind review starts.
 
 The benchmark compares `control`, generic `terse`, `simple_man_runtime`,
 `simple_man_candidate`, `simple_man_skill`, and optional Caveman arms. Runtime

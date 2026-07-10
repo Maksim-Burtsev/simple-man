@@ -8,10 +8,10 @@ different things:
 - `reference_compression`: Caveman README-style output compression, measured
   against a normal helpful baseline and output tokens only.
 
-> **Evidence status:** use the blind communication-review runner for current
-> Simple Man UX evaluation. The older runtime/reference runners below are
-> retained for migration work; they are not authoritative skill-quality
-> evidence until they use the same isolated execution contract.
+> **Evidence status:** use `review-automatic` for current candidate readiness.
+> The older runtime/reference runners below are retained for migration work;
+> they are not authoritative skill-quality evidence until they use the same
+> isolated execution contract.
 
 ## Runtime Economics Suite
 
@@ -129,13 +129,135 @@ This 10-pair run validates the harness and review UX. It is not enough to claim
 a stable skill-quality win; publishable evaluation needs a larger held-out
 corpus, repeated trials, and calibrated judging.
 
-Preview the full run without model calls:
+### Automatic held-out gate
+
+Run iteration C without human ratings:
+
+```bash
+make review-quality-dry-run
+make review-auto-dry-run
+make review-automatic
+```
+
+`review-automatic` runs two gates in order. The cheaper repo-quality gate runs
+first; the communication gate starts only if it passes.
+
+#### Repo-quality gate
+
+`make review-quality` uses three seeded repositories: Node session expiry,
+Python payment idempotency, and SQLite migration ordering. Each matched arm
+runs twice: `3 projects × 2 arms × 2 trials = 12 Codex calls`.
+
+Every call gets a fresh `HOME`, `CODEX_HOME`, working tree, and Git repository;
+the model, effort, low verbosity, prompt, permissions, and disabled network are
+pinned. An outer macOS Seatbelt profile denies the evaluated Codex process read
+or write access to the real user home, this source worktree, and the common Git
+repository, so global user state and post-run validators are unavailable during
+the task. Non-macOS live runs fail closed.
+
+The runner accepts only production-file changes, requires a production diff
+and clean `git diff --check`, verifies a real successful canonical test command
+in the raw trace, restores pristine canonical tests, then injects the withheld
+validator. Result semantics:
+
+- both arms pass 6/6: `PASS`
+- native control below 6/6: `INCONCLUSIVE`
+- native 6/6 and candidate below 6/6: `FAIL`
+- infrastructure/API failure: `INCONCLUSIVE`
+
+The source commit must be clean before and after the live run. The manifest
+records the commit, runner/policy/fixture/validator hashes, Codex CLI version,
+and Python, Node, npm, Git, and SQLite versions. Resume reparses raw traces and
+rebuilds validation from saved patches instead of trusting stored booleans.
+
+#### Communication gate
+
+The explicit sequence is:
+
+```bash
+make review-auto-generate
+make review-auto-judge-dry-run
+make review-auto-judge
+make review-auto-reveal
+make review-auto-gate
+```
+
+`make review-auto` runs that sequence. Defaults: 24 unique held-out tasks, one
+answer draw for each of two matched arms, and two judge trials in both A/B
+orientations. This is 48 answer calls plus 164 judge calls. Answer generation
+uses `gpt-5.5/high`; a separate same-provider-family judge uses
+`gpt-5.4/medium`.
+
+`review_auto_v1.jsonl` is the development corpus used to diagnose the candidate
+policy. `review_auto_holdout_v1.jsonl` is the 24-task forward-test corpus; do
+not tune the policy after revealing its arm results. Run generation and judging
+from the same clean preregistration commit. The gate rejects a dirty or
+different source commit; canonical answer and judge runners fail before model
+calls if the checkout is dirty and recheck it after the run.
+
+The judge sees only the public anonymous bundle. It runs in a fresh isolated
+environment with tools disabled, validates a strict JSON schema, and must pass
+17 calibration cases before benchmark judging starts. Exact flag anchors cover
+every material flag used by the release gate: factual error, safety risk,
+constraint violation, missing required content, unsupported claim, ambiguity,
+and language/tone mismatch. Calibration also covers relevance, explicit-detail
+requests, ties, `both_bad`, and untrusted response injection.
+
+Each pair receives four independent judgments: two forward and two with A/B
+swapped. A verdict or flag is stable only with at least three votes and support
+from both orientations. Everything else is `unstable`, never coerced to a tie.
+
+The deterministic gate requires:
+
+- at least 24 pairs from 24 unique tasks
+- at least 90% stable pairs
+- clean verdict calibration and exact coverage of every material flag
+- no consensus material defect on the candidate
+- no `both_bad` verdict on any pair
+- no candidate loss or instability on safety/detail-override cases
+- candidate wins greater than or equal to losses
+- at least 30% median paired character reduction against native low verbosity
+
+These release thresholds and protected category prefixes are fixed in the
+committed gate config; the release CLI has no post-reveal threshold overrides.
+The report records the gate-config and gate-script hashes.
+
+A failed calibration or blind reliability check is `INCONCLUSIVE`; reliability
+failure remains sealed in `blind-results.json` and stops before reveal. A valid
+reveal that misses a preregistered quality threshold is `FAIL`: the candidate
+is not ready under this gate. Manual blind review starts only after both
+automatic gates pass.
+
+Override pinned inputs explicitly when needed:
+
+```bash
+make review-auto AUTO_REVIEW_MODEL=gpt-5.5 JUDGE_MODEL=gpt-5.4 AUTO_REVIEW_TRIALS=1 JUDGE_TRIALS=2
+```
+
+The model output itself is stochastic, so a fresh generation is not expected
+to be bit-identical. “Reproducible” here means auditable and replayable:
+versioned corpora/policies/schemas, a clean source commit, exact hashes and run
+identity, isolated execution, raw JSONL traces, cost caps, resumable calls, a
+separate reveal, and a deterministic gate. The final checker rebuilds the
+public bundle from raw answer runs, rebuilds blind judgments from raw judge
+runs, then rebuilds the reveal from the committed key before scoring it.
+
+The local fixture data is small and tests finish quickly. The material cost is
+224 remote calls (12 repo-quality + 48 answers + 164 judgments), bounded by
+configured caps and resumable across quota windows. Full live feasibility is
+established only by a completed saved run. The one answer draw per arm/task
+makes this a bounded readiness gate, not an estimate of answer-generation
+variance; judge repeats measure judge stability only.
+
+### Legacy token runners
+
+Preview the legacy runtime-economics run without model calls:
 
 ```bash
 make bench-dry-run
 ```
 
-Run the canonical benchmark locally:
+Run the legacy runtime-economics benchmark locally:
 
 ```bash
 make bench-refresh
@@ -237,6 +359,11 @@ benchmark numbers.
   loading.
 - The quality gate is intentionally lightweight and deterministic. It catches
   obvious omissions but does not replace human review of paired outputs.
+- The automatic held-out gate is a readiness check, not a universal model or
+  statistical superiority claim. Its result must name the answer model, judge
+  model, Codex CLI version, corpus hash, policy hash, and sample size.
+- The automatic judge is a different model but remains in the same provider
+  family. It is not independent human or cross-provider confirmation.
 - Full default run size is `40 prompts × 6 arms × 3 trials = 720 Codex calls`
   when Caveman is available.
 - Full reference run size is `10 prompts × 6 arms × 3 trials = 180 Codex calls`

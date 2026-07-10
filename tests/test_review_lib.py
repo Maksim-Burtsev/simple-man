@@ -34,7 +34,9 @@ class ReviewLibTests(unittest.TestCase):
             }
         ]
 
-        with self.assertRaisesRegex(ValueError, "prompt treatment contamination") as error:
+        with self.assertRaisesRegex(
+            ValueError, "prompt treatment contamination"
+        ) as error:
             review.validate_prompt_contamination(prompts)
 
         self.assertIn("Simple Man name", str(error.exception))
@@ -79,14 +81,18 @@ class ReviewLibTests(unittest.TestCase):
                 + "\n"
             )
 
-            with self.assertRaisesRegex(ValueError, "verified_context must be a non-empty string"):
+            with self.assertRaisesRegex(
+                ValueError, "verified_context must be a non-empty string"
+            ):
                 review.load_prompts(path)
 
     def test_private_run_ids_are_unique_for_task_arm_trial(self):
         ids = {
             review.private_run_id("config", review.RunKey("one", "native_low", 1)),
             review.private_run_id("config", review.RunKey("one", "native_low", 2)),
-            review.private_run_id("config", review.RunKey("one", "simple_man_runtime", 1)),
+            review.private_run_id(
+                "config", review.RunKey("one", "simple_man_runtime", 1)
+            ),
             review.private_run_id("config", review.RunKey("two", "native_low", 1)),
         }
 
@@ -163,14 +169,30 @@ class ReviewLibTests(unittest.TestCase):
         self.assertNotIn("simple_man_runtime", serialized_public)
         self.assertNotIn("private-secret", serialized_public)
 
-        self.assertEqual(set(private), {"schema_version", "run_id", "pairs"})
+        self.assertEqual(
+            set(private),
+            {"schema_version", "run_id", "commitment_nonce", "pairs"},
+        )
+        self.assertRegex(private["commitment_nonce"], r"[0-9a-f]{64}\Z")
         self.assertNotIn("private-secret", json.dumps(private))
+        self.assertEqual(
+            public["metadata"]["key_commitment_sha256"],
+            review.private_key_commitment_sha256(private),
+        )
+        other_nonce = dict(private)
+        other_nonce["commitment_nonce"] = "0" * 64
+        self.assertNotEqual(
+            review.private_key_commitment_sha256(private),
+            review.private_key_commitment_sha256(other_nonce),
+        )
         key = private["pairs"][pair["id"]]
         self.assertEqual(
             set(key),
             {"left_arm", "right_arm", "left_run_id", "right_run_id"},
         )
-        self.assertEqual({key["left_arm"], key["right_arm"]}, {"native_low", "simple_man_runtime"})
+        self.assertEqual(
+            {key["left_arm"], key["right_arm"]}, {"native_low", "simple_man_runtime"}
+        )
 
     def test_blind_bundle_pairwise_compares_three_arms(self):
         arms = ["baseline", "native_low", "simple_man_runtime"]
@@ -244,7 +266,9 @@ class ReviewLibTests(unittest.TestCase):
             },
         ]
 
-        with self.assertRaisesRegex(ValueError, "public bundle contains treatment name"):
+        with self.assertRaisesRegex(
+            ValueError, "public bundle contains treatment name"
+        ):
             review.build_blind_bundle(
                 public_run_id="blind_random",
                 metadata={"model": "test"},
@@ -281,8 +305,11 @@ class ReviewLibTests(unittest.TestCase):
                     "text": leaked_text,
                 },
             ]
-            with self.subTest(leaked_text=leaked_text), self.assertRaisesRegex(
-                ValueError, "public bundle contains treatment name"
+            with (
+                self.subTest(leaked_text=leaked_text),
+                self.assertRaisesRegex(
+                    ValueError, "public bundle contains treatment name"
+                ),
             ):
                 review.build_blind_bundle(
                     public_run_id="blind_random",
@@ -309,6 +336,86 @@ class ReviewLibTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(sum(first.values()), 5)
+
+    def test_execution_schedule_is_secret_seeded_global_permutation(self):
+        run_keys = [
+            review.RunKey(task_id, arm, trial)
+            for task_id in ("one", "two")
+            for arm in ("baseline", "native_low", "simple_man_runtime")
+            for trial in (1, 2)
+        ]
+
+        first = review.secret_seeded_execution_schedule("secret-one", run_keys)
+        resumed = review.secret_seeded_execution_schedule("secret-one", run_keys)
+        other_seed = review.secret_seeded_execution_schedule("secret-two", run_keys)
+
+        self.assertEqual(first, resumed)
+        self.assertCountEqual(first, run_keys)
+        self.assertNotEqual(first, run_keys)
+        self.assertNotEqual(first, other_seed)
+
+    def test_private_execution_schedule_is_stored_committed_and_validated(self):
+        run_keys = [
+            review.RunKey("one", "native_low", 1),
+            review.RunKey("one", "simple_man_runtime", 1),
+            review.RunKey("two", "native_low", 1),
+            review.RunKey("two", "simple_man_runtime", 1),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            private = Path(temporary) / "private"
+            manifest_path = private / "manifest.json"
+            schedule_path = private / "execution-schedule.json"
+            manifest = {
+                "schema_version": 1,
+                "run_id": "blind-test",
+                "blinding_secret": "private-secret",
+                "config_sha256": "config-hash",
+            }
+            review.atomic_write_json(manifest_path, manifest)
+
+            first = runner.load_or_create_execution_schedule(
+                schedule_path,
+                manifest_path=manifest_path,
+                manifest=manifest,
+                config_sha256="config-hash",
+                run_keys=run_keys,
+            )
+            stored = json.loads(schedule_path.read_text())
+            committed_manifest = json.loads(manifest_path.read_text())
+
+            self.assertEqual(
+                committed_manifest["execution_schedule_sha256"],
+                review.sha256_text(review.canonical_json(stored)),
+            )
+            self.assertEqual(
+                [
+                    review.RunKey(item["task_id"], item["arm"], item["trial"])
+                    for item in stored["runs"]
+                ],
+                first,
+            )
+
+            resumed = runner.load_or_create_execution_schedule(
+                schedule_path,
+                manifest_path=manifest_path,
+                manifest=committed_manifest,
+                config_sha256="config-hash",
+                run_keys=run_keys,
+            )
+            self.assertEqual(resumed, first)
+
+            stored["runs"].reverse()
+            review.atomic_write_json(schedule_path, stored)
+            with self.assertRaisesRegex(
+                RuntimeError, "execution schedule hash mismatch"
+            ):
+                runner.load_or_create_execution_schedule(
+                    schedule_path,
+                    manifest_path=manifest_path,
+                    manifest=committed_manifest,
+                    config_sha256="config-hash",
+                    run_keys=run_keys,
+                )
 
     def test_atomic_json_write_leaves_only_complete_destination(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -367,14 +474,21 @@ class ReviewLibTests(unittest.TestCase):
 
             try:
                 for arm in ("native_low", "simple_man_runtime"):
-                    with review.isolated_codex_environment(auth_source=auth, spec=specs[arm]) as isolated:
+                    with review.isolated_codex_environment(
+                        auth_source=auth, spec=specs[arm]
+                    ) as isolated:
                         roots.append(isolated.root)
                         self.assertEqual(isolated.env["HOME"], str(isolated.home))
-                        self.assertEqual(isolated.env["CODEX_HOME"], str(isolated.codex_home))
+                        self.assertEqual(
+                            isolated.env["CODEX_HOME"], str(isolated.codex_home)
+                        )
                         self.assertNotIn("OPENAI_API_KEY", isolated.env)
                         self.assertNotIn("SHOULD_NOT_LEAK", isolated.env)
                         self.assertIn("PATH", isolated.env)
-                        self.assertEqual((isolated.codex_home / "auth.json").read_text(), '{"token":"secret"}')
+                        self.assertEqual(
+                            (isolated.codex_home / "auth.json").read_text(),
+                            '{"token":"secret"}',
+                        )
                         agents = isolated.codex_home / "AGENTS.md"
                         self.assertEqual(agents.exists(), arm == "simple_man_runtime")
                         if agents.exists():
@@ -424,15 +538,52 @@ class ReviewLibTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "contains Simple Man instructions"):
                 review.assert_arm_environment(spec, environment)
 
+    def test_isolation_allows_exact_neutral_policy_without_simple_man(self):
+        policy = "## Blind response judge\n\nEvaluate anonymous replies.\n"
+        spec = review.ArmSpec("blind_judge", "low", policy)
+        with tempfile.TemporaryDirectory() as temporary:
+            auth = Path(temporary) / "auth.json"
+            auth.write_text('{"token":"secret"}', encoding="utf-8")
+
+            with review.isolated_codex_environment(
+                auth_source=auth, spec=spec
+            ) as isolated:
+                agents = isolated.codex_home / "AGENTS.md"
+                self.assertEqual(agents.read_text(encoding="utf-8"), policy)
+
+    def test_neutral_policy_rejects_simple_man_leak(self):
+        spec = review.ArmSpec("blind_judge", "low", RUNTIME_POLICY)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            codex_home = home / ".codex"
+            workspace = root / "workspace"
+            codex_home.mkdir(parents=True)
+            workspace.mkdir()
+            (codex_home / "AGENTS.md").write_text(RUNTIME_POLICY, encoding="utf-8")
+            environment = review.IsolatedCodexEnvironment(
+                root=root,
+                home=home,
+                codex_home=codex_home,
+                workspace=workspace,
+                env={},
+            )
+
+            with self.assertRaisesRegex(ValueError, "policy contains Simple Man"):
+                review.assert_arm_environment(spec, environment)
+
     def test_safe_environment_rejects_proxy_credentials(self):
         for value in (
             "http://user:secret@proxy.example:8080",
             "user:secret@proxy.example:8080",
         ):
-            with self.subTest(value=value), mock.patch.dict(
-                os.environ,
-                {"HTTP_PROXY": value},
-                clear=False,
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(
+                    os.environ,
+                    {"HTTP_PROXY": value},
+                    clear=False,
+                ),
             ):
                 with self.assertRaisesRegex(
                     ValueError, "HTTP_PROXY contains proxy credentials"
@@ -455,6 +606,8 @@ class ReviewLibTests(unittest.TestCase):
         self.assertIn('model_verbosity="low"', command)
         self.assertIn("--ignore-user-config", command)
         self.assertEqual(command[-1], "-")
+        for feature in ("shell_tool", "unified_exec", "shell_snapshot", "multi_agent"):
+            self.assertIn(feature, command)
 
     def test_prompt_input_preflight_requires_exact_runtime_policy_once(self):
         spec = review.build_arm_specs(RUNTIME_POLICY)["simple_man_runtime"]
@@ -519,6 +672,8 @@ class ReviewLibTests(unittest.TestCase):
             effort="high",
             cli_version="codex-cli test",
             runner_sha256="runner-hash",
+            source_git_commit="deadbeef",
+            source_git_dirty=True,
         )
         identity = runner.result_identity(
             run_id="private-run",
@@ -532,15 +687,74 @@ class ReviewLibTests(unittest.TestCase):
         )
 
         self.assertEqual(config["execution_contract"], runner.EXECUTION_CONTRACT)
-        self.assertEqual(config["execution_contract_sha256"], runner.EXECUTION_CONTRACT_SHA256)
+        self.assertEqual(
+            config["execution_contract_sha256"], runner.EXECUTION_CONTRACT_SHA256
+        )
         self.assertEqual(config["runner_sha256"], "runner-hash")
-        self.assertEqual(identity["execution_contract_sha256"], runner.EXECUTION_CONTRACT_SHA256)
+        self.assertEqual(config["source_git_commit"], "deadbeef")
+        self.assertIs(config["source_git_dirty"], True)
+        self.assertEqual(config["limits"]["max_calls"], 100)
+        self.assertEqual(
+            identity["execution_contract_sha256"], runner.EXECUTION_CONTRACT_SHA256
+        )
         self.assertEqual(identity["runner_sha256"], "runner-hash")
+        with self.assertRaisesRegex(ValueError, "must contain total_tokens"):
+            runner.reported_tokens({"cached_input_tokens": 10})
+
+    def test_source_git_provenance_ignores_ignored_outputs_but_tracks_untracked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            subprocess.run(["git", "init", "--quiet"], cwd=repository, check=True)
+            (repository / ".gitignore").write_text(
+                "ignored-output/\n", encoding="utf-8"
+            )
+            (repository / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repository, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Benchmark Test",
+                    "-c",
+                    "user.email=benchmark@example.invalid",
+                    "commit",
+                    "--quiet",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repository,
+                check=True,
+            )
+            expected_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repository,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            ignored = repository / "ignored-output" / "bundle.json"
+            ignored.parent.mkdir()
+            ignored.write_text("generated\n", encoding="utf-8")
+
+            commit, dirty = runner.source_git_provenance(repository)
+            self.assertEqual(commit, expected_commit)
+            self.assertFalse(dirty)
+
+            (repository / "untracked.txt").write_text("visible\n", encoding="utf-8")
+            resumed_commit, resumed_dirty = runner.source_git_provenance(repository)
+            self.assertEqual(resumed_commit, expected_commit)
+            self.assertTrue(resumed_dirty)
 
     def test_parse_raw_jsonl_extracts_final_text_and_usage(self):
         events = [
-            {"type": "item.completed", "item": {"type": "agent_message", "text": "answer"}},
-            {"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 4}},
+            {
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "answer"},
+            },
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 10, "output_tokens": 4},
+            },
         ]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "raw.jsonl"
@@ -551,16 +765,78 @@ class ReviewLibTests(unittest.TestCase):
         self.assertEqual(text, "answer")
         self.assertEqual(usage, {"input_tokens": 10, "output_tokens": 4})
 
+    def test_parse_raw_jsonl_rejects_tools_and_malformed_events(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "raw.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "type": "item.started",
+                        "item": {"type": "command_execution"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "forbidden item type"):
+                review.parse_codex_jsonl(path)
+
+            path.write_text("not-json\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid JSON"):
+                review.parse_codex_jsonl(path)
+
+            path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "item.completed",
+                                "item": {"type": "agent_message", "text": "answer"},
+                            }
+                        ),
+                        json.dumps(
+                            {"type": "turn.completed", "usage": {"total_tokens": 10}}
+                        ),
+                        json.dumps(
+                            {"type": "turn.completed", "usage": {"total_tokens": 1}}
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "after turn.completed"):
+                review.parse_codex_jsonl(path)
+
     def test_resume_requires_matching_identity_and_raw_hash(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             raw = root / "raw.jsonl"
-            raw.write_text("raw")
+            raw.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "item.completed",
+                                "item": {"type": "agent_message", "text": "answer"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "usage": {"output_tokens": 1},
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
             expected = {"schema_version": 1, "run_id": "private"}
             result = {
                 **expected,
                 "text": "answer",
                 "usage": {"output_tokens": 1},
+                "duration_ms": 1,
                 "raw_sha256": review.sha256_file(raw),
             }
             result_path = root / "result.json"
@@ -573,7 +849,7 @@ class ReviewLibTests(unittest.TestCase):
             )
             self.assertEqual(loaded, result)
 
-            raw.write_text("changed")
+            raw.write_text(raw.read_text() + "changed\n")
             with self.assertRaisesRegex(RuntimeError, "hash mismatch"):
                 runner.load_resumable_result(
                     result_path,
@@ -630,6 +906,51 @@ class ReviewLibTests(unittest.TestCase):
         self.assertFalse(output.exists())
         self.assertNotIn("seed", process.stdout.lower())
         self.assertNotIn("secret", process.stdout.lower())
+
+    def test_live_release_run_rejects_dirty_source_before_auth_or_calls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prompts = root / "prompts.jsonl"
+            prompts.write_text(
+                json.dumps(
+                    {
+                        "id": "one",
+                        "category": "status",
+                        "prompt": "Report status.",
+                        "verified_context": "Known status.",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake_codex = root / "codex"
+            fake_codex.write_text("#!/bin/sh\necho 'codex-cli test'\n")
+            fake_codex.chmod(0o755)
+            output = root / "output"
+            with mock.patch.object(
+                runner, "source_git_provenance", return_value=("a" * 40, True)
+            ):
+                with self.assertRaisesRegex(RuntimeError, "requires a clean source"):
+                    runner.main(
+                        [
+                            "--require-clean-source",
+                            "--prompts",
+                            str(prompts),
+                            "--runtime-policy",
+                            str(
+                                ROOT / "evals/policies/simple_man_candidate_runtime.md"
+                            ),
+                            "--output-dir",
+                            str(output),
+                            "--auth-file",
+                            str(root / "missing-auth.json"),
+                            "--codex",
+                            str(fake_codex),
+                            "--model",
+                            "gpt-test",
+                        ]
+                    )
+            self.assertFalse((output / "private" / "manifest.json").exists())
 
     def test_fake_codex_live_run_builds_bundle_and_resume_skips_exec(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -729,6 +1050,18 @@ raise SystemExit(2)
             self.assertEqual(
                 {key["pairs"][pair_id]["left_arm"], key["pairs"][pair_id]["right_arm"]},
                 {"native_low", "simple_man_runtime"},
+            )
+            self.assertEqual(
+                bundle["metadata"]["key_commitment_sha256"],
+                review.private_key_commitment_sha256(key),
+            )
+            manifest = json.loads((output / "private" / "manifest.json").read_text())
+            schedule = json.loads(
+                (output / "private" / "execution-schedule.json").read_text()
+            )
+            self.assertEqual(
+                manifest["execution_schedule_sha256"],
+                review.sha256_text(review.canonical_json(schedule)),
             )
 
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
