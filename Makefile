@@ -31,8 +31,9 @@ JUDGE_MAX_TOTAL_INPUT_CHARS ?= 1000000
 JUDGE_MAX_REPORTED_TOKENS ?= 1500000
 QUALITY_MODEL ?= gpt-5.5
 QUALITY_EFFORT ?= high
-QUALITY_OUTPUT ?= .local-fixtures/review-quality-v1
+QUALITY_OUTPUT ?= .local-fixtures/review-quality-v2
 QUALITY_POLICY ?= evals/policies/simple_man_candidate_runtime.md
+QUALITY_MAX_REPORTED_TOKENS ?= 1500000
 MODEL_ARG := $(if $(MODEL),--model $(MODEL),)
 LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
@@ -40,8 +41,9 @@ LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
 test:
 	$(PYTHON) -m unittest discover -s tests
-	$(PYTHON) -m py_compile evals/auto_judge_lib.py evals/benchmark_lib.py evals/check_auto_judge.py evals/measure.py evals/reveal_auto_judge.py evals/review_lib.py evals/review_server.py evals/run_auto_judge.py evals/run_blind_review.py evals/run_codex.py evals/run_skill_comparison.py
+	$(PYTHON) -m py_compile evals/auto_judge_lib.py evals/benchmark_lib.py evals/check_auto_judge.py evals/measure.py evals/reveal_auto_judge.py evals/review_lib.py evals/review_server.py evals/run_auto_judge.py evals/run_blind_review.py evals/run_codex.py evals/run_skill_comparison.py evals/fixtures/skill-comparison/_workers/python-payment-worker.py evals/fixtures/skill-comparison/_workers/sqlite-rollout-worker.py
 	node --check evals/review_app/app.js
+	node --check evals/fixtures/skill-comparison/_workers/node-auth-worker.js
 	$(PYTHON) evals/run_codex.py --dry-run --limit 1
 	$(PYTHON) evals/run_codex.py --suite reference_compression --dry-run --limit 1
 
@@ -75,10 +77,10 @@ review-auto-gate: review-auto-reveal
 review-auto: review-auto-gate
 
 review-quality-dry-run:
-	$(PYTHON) evals/run_skill_comparison.py --dry-run --candidate-policy $(QUALITY_POLICY) --output-dir $(QUALITY_OUTPUT) --model $(QUALITY_MODEL) --effort $(QUALITY_EFFORT)
+	$(PYTHON) evals/run_skill_comparison.py --dry-run --candidate-policy $(QUALITY_POLICY) --output-dir $(QUALITY_OUTPUT) --model $(QUALITY_MODEL) --effort $(QUALITY_EFFORT) --max-total-reported-tokens $(QUALITY_MAX_REPORTED_TOKENS)
 
 review-quality:
-	$(PYTHON) evals/run_skill_comparison.py --candidate-policy $(QUALITY_POLICY) --output-dir $(QUALITY_OUTPUT) --model $(QUALITY_MODEL) --effort $(QUALITY_EFFORT)
+	$(PYTHON) evals/run_skill_comparison.py --candidate-policy $(QUALITY_POLICY) --output-dir $(QUALITY_OUTPUT) --model $(QUALITY_MODEL) --effort $(QUALITY_EFFORT) --max-total-reported-tokens $(QUALITY_MAX_REPORTED_TOKENS)
 
 review-automatic: review-quality
 	$(MAKE) review-auto

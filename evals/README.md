@@ -150,15 +150,27 @@ runs twice: `3 projects × 2 arms × 2 trials = 12 Codex calls`.
 
 Every call gets a fresh `HOME`, `CODEX_HOME`, working tree, and Git repository;
 the model, effort, low verbosity, prompt, permissions, and disabled network are
-pinned. An outer macOS Seatbelt profile denies the evaluated Codex process read
-or write access to the real user home, this source worktree, and the common Git
-repository, so global user state and post-run validators are unavailable during
-the task. Non-macOS live runs fail closed.
+pinned. A custom Codex permission profile denies model-tool reads and writes to
+the entire isolated `CODEX_HOME`, the real user home, this source worktree, and
+the common Git repository. The runner locally proves workspace write access and
+credential-read denial before every remote call; prompt preflight proves the
+same profile and network restriction are active. Non-macOS live runs fail
+closed.
 
 The runner accepts only production-file changes, requires a production diff
-and clean `git diff --check`, verifies a real successful canonical test command
-in the raw trace, restores pristine canonical tests, then injects the withheld
-validator. Result semantics:
+and clean `git diff --check`, and recognizes only the exact canonical test
+command in the raw trace. After Codex exits and its auth-bearing directory is
+deleted, canonical and hidden validation run in separate pristine copies with a
+fresh no-auth environment, disabled network, source/home denies, wall/output/
+file/workspace/patch limits, process-group cleanup, and a read-only workspace.
+Each hidden case gets its own pristine copy and randomized observation worker.
+The worker contains no expected answer: it emits one strict JSON observation,
+which the trusted parent compares with preregistered expected data outside the
+sandbox. Missing/multiple output, forged test-runner summaries, and a clean
+early `exit(0)` fail. macOS Seatbelt is a practical local boundary, not the
+hostile-code isolation of an ephemeral VM.
+
+Result semantics:
 
 - both arms pass 6/6: `PASS`
 - native control below 6/6: `INCONCLUSIVE`
@@ -166,9 +178,18 @@ validator. Result semantics:
 - infrastructure/API failure: `INCONCLUSIVE`
 
 The source commit must be clean before and after the live run. The manifest
-records the commit, runner/policy/fixture/validator hashes, Codex CLI version,
-and Python, Node, npm, Git, and SQLite versions. Resume reparses raw traces and
-rebuilds validation from saved patches instead of trusting stored booleans.
+records the commit, exact embedded config, runner/policy/fixture/worker and
+executable hashes, Codex CLI version, and Python, Node, npm, Git, and SQLite
+versions. Fixture hashes and copies come only from the committed `git ls-files`
+manifest, so ignored caches cannot change a run. Each scheduled key has exactly
+one immutable attempt: no automatic or selective retry. An interrupted or
+infrastructure-failed attempt is consumed and yields `INCONCLUSIVE`; rerunning
+remote work requires a new output directory. Completed attempts can be
+resumed, but the final gate reparses raw traces, reapplies saved patches, reruns
+isolated validation, and verifies the exact attempt inventory and artifact
+hashes instead of trusting stored booleans. Exit codes are 0 for `PASS`, 1 for
+candidate `FAIL`, 2 for `INCONCLUSIVE`, and 3 for integrity or configuration
+`ERROR`.
 
 #### Communication gate
 
@@ -244,10 +265,11 @@ runs, then rebuilds the reveal from the committed key before scoring it.
 
 The local fixture data is small and tests finish quickly. The material cost is
 224 remote calls (12 repo-quality + 48 answers + 164 judgments), bounded by
-configured caps and resumable across quota windows. Full live feasibility is
-established only by a completed saved run. The one answer draw per arm/task
-makes this a bounded readiness gate, not an estimate of answer-generation
-variance; judge repeats measure judge stability only.
+configured caps. Answer/judge calls are resumable across quota windows;
+repo-quality keeps completed attempts but never retries a started attempt. Full
+live feasibility is established only by a completed saved run. The one answer
+draw per arm/task makes this a bounded readiness gate, not an estimate of
+answer-generation variance; judge repeats measure judge stability only.
 
 ### Legacy token runners
 
