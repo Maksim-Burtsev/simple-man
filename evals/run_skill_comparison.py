@@ -595,38 +595,77 @@ def _child_resource_limits(*, cpu_seconds: int, file_bytes: int) -> None:
     resource.setrlimit(resource.RLIMIT_NOFILE, (MAX_OPEN_FILES, MAX_OPEN_FILES))
 
 
+def _kill_and_reap_process_leader(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
+    except PermissionError as exc:
+        raise InfrastructureError("cannot kill bounded process leader") from exc
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired as exc:
+        raise InfrastructureError("bounded process leader did not exit") from exc
+
+
+def _handle_process_group_permission_error(
+    process: subprocess.Popen[bytes], *, action: str, error: PermissionError
+) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.wait(timeout=0.2)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    _kill_and_reap_process_leader(process)
+    raise InfrastructureError(f"cannot {action} bounded process group") from error
+
+
 def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
     process_group = process.pid
     try:
         os.killpg(process_group, signal.SIGTERM)
     except ProcessLookupError:
-        if process.poll() is None:
-            process.wait()
+        _kill_and_reap_process_leader(process)
         return
-    except PermissionError:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+    except PermissionError as exc:
+        _handle_process_group_permission_error(process, action="signal", error=exc)
         return
     deadline = time.monotonic() + 1
     while time.monotonic() < deadline:
         process.poll()
         try:
             os.killpg(process_group, 0)
-        except (ProcessLookupError, PermissionError):
+        except ProcessLookupError:
             break
+        except PermissionError as exc:
+            _handle_process_group_permission_error(process, action="inspect", error=exc)
+            return
         time.sleep(0.05)
     else:
         try:
             os.killpg(process_group, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+        except ProcessLookupError:
             pass
+        except PermissionError as exc:
+            _handle_process_group_permission_error(process, action="kill", error=exc)
+            return
         kill_deadline = time.monotonic() + 1
         while time.monotonic() < kill_deadline:
             try:
                 os.killpg(process_group, 0)
-            except (ProcessLookupError, PermissionError):
+            except ProcessLookupError:
                 break
+            except PermissionError as exc:
+                _handle_process_group_permission_error(
+                    process,
+                    action="inspect killed",
+                    error=exc,
+                )
+                return
             time.sleep(0.05)
     if process.poll() is None:
         try:
@@ -634,9 +673,14 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(process_group, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
+            except ProcessLookupError:
                 pass
-            process.wait()
+            except PermissionError as exc:
+                _handle_process_group_permission_error(
+                    process, action="kill", error=exc
+                )
+                return
+            _kill_and_reap_process_leader(process)
 
 
 def run_bounded(
@@ -660,6 +704,7 @@ def run_bounded(
     workspace_limited = False
     next_workspace_check = started
     process: subprocess.Popen[bytes] | None = None
+    cleanup_started = False
     try:
         with (
             os.fdopen(stdout_descriptor, "wb") as stdout,
@@ -696,7 +741,6 @@ def run_bounded(
                 elapsed = time.monotonic() - started
                 if elapsed > timeout_seconds:
                     timed_out = True
-                    _kill_process_group(process)
                     break
                 stdout.flush()
                 stderr.flush()
@@ -705,7 +749,6 @@ def run_bounded(
                     > max_output_bytes
                 ):
                     output_limited = True
-                    _kill_process_group(process)
                     break
                 if (
                     monitor_workspace is not None
@@ -715,12 +758,15 @@ def run_bounded(
                         enforce_tree_caps(monitor_workspace)
                     except IntegrityError:
                         workspace_limited = True
-                        _kill_process_group(process)
                         break
                     next_workspace_check = time.monotonic() + 0.5
                 time.sleep(0.05)
+            cleanup_started = True
             _kill_process_group(process)
-            process.wait()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired as exc:
+                raise InfrastructureError("bounded process was not reaped") from exc
             stdout.flush()
             stderr.flush()
             os.fsync(stdout.fileno())
@@ -748,10 +794,16 @@ def run_bounded(
             workspace_limited,
         )
     finally:
-        if process is not None:
-            _kill_process_group(process)
+        cleanup_error: BaseException | None = None
+        if process is not None and not cleanup_started:
+            try:
+                _kill_process_group(process)
+            except BaseException as exc:
+                cleanup_error = exc
         stdout_path.unlink(missing_ok=True)
         stderr_path.unlink(missing_ok=True)
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 def safe_environment() -> dict[str, str]:

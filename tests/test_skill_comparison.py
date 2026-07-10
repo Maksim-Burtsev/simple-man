@@ -562,6 +562,52 @@ class ContractTests(RunnerFixture):
         with self.assertRaises(ProcessLookupError):
             os.kill(background_pid, 0)
 
+    def test_process_group_permission_error_fails_closed_with_bounded_wait(
+        self,
+    ) -> None:
+        process = mock.Mock()
+        process.pid = 123
+        process.poll.return_value = None
+        process.wait.side_effect = (
+            quality.subprocess.TimeoutExpired("fake", 0.2),
+            -9,
+        )
+        with (
+            mock.patch.object(
+                quality.os,
+                "killpg",
+                side_effect=(None, PermissionError("denied")),
+            ),
+            mock.patch.object(quality.time, "monotonic", side_effect=(0.0, 2.0)),
+            self.assertRaisesRegex(
+                quality.InfrastructureError, "cannot kill bounded process group"
+            ),
+        ):
+            quality._kill_process_group(process)
+
+        process.kill.assert_called_once_with()
+        self.assertEqual(
+            process.wait.call_args_list,
+            [mock.call(timeout=0.2), mock.call(timeout=1)],
+        )
+
+    def test_process_group_probe_permission_race_accepts_exited_leader(self) -> None:
+        process = mock.Mock()
+        process.pid = 123
+        process.poll.return_value = 0
+        with (
+            mock.patch.object(
+                quality.os,
+                "killpg",
+                side_effect=(None, PermissionError("stale process group")),
+            ),
+            mock.patch.object(quality.time, "monotonic", side_effect=(0.0, 0.1)),
+        ):
+            quality._kill_process_group(process)
+
+        process.kill.assert_not_called()
+        process.wait.assert_not_called()
+
     def test_trace_parser_requires_json_final_usage_and_observes_successful_tests(
         self,
     ) -> None:
