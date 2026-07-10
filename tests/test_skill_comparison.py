@@ -251,6 +251,14 @@ class ContractTests(RunnerFixture):
                     set(details[project.key]["allowed_paths"]),
                     set(project.allowed_paths),
                 )
+                self.assertEqual(
+                    set(details[project.key]["production_paths"]),
+                    set(project.production_paths),
+                )
+                self.assertEqual(
+                    set(details[project.key]["auxiliary_paths"]),
+                    set(project.auxiliary_paths),
+                )
                 destination = self.root / f"copy-{project.key}"
                 quality.copy_fixture(project, destination)
                 copied = {
@@ -733,7 +741,9 @@ class ContractTests(RunnerFixture):
         self.assertEqual(control_failure["status"], "INCONCLUSIVE")
         self.assertEqual(control_failure["exit_code"], 2)
 
-    def test_validation_restores_tests_but_rejects_their_modification(self) -> None:
+    def test_validation_restores_and_ignores_allowlisted_test_modification(
+        self,
+    ) -> None:
         project = next(
             item for item in quality.PROJECTS if item.key == "sqlite-rollout-runner"
         )
@@ -790,11 +800,20 @@ class ContractTests(RunnerFixture):
             source_isolation=quality.source_isolation_contract(),
         )
 
-        self.assertFalse(evidence["paths_allowed"])
+        self.assertTrue(evidence["paths_allowed"])
         self.assertTrue(validation["checks"]["canonical_tests_restored"])
         self.assertTrue(validation["checks"]["canonical_tests_passed"])
         self.assertTrue(validation["checks"]["hidden_cases_passed"])
-        self.assertFalse(validation["passed"])
+        self.assertTrue(validation["passed"])
+
+        (workspace / "unexpected.txt").write_text("not allowlisted\n")
+        disallowed = quality.collect_repository_evidence(
+            project=project,
+            workspace=workspace,
+            baseline=baseline,
+            env=environment,
+        )
+        self.assertFalse(disallowed["paths_allowed"])
 
     def test_validation_rejects_early_success_exit_without_test_completion(
         self,

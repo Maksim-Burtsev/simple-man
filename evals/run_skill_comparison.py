@@ -100,7 +100,7 @@ SAFE_PATH = (
     "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 )
 EXECUTION_CONTRACT = {
-    "version": 2,
+    "version": 3,
     "tasks": 3,
     "arms": list(ARMS),
     "trials": TRIALS,
@@ -140,9 +140,9 @@ EXECUTION_CONTRACT = {
         "open_files": MAX_OPEN_FILES,
     },
     "validation": (
-        "strict production paths, bounded production diff, exact successful canonical test command "
-        "in trace, exact isolated canonical tests, and parent-compared observations from "
-        "randomized read-only post-run workers"
+        "strict allowlisted production and regression-test paths, bounded production-only diff, "
+        "exact successful canonical test command in trace, exact pristine canonical tests, and "
+        "parent-compared observations from randomized read-only post-run workers"
     ),
     "gate": "both arms 6/6; native failure is inconclusive",
 }
@@ -162,7 +162,8 @@ class Project:
     task: str
     check: tuple[str, ...]
     expected_seed_failure: str
-    allowed_paths: tuple[str, ...]
+    production_paths: tuple[str, ...]
+    auxiliary_paths: tuple[str, ...]
     worker: Path
     worker_suffix: str
     test_reporter: str
@@ -173,6 +174,10 @@ class Project:
     @property
     def root(self) -> Path:
         return SEEDS / self.key
+
+    @property
+    def allowed_paths(self) -> tuple[str, ...]:
+        return self.production_paths + self.auxiliary_paths
 
 
 @dataclass(frozen=True)
@@ -253,7 +258,8 @@ PROJECTS = (
         ).strip(),
         check=("npm", "test"),
         expected_seed_failure="200 !== 401",
-        allowed_paths=("src/middleware.js",),
+        production_paths=("src/middleware.js",),
+        auxiliary_paths=("test/auth.test.js",),
         worker=WORKERS / "node-auth-worker.js",
         worker_suffix=".js",
         test_reporter="node",
@@ -297,7 +303,8 @@ PROJECTS = (
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
         expected_seed_failure="'ch_2' != 'ch_1'",
-        allowed_paths=("ledger.py",),
+        production_paths=("ledger.py",),
+        auxiliary_paths=("test_ledger.py",),
         worker=WORKERS / "python-payment-worker.py",
         worker_suffix=".py",
         test_reporter="unittest",
@@ -368,7 +375,8 @@ PROJECTS = (
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
         expected_seed_failure="no such column: expires_at",
-        allowed_paths=("rollout.py",),
+        production_paths=("rollout.py",),
+        auxiliary_paths=("test_rollout.py",),
         worker=WORKERS / "sqlite-rollout-worker.py",
         worker_suffix=".py",
         test_reporter="unittest",
@@ -1035,13 +1043,24 @@ def ensure_fixture_contract(
             raise FileNotFoundError(f"missing fixture or worker: {project.key}")
         if any(path.is_symlink() for path in project.root.rglob("*")):
             raise RuntimeError(f"fixture contains symlink: {project.key}")
-        missing_allowed = [
+        missing_production = [
             relative
-            for relative in project.allowed_paths
+            for relative in project.production_paths
             if not (project.root / relative).is_file()
         ]
-        if missing_allowed:
-            raise RuntimeError(f"missing allowed production path: {missing_allowed[0]}")
+        if missing_production:
+            raise RuntimeError(
+                f"missing allowed production path: {missing_production[0]}"
+            )
+        missing_auxiliary = [
+            relative
+            for relative in project.auxiliary_paths
+            if not (project.root / relative).is_file()
+        ]
+        if missing_auxiliary:
+            raise RuntimeError(f"missing allowed test path: {missing_auxiliary[0]}")
+        if set(project.production_paths).intersection(project.auxiliary_paths):
+            raise RuntimeError(f"overlapping allowed paths: {project.key}")
         if not project.hidden_cases or len(
             {case.case_id for case in project.hidden_cases}
         ) != len(project.hidden_cases):
@@ -1082,6 +1101,8 @@ def ensure_fixture_contract(
             "worker_sha256": sha256_file(project.worker),
             "seed_check": list(project.check),
             "expected_seed_failure_sha256": sha256_text(project.expected_seed_failure),
+            "production_paths": list(project.production_paths),
+            "auxiliary_paths": list(project.auxiliary_paths),
             "allowed_paths": list(project.allowed_paths),
             "canonical_test_ids": list(project.canonical_test_ids),
             "hidden_cases": [
@@ -1698,7 +1719,7 @@ def collect_repository_evidence(
         ("diff", "--binary", baseline, "--"), workspace=workspace, env=env
     ).stdout
     production_patch = _checked_git(
-        ("diff", "--binary", baseline, "--", *project.allowed_paths),
+        ("diff", "--binary", baseline, "--", *project.production_paths),
         workspace=workspace,
         env=env,
     ).stdout
