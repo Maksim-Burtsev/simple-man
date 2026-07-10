@@ -259,6 +259,10 @@ class ContractTests(RunnerFixture):
                     set(details[project.key]["auxiliary_paths"]),
                     set(project.auxiliary_paths),
                 )
+                self.assertEqual(
+                    set(details[project.key]["immutable_test_paths"]),
+                    set(project.immutable_test_paths),
+                )
                 destination = self.root / f"copy-{project.key}"
                 quality.copy_fixture(project, destination)
                 copied = {
@@ -741,7 +745,7 @@ class ContractTests(RunnerFixture):
         self.assertEqual(control_failure["status"], "INCONCLUSIVE")
         self.assertEqual(control_failure["exit_code"], 2)
 
-    def test_validation_restores_and_ignores_allowlisted_test_modification(
+    def test_validation_allows_regression_file_but_rejects_baseline_test_edit(
         self,
     ) -> None:
         project = next(
@@ -780,7 +784,18 @@ class ContractTests(RunnerFixture):
             ),
             encoding="utf-8",
         )
-        (workspace / "test_rollout.py").write_text("# agent replaced canonical tests\n")
+        regression_path = workspace / "test_regression.py"
+        baseline_regression_source = regression_path.read_text(encoding="utf-8")
+        appended_regression_source = (
+            baseline_regression_source
+            + "\n\nclass AddedRegressionTests(unittest.TestCase):\n"
+            + "    def test_added_regression(self):\n"
+            + "        self.assertTrue(True)\n"
+        )
+        regression_path.write_text(
+            appended_regression_source,
+            encoding="utf-8",
+        )
 
         evidence = quality.collect_repository_evidence(
             project=project,
@@ -789,9 +804,10 @@ class ContractTests(RunnerFixture):
             env=environment,
         )
         production_patch = str(evidence.pop("production_patch"))
-        evidence.pop("full_patch")
+        full_patch = str(evidence.pop("full_patch"))
         validation = quality.validate_production_patch(
             project=project,
+            full_patch=full_patch,
             production_patch=production_patch,
             trace_tests_invoked=True,
             repository_evidence=evidence,
@@ -801,10 +817,78 @@ class ContractTests(RunnerFixture):
         )
 
         self.assertTrue(evidence["paths_allowed"])
+        self.assertTrue(evidence["baseline_tests_unchanged"])
         self.assertTrue(validation["checks"]["canonical_tests_restored"])
         self.assertTrue(validation["checks"]["canonical_tests_passed"])
+        self.assertTrue(validation["checks"]["baseline_tests_unchanged"])
+        self.assertTrue(validation["checks"]["regression_targets_append_only"])
+        self.assertTrue(validation["checks"]["agent_suite_passed"])
         self.assertTrue(validation["checks"]["hidden_cases_passed"])
         self.assertTrue(validation["passed"])
+
+        regression_path.write_text(
+            "import unittest\n\n"
+            "class RegressionTests(unittest.TestCase):\n"
+            "    def test_regression_file_is_discovered(self):\n"
+            "        self.assertTrue(True)\n",
+            encoding="utf-8",
+        )
+        replaced = quality.collect_repository_evidence(
+            project=project,
+            workspace=workspace,
+            baseline=baseline,
+            env=environment,
+        )
+        replaced_production_patch = str(replaced.pop("production_patch"))
+        replaced_full_patch = str(replaced.pop("full_patch"))
+        replaced_validation = quality.validate_production_patch(
+            project=project,
+            full_patch=replaced_full_patch,
+            production_patch=replaced_production_patch,
+            trace_tests_invoked=True,
+            repository_evidence=replaced,
+            parent=self.root / "replaced-regression-validation",
+            executable=quality.resolve_executable("codex"),
+            source_isolation=quality.source_isolation_contract(),
+        )
+        self.assertTrue(replaced["paths_allowed"])
+        self.assertTrue(replaced["baseline_tests_unchanged"])
+        self.assertFalse(
+            replaced_validation["checks"]["regression_targets_append_only"]
+        )
+        self.assertTrue(replaced_validation["checks"]["agent_suite_passed"])
+        self.assertFalse(replaced_validation["passed"])
+
+        regression_path.write_text(appended_regression_source, encoding="utf-8")
+        baseline_test_path = workspace / "test_rollout.py"
+        baseline_test_path.write_text(
+            baseline_test_path.read_text(encoding="utf-8") + "\n# forbidden edit\n"
+        )
+        forbidden = quality.collect_repository_evidence(
+            project=project,
+            workspace=workspace,
+            baseline=baseline,
+            env=environment,
+        )
+        forbidden_production_patch = str(forbidden.pop("production_patch"))
+        forbidden_full_patch = str(forbidden.pop("full_patch"))
+        forbidden_validation = quality.validate_production_patch(
+            project=project,
+            full_patch=forbidden_full_patch,
+            production_patch=forbidden_production_patch,
+            trace_tests_invoked=True,
+            repository_evidence=forbidden,
+            parent=self.root / "forbidden-test-validation",
+            executable=quality.resolve_executable("codex"),
+            source_isolation=quality.source_isolation_contract(),
+        )
+        self.assertFalse(forbidden["paths_allowed"])
+        self.assertFalse(forbidden["baseline_tests_unchanged"])
+        self.assertFalse(forbidden_validation["checks"]["baseline_tests_unchanged"])
+        self.assertTrue(forbidden_validation["checks"]["agent_suite_passed"])
+        self.assertTrue(forbidden_validation["checks"]["canonical_tests_passed"])
+        self.assertTrue(forbidden_validation["checks"]["hidden_cases_passed"])
+        self.assertFalse(forbidden_validation["passed"])
 
         (workspace / "unexpected.txt").write_text("not allowlisted\n")
         disallowed = quality.collect_repository_evidence(
@@ -814,6 +898,31 @@ class ContractTests(RunnerFixture):
             env=environment,
         )
         self.assertFalse(disallowed["paths_allowed"])
+
+    def test_unittest_reporter_rejects_skipped_baseline_test(self) -> None:
+        execution = quality.BoundedExecution(
+            quality.subprocess.CompletedProcess(
+                ["python3", "-m", "unittest", "-v"],
+                0,
+                "",
+                "test_expected (suite.Case.test_expected) ... skipped 'disabled'\n"
+                "\n----------------------------------------------------------------------\n"
+                "Ran 1 test in 0.000s\n\nOK (skipped=1)\n",
+            ),
+            1,
+            False,
+            False,
+            False,
+        )
+        self.assertFalse(
+            quality.test_run_completed(
+                execution,
+                reporter="unittest",
+                expected_tests=1,
+                expected_ids=("test_expected",),
+                allow_additional=True,
+            )
+        )
 
     def test_validation_rejects_early_success_exit_without_test_completion(
         self,
@@ -858,9 +967,10 @@ class ContractTests(RunnerFixture):
             env=environment,
         )
         production_patch = str(evidence.pop("production_patch"))
-        evidence.pop("full_patch")
+        full_patch = str(evidence.pop("full_patch"))
         validation = quality.validate_production_patch(
             project=project,
+            full_patch=full_patch,
             production_patch=production_patch,
             trace_tests_invoked=True,
             repository_evidence=evidence,
@@ -916,9 +1026,10 @@ class ContractTests(RunnerFixture):
             env=environment,
         )
         production_patch = str(evidence.pop("production_patch"))
-        evidence.pop("full_patch")
+        full_patch = str(evidence.pop("full_patch"))
         validation = quality.validate_production_patch(
             project=project,
+            full_patch=full_patch,
             production_patch=production_patch,
             trace_tests_invoked=True,
             repository_evidence=evidence,
@@ -1015,9 +1126,10 @@ class PaymentLedger:
             env=environment,
         )
         production_patch = str(evidence.pop("production_patch"))
-        evidence.pop("full_patch")
+        full_patch = str(evidence.pop("full_patch"))
         validation = quality.validate_production_patch(
             project=project,
+            full_patch=full_patch,
             production_patch=production_patch,
             trace_tests_invoked=True,
             repository_evidence=evidence,

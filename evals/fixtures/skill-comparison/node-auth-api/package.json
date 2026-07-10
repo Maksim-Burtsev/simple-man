@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node --test test/auth.test.js"
+    "test": "node --test test/auth.test.js test/regression.test.js"
   }
 }

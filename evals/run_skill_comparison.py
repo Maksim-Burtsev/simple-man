@@ -100,7 +100,7 @@ SAFE_PATH = (
     "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 )
 EXECUTION_CONTRACT = {
-    "version": 3,
+    "version": 4,
     "tasks": 3,
     "arms": list(ARMS),
     "trials": TRIALS,
@@ -140,9 +140,11 @@ EXECUTION_CONTRACT = {
         "open_files": MAX_OPEN_FILES,
     },
     "validation": (
-        "strict allowlisted production and regression-test paths, bounded production-only diff, "
-        "exact successful canonical test command in trace, exact pristine canonical tests, and "
-        "parent-compared observations from randomized read-only post-run workers"
+        "immutable baseline tests plus strict allowlisted production and separate regression-test "
+        "paths, bounded production-only diff, exact successful canonical test command in trace, "
+        "append-only regression targets and a clean full-patch workflow check, exact pristine "
+        "canonical tests under the production-only patch, and authoritative parent-compared "
+        "observations from randomized read-only post-run workers"
     ),
     "gate": "both arms 6/6; native failure is inconclusive",
 }
@@ -164,6 +166,7 @@ class Project:
     expected_seed_failure: str
     production_paths: tuple[str, ...]
     auxiliary_paths: tuple[str, ...]
+    immutable_test_paths: tuple[str, ...]
     worker: Path
     worker_suffix: str
     test_reporter: str
@@ -253,20 +256,25 @@ PROJECTS = (
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
             command and result, and any remaining risk. Use exactly `npm test` for
-            validation. Answer in English.
+            validation. Do not modify `test/auth.test.js`; if you add regression
+            coverage, required imports already exist in `test/regression.test.js`;
+            append test cases there without changing its existing prefix. Answer
+            in English.
             """
         ).strip(),
         check=("npm", "test"),
         expected_seed_failure="200 !== 401",
         production_paths=("src/middleware.js",),
-        auxiliary_paths=("test/auth.test.js",),
+        auxiliary_paths=("test/regression.test.js",),
+        immutable_test_paths=("test/auth.test.js",),
         worker=WORKERS / "node-auth-worker.js",
         worker_suffix=".js",
         test_reporter="node",
-        canonical_test_count=2,
+        canonical_test_count=3,
         canonical_test_ids=(
             "accepts a valid session",
             "rejects an expired session",
+            "regression file is discovered",
         ),
         hidden_cases=(
             HiddenCase(
@@ -298,19 +306,24 @@ PROJECTS = (
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
             command and result, and any remaining risk. Use exactly
-            `python3 -m unittest -v` for validation. Answer in English.
+            `python3 -m unittest -v` for validation. Do not modify
+            `test_ledger.py`; if you add regression coverage, required imports
+            already exist in `test_regression.py`; append test cases there without
+            changing its existing prefix. Answer in English.
             """
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
         expected_seed_failure="'ch_2' != 'ch_1'",
         production_paths=("ledger.py",),
-        auxiliary_paths=("test_ledger.py",),
+        auxiliary_paths=("test_regression.py",),
+        immutable_test_paths=("test_ledger.py",),
         worker=WORKERS / "python-payment-worker.py",
         worker_suffix=".py",
         test_reporter="unittest",
-        canonical_test_count=1,
+        canonical_test_count=2,
         canonical_test_ids=(
             "test_retry_with_same_key_does_not_create_second_remote_charge",
+            "test_regression_file_is_discovered",
         ),
         hidden_cases=(
             HiddenCase(
@@ -370,18 +383,25 @@ PROJECTS = (
             Inspect the project, fix the bug, and run the relevant tests. Then give
             an engineering handoff with the root cause, files changed, validation
             command and result, and any remaining risk. Use exactly
-            `python3 -m unittest -v` for validation. Answer in English.
+            `python3 -m unittest -v` for validation. Do not modify
+            `test_rollout.py`; if you add regression coverage, required imports
+            already exist in `test_regression.py`; append test cases there without
+            changing its existing prefix. Answer in English.
             """
         ).strip(),
         check=("python3", "-m", "unittest", "-v"),
         expected_seed_failure="no such column: expires_at",
         production_paths=("rollout.py",),
-        auxiliary_paths=("test_rollout.py",),
+        auxiliary_paths=("test_regression.py",),
+        immutable_test_paths=("test_rollout.py",),
         worker=WORKERS / "sqlite-rollout-worker.py",
         worker_suffix=".py",
         test_reporter="unittest",
-        canonical_test_count=1,
-        canonical_test_ids=("test_backup_runs_before_drop_column_migration",),
+        canonical_test_count=2,
+        canonical_test_ids=(
+            "test_regression_file_is_discovered",
+            "test_backup_runs_before_drop_column_migration",
+        ),
         hidden_cases=(
             HiddenCase(
                 "preserve_rows_and_note",
@@ -1059,7 +1079,23 @@ def ensure_fixture_contract(
         ]
         if missing_auxiliary:
             raise RuntimeError(f"missing allowed test path: {missing_auxiliary[0]}")
-        if set(project.production_paths).intersection(project.auxiliary_paths):
+        missing_immutable = [
+            relative
+            for relative in project.immutable_test_paths
+            if not (project.root / relative).is_file()
+        ]
+        if missing_immutable:
+            raise RuntimeError(f"missing immutable test path: {missing_immutable[0]}")
+        path_groups = (
+            set(project.production_paths),
+            set(project.auxiliary_paths),
+            set(project.immutable_test_paths),
+        )
+        if any(
+            left.intersection(right)
+            for index, left in enumerate(path_groups)
+            for right in path_groups[index + 1 :]
+        ):
             raise RuntimeError(f"overlapping allowed paths: {project.key}")
         if not project.hidden_cases or len(
             {case.case_id for case in project.hidden_cases}
@@ -1103,6 +1139,7 @@ def ensure_fixture_contract(
             "expected_seed_failure_sha256": sha256_text(project.expected_seed_failure),
             "production_paths": list(project.production_paths),
             "auxiliary_paths": list(project.auxiliary_paths),
+            "immutable_test_paths": list(project.immutable_test_paths),
             "allowed_paths": list(project.allowed_paths),
             "canonical_test_ids": list(project.canonical_test_ids),
             "hidden_cases": [
@@ -1741,6 +1778,9 @@ def collect_repository_evidence(
         "changed_paths": changed_paths,
         "paths_allowed": bool(changed_paths)
         and set(changed_paths).issubset(project.allowed_paths),
+        "baseline_tests_unchanged": set(changed_paths).isdisjoint(
+            project.immutable_test_paths
+        ),
         "has_production_diff": bool(production_patch.strip()),
         "diff_check_exit": diff_check.returncode,
         "diff_check_output": diff_check.stdout + diff_check.stderr,
@@ -1777,6 +1817,7 @@ def test_run_completed(
     reporter: str,
     expected_tests: int,
     expected_ids: Sequence[str],
+    allow_additional: bool = False,
 ) -> bool:
     if (
         execution.process.returncode != 0
@@ -1789,10 +1830,18 @@ def test_run_completed(
     if reporter == "unittest":
         counts = re.findall(r"(?m)^Ran (\d+) tests? in ", output)
         observed_ids = re.findall(r"(?m)^([A-Za-z0-9_]+) \(", output)
+        expected_count = int(counts[0]) if len(counts) == 1 else -1
+        ids_match = (
+            set(expected_ids).issubset(observed_ids)
+            if allow_additional
+            else observed_ids == list(expected_ids)
+        )
         return (
-            counts == [str(expected_tests)]
-            and observed_ids == list(expected_ids)
-            and bool(re.search(r"(?m)^OK(?: \([^\n]+\))?$", output))
+            expected_count >= expected_tests
+            and (allow_additional or expected_count == expected_tests)
+            and len(observed_ids) == expected_count
+            and ids_match
+            and bool(re.search(r"(?m)^OK$", output))
         )
     if reporter == "node":
 
@@ -1800,14 +1849,40 @@ def test_run_completed(
             return re.findall(rf"(?m)^(?:ℹ|#) {label} (\d+)$", output)
 
         observed_ids = re.findall(r"(?m)^✔ (.+?) \([0-9.]+ms\)$", output)
+        tests = one("tests")
+        passes = one("pass")
+        observed_count = int(tests[0]) if len(tests) == 1 else -1
+        pass_count = int(passes[0]) if len(passes) == 1 else -1
+        ids_match = (
+            set(expected_ids).issubset(observed_ids)
+            if allow_additional
+            else observed_ids == list(expected_ids)
+        )
         return (
-            one("tests") == [str(expected_tests)]
-            and one("pass") == [str(expected_tests)]
+            observed_count >= expected_tests
+            and (allow_additional or observed_count == expected_tests)
+            and pass_count == observed_count
             and one("fail") == ["0"]
             and one("cancelled") == ["0"]
-            and observed_ids == list(expected_ids)
+            and one("skipped") == ["0"]
+            and one("todo") == ["0"]
+            and len(observed_ids) == observed_count
+            and ids_match
         )
     raise ValueError(f"unsupported test reporter: {reporter}")
+
+
+def regression_files_append_only(project: Project, workspace: Path) -> bool:
+    for relative in project.auxiliary_paths:
+        baseline = project.root / relative
+        modified = workspace / relative
+        if (
+            not modified.is_file()
+            or modified.is_symlink()
+            or not modified.read_bytes().startswith(baseline.read_bytes())
+        ):
+            return False
+    return True
 
 
 def hidden_worker_command(project: Project, destination: Path) -> tuple[str, ...]:
@@ -1905,6 +1980,7 @@ def hidden_case_evidence(
 def validate_production_patch(
     *,
     project: Project,
+    full_patch: str,
     production_patch: str,
     trace_tests_invoked: bool,
     repository_evidence: Mapping[str, Any],
@@ -1912,14 +1988,26 @@ def validate_production_patch(
     executable: str,
     source_isolation: SourceIsolation,
 ) -> dict[str, Any]:
+    if len(full_patch.encode("utf-8")) > MAX_PATCH_BYTES:
+        raise IntegrityError(f"full patch exceeds byte cap ({MAX_PATCH_BYTES})")
     if len(production_patch.encode("utf-8")) > MAX_PATCH_BYTES:
         raise IntegrityError(f"production patch exceeds byte cap ({MAX_PATCH_BYTES})")
+    agent_suite_root = parent / "agent-suite"
     canonical_root = parent / "canonical"
-    if canonical_root.exists():
+    if agent_suite_root.exists() or canonical_root.exists():
         raise IntegrityError("validation root must be fresh")
+    copy_fixture(project, agent_suite_root)
     copy_fixture(project, canonical_root)
     env = validation_environment(parent)
     apply_commands: list[subprocess.CompletedProcess[str]] = []
+    agent_suite_apply = run(
+        ("git", "apply", "--whitespace=nowarn", "-"),
+        cwd=agent_suite_root,
+        env=env,
+        input_text=full_patch,
+        timeout=10,
+    )
+    enforce_tree_caps(agent_suite_root)
     canonical_apply = run(
         ("git", "apply", "--whitespace=nowarn", "-"),
         cwd=canonical_root,
@@ -1931,6 +2019,27 @@ def validate_production_patch(
     enforce_tree_caps(canonical_root)
 
     protected_roots = source_isolation.protected_roots
+    agent_suite: BoundedExecution | None = None
+    if agent_suite_apply.returncode == 0:
+        agent_suite = run_validation_test(
+            executable=executable,
+            workspace=agent_suite_root,
+            protected_roots=protected_roots,
+            env=env,
+            command=project.check,
+        )
+    agent_suite_size = enforce_tree_caps(agent_suite_root)
+    regression_targets_append_only = (
+        agent_suite_apply.returncode == 0
+        and regression_files_append_only(project, agent_suite_root)
+    )
+    agent_suite_passed = agent_suite is not None and test_run_completed(
+        agent_suite,
+        reporter=project.test_reporter,
+        expected_tests=project.canonical_test_count,
+        expected_ids=project.canonical_test_ids,
+        allow_additional=True,
+    )
     canonical = run_validation_test(
         executable=executable,
         workspace=canonical_root,
@@ -1989,6 +2098,12 @@ def validate_production_patch(
     patches_applied = all(process.returncode == 0 for process in apply_commands)
 
     checks = {
+        "full_patch_applied": agent_suite_apply.returncode == 0,
+        "baseline_tests_unchanged": bool(
+            repository_evidence["baseline_tests_unchanged"]
+        ),
+        "regression_targets_append_only": regression_targets_append_only,
+        "agent_suite_passed": agent_suite_passed,
         "production_patch_applied": patches_applied,
         "production_diff_present": bool(repository_evidence["has_production_diff"]),
         "paths_allowed": bool(repository_evidence["paths_allowed"]),
@@ -2011,15 +2126,31 @@ def validate_production_patch(
             }
             for process in apply_commands
         ],
+        "agent_suite_apply": {
+            "command": ["git", "apply", "-"],
+            "exit_code": agent_suite_apply.returncode,
+            "stdout": agent_suite_apply.stdout,
+            "stderr": agent_suite_apply.stderr,
+        },
+        "agent_suite": (
+            _command_evidence(agent_suite, project.check)
+            if agent_suite is not None
+            else None
+        ),
         "canonical": _command_evidence(canonical, project.check),
         "hidden_cases": hidden_cases,
         "test_counts": {
             "canonical": project.canonical_test_count,
             "hidden": len(project.hidden_cases),
         },
-        "workspace_size": {"canonical": canonical_size, "hidden": hidden_sizes},
+        "workspace_size": {
+            "agent_suite": agent_suite_size,
+            "canonical": canonical_size,
+            "hidden": hidden_sizes,
+        },
         "validation_source": (
-            "one pristine copy per canonical/hidden case plus production-only patch; "
+            "immutable baseline tests plus append-only regression targets in one full-patch "
+            "workflow check, then authoritative pristine canonical/hidden production-only cases; "
             "read-only isolated workers; parent-owned expected observations"
         ),
     }
@@ -2328,6 +2459,7 @@ def load_resumable_result(
     )
     validation = validate_production_patch(
         project=project,
+        full_patch=full_patch_path.read_text(encoding="utf-8"),
         production_patch=production_patch_path.read_text(encoding="utf-8"),
         trace_tests_invoked=bool(trace["tests_invoked"]),
         repository_evidence=repository,
@@ -2341,6 +2473,7 @@ def load_resumable_result(
     deterministic_repository_keys = {
         "changed_paths",
         "paths_allowed",
+        "baseline_tests_unchanged",
         "has_production_diff",
         "diff_check_exit",
         "diff_check_output",
@@ -2378,6 +2511,17 @@ def load_resumable_result(
             "passed": value.get("passed"),
             "checks": value.get("checks"),
             "test_counts": value.get("test_counts"),
+            "agent_suite_apply_exit": (value.get("agent_suite_apply") or {}).get(
+                "exit_code"
+            ),
+            "agent_suite_exit": (value.get("agent_suite") or {}).get("exit_code"),
+            "agent_suite_timeout": (value.get("agent_suite") or {}).get("timed_out"),
+            "agent_suite_output_limited": (value.get("agent_suite") or {}).get(
+                "output_limited"
+            ),
+            "agent_suite_workspace_limited": (value.get("agent_suite") or {}).get(
+                "workspace_limited"
+            ),
             "canonical_exit": (value.get("canonical") or {}).get("exit_code"),
             "canonical_timeout": (value.get("canonical") or {}).get("timed_out"),
             "canonical_output_limited": (value.get("canonical") or {}).get(
@@ -2487,6 +2631,7 @@ def execute_run(
     ) as validation_temporary:
         validation = validate_production_patch(
             project=project,
+            full_patch=full_patch_path.read_text(encoding="utf-8"),
             production_patch=production_patch_path.read_text(encoding="utf-8"),
             trace_tests_invoked=bool(trace["tests_invoked"]),
             repository_evidence=repository,

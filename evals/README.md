@@ -157,14 +157,19 @@ credential-read denial before every remote call; prompt preflight proves the
 same profile and network restriction are active. Non-macOS live runs fail
 closed.
 
-The runner accepts changes only to preregistered production and regression-test
-files, requires a production diff and clean `git diff --check`, and recognizes
-only the exact canonical test command required by each task prompt in the raw
-trace. Test-file changes are evidence only: validation discards them and applies
-the production-only patch to pristine fixtures. Intermediate Codex progress
-messages are allowed, but the trace must end with one terminal answer. After
-Codex exits and its auth-bearing directory is deleted, canonical and hidden
-validation run in separate pristine copies with a
+The runner accepts changes only to preregistered production files and separate
+regression-test files named in each task. Baseline tests are outside the change
+allowlist, so any edit, deletion, or rename fails. The runner requires a
+production diff and clean `git diff --check`, and recognizes only the exact
+canonical test command required by each task prompt in the raw trace. A pristine
+full-patch workflow check requires regression files to retain their preregistered
+byte prefix and the final suite to report all baseline IDs with no failures or
+skips. This model-modified suite is hygiene evidence, not the trusted oracle.
+Authoritative canonical and hidden validation discard regression-file changes
+and apply only the production patch to separate pristine fixtures. Intermediate
+Codex progress messages are allowed, but the trace must end with one terminal
+answer. After Codex exits and its auth-bearing directory is deleted, validation
+runs with a
 fresh no-auth environment, disabled network, source/home denies, wall/output/
 file/workspace/patch limits, process-group cleanup, and a read-only workspace.
 Each hidden case gets its own pristine copy and randomized observation worker.
