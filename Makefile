@@ -11,13 +11,20 @@ SAMPLE_SNAPSHOT ?= /tmp/simple-man-caveman-sample-results.json
 MODEL_ARG := $(if $(MODEL),--model $(MODEL),)
 LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
-.PHONY: test bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
+.PHONY: test package-check bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
 
-test:
+test: package-check
 	$(PYTHON) -m unittest discover -s tests
 	$(PYTHON) -m py_compile evals/benchmark_lib.py evals/measure.py evals/run_codex.py evals/run_skill_comparison.py
 	$(PYTHON) evals/run_codex.py --dry-run --limit 1
 	$(PYTHON) evals/run_codex.py --suite reference_compression --dry-run --limit 1
+
+package-check:
+	bash -n install.sh
+	cmp skills/simple-man/SKILL.md plugins/simple-man/skills/simple-man/SKILL.md
+	cmp skills/simple-man/agents/openai.yaml plugins/simple-man/skills/simple-man/agents/openai.yaml
+	$(PYTHON) -m json.tool .agents/plugins/marketplace.json >/dev/null
+	$(PYTHON) -m json.tool plugins/simple-man/.codex-plugin/plugin.json >/dev/null
 
 bench:
 	$(PYTHON) evals/measure.py --snapshot $(BENCH_SNAPSHOT)

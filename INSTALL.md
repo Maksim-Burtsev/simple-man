@@ -1,13 +1,19 @@
 # Install
 
-Simple Man is designed to be always-on.
+## Portable Agent Skill
 
-**Important: Simple Man is always-on after install. This is expected.**
-
-## Codex
+Install Simple Man without changing global communication policy:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/install.sh | bash
+npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
+```
+
+Invoke it explicitly with `$simple-man`, or let the agent activate it from the request.
+
+## Always-on Codex policy
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
 ```
 
 The installer:
@@ -15,13 +21,14 @@ The installer:
 - copies `skills/simple-man` to `~/.codex/skills/simple-man`
 - writes a managed Simple Man block into `~/.codex/AGENTS.md`
 - replaces that managed block on rerun without duplicating it
+- keeps the previous installed skill at `~/.codex/skills/simple-man.backup`
 
 Restart Codex after installing so new sessions load the global instructions.
 
 ## Codex Plugin Package
 
 ```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref master
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
 codex plugin add simple-man@simple-man
 ```
 

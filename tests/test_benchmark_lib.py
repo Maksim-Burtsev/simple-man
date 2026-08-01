@@ -401,8 +401,10 @@ class BenchmarkLibTests(unittest.TestCase):
     def test_installer_is_idempotent_and_enables_global_codex_policy(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
-            env["HOME"] = tmp
-            env.pop("CODEX_HOME", None)
+            home = Path(tmp) / "codex"
+            env["CODEX_HOME"] = str(home)
+            home.mkdir()
+            (home / "AGENTS.md").write_text("# Existing instructions\n")
 
             for _ in range(2):
                 result = subprocess.run(
@@ -414,17 +416,103 @@ class BenchmarkLibTests(unittest.TestCase):
                     check=True,
                 )
 
-            home = Path(tmp) / ".codex"
             skill = home / "skills" / "simple-man" / "SKILL.md"
             metadata = home / "skills" / "simple-man" / "agents" / "openai.yaml"
             agents = (home / "AGENTS.md").read_text()
 
             self.assertTrue(skill.exists())
             self.assertTrue(metadata.exists())
+            self.assertTrue((home / "skills" / "simple-man.backup").exists())
             self.assertIn("Simple Man is always-on after install", result.stdout)
             self.assertEqual(agents.count("simple-man-always-on-begin"), 1)
             self.assertEqual(agents.count("simple-man-always-on-end"), 1)
+            self.assertIn("# Existing instructions", agents)
             self.assertIn("Apply Simple Man to user-facing responses by default.", agents)
+
+    def test_installer_rejects_malformed_managed_block_without_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "codex"
+            skill = home / "skills" / "simple-man"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("existing skill\n")
+            agents_file = home / "AGENTS.md"
+            malformed = (
+                "<!-- simple-man-always-on-end -->\n"
+                "<!-- simple-man-always-on-begin -->\n"
+            )
+            agents_file.write_text(malformed)
+            env = os.environ.copy()
+            env["CODEX_HOME"] = str(home)
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "install.sh")],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("malformed managed block", result.stderr)
+            self.assertEqual((skill / "SKILL.md").read_text(), "existing skill\n")
+            self.assertEqual(agents_file.read_text(), malformed)
+
+    def test_installer_preserves_agents_file_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "codex"
+            home.mkdir()
+            agents_target = root / "managed-AGENTS.md"
+            agents_target.write_text("# Managed elsewhere\n")
+            agents_file = home / "AGENTS.md"
+            agents_file.symlink_to(agents_target)
+            env = os.environ.copy()
+            env["CODEX_HOME"] = str(home)
+
+            subprocess.run(
+                ["bash", str(ROOT / "install.sh")],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertTrue(agents_file.is_symlink())
+            self.assertIn(
+                "Apply Simple Man to user-facing responses by default.",
+                agents_target.read_text(),
+            )
+
+    def test_piped_installer_does_not_load_files_from_working_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "codex"
+            spoof = root / "spoof"
+            spoof_skill = spoof / "skills" / "simple-man"
+            (spoof_skill / "agents").mkdir(parents=True)
+            (spoof_skill / "SKILL.md").write_text("spoofed skill\n")
+            (spoof_skill / "agents" / "openai.yaml").write_text("spoofed: true\n")
+            (spoof / "AGENTS.md.snippet").write_text("spoofed instructions\n")
+            env = os.environ.copy()
+            env["CODEX_HOME"] = str(home)
+            env["SIMPLE_MAN_RAW_BASE"] = ROOT.as_uri()
+
+            subprocess.run(
+                ["bash", "-s"],
+                cwd=spoof,
+                env=env,
+                input=(ROOT / "install.sh").read_text(),
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertEqual(
+                (home / "skills" / "simple-man" / "SKILL.md").read_text(),
+                (ROOT / "skills" / "simple-man" / "SKILL.md").read_text(),
+            )
+            self.assertNotIn("spoofed instructions", (home / "AGENTS.md").read_text())
 
     def test_codex_plugin_skill_copy_matches_canonical_skill(self):
         canonical = ROOT / "skills" / "simple-man"
@@ -443,10 +531,15 @@ class BenchmarkLibTests(unittest.TestCase):
         marketplace = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text())
 
         self.assertEqual(manifest["name"], "simple-man")
-        self.assertEqual(manifest["version"], "0.1.0")
+        self.assertEqual(manifest["version"], "0.2.0")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertEqual(marketplace["name"], "simple-man")
         self.assertEqual(marketplace["plugins"][0]["name"], "simple-man")
+
+        release_ref = f"v{manifest['version']}"
+        for rel in ("README.md", "INSTALL.md", "install.sh"):
+            with self.subTest(release_ref=rel):
+                self.assertIn(release_ref, (ROOT / rel).read_text())
 
     def test_snapshot_age_warning_uses_generated_at(self):
         old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=45)).isoformat()

@@ -2,7 +2,7 @@
   <img src="assets/icon.png" alt="Simple Man icon" width="160">
 </p>
 
-# Simple Man
+# Simple Man — High-Signal Agent Communication
 
 High-compression professional communication mode for coding agents.
 
@@ -11,6 +11,33 @@ Simple Man is not a persona. It is a communication policy:
 > Minimum user-facing words; same work quality.
 
 It is designed for users who work with agents for many hours and want lower cognitive load without making the agent passive, less careful, or less proactive.
+
+## Quick start
+
+Install the portable Agent Skill for Codex:
+
+```bash
+npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
+```
+
+This installs the skill without changing your global communication policy. Invoke it explicitly with `$simple-man`, or let the agent activate it from the request.
+
+For always-on Codex behavior, use the release-pinned installer instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
+```
+
+The installer adds the skill and manages a compact Simple Man block in `~/.codex/AGENTS.md`. Rerunning it updates that block without duplicating it.
+
+Codex plugin package:
+
+```bash
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
+codex plugin add simple-man@simple-man
+```
+
+Plugin installation makes the skill available; it does not enable the always-on policy. See [INSTALL.md](./INSTALL.md) for other agents and project-level setup.
 
 ## What it changes
 
@@ -207,29 +234,6 @@ headlines use output compression and long-session net; reference headlines use
 output-only compression vs `normal`.
 
 See [evals/README.md](./evals/README.md).
-
-## Install
-
-Install Simple Man as an always-on Codex communication policy:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/master/install.sh | bash
-```
-
-**Important: Simple Man is always-on after install. This is expected.**
-
-The installer copies `skills/simple-man` to `~/.codex/skills/simple-man` and writes the compact runtime policy into `~/.codex/AGENTS.md`.
-
-## Codex plugin package
-
-To add the repo-local plugin package to Codex:
-
-```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref master
-codex plugin add simple-man@simple-man
-```
-
-Plugin install makes the skill available in Codex. Always-on behavior comes from the installer writing global Codex instructions.
 
 ## Recommended usage
 
