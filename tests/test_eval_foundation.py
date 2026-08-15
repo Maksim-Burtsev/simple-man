@@ -107,6 +107,25 @@ class EvalFoundationTest(unittest.TestCase):
             self.assertEqual((root / "fake-codex.calls").read_text(), "1")
             self.assertFalse(any("auth" in path.name for path in output.rglob("*")))
 
+    def test_real_main_started_only_resume_is_consumed_failure(self):
+        """Removing started-attempt handling must crash or invoke fake Codex again."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seeds, policy, auth, project = self.fixture(root)
+            fake = self.fake_codex(root)
+            output = root / "output"
+            with mock.patch.multiple(comparison, SEEDS=seeds, PROJECTS=[project], AUTH=auth, CODEX=str(fake)), mock.patch.object(comparison.platform, "system", return_value="Darwin"):
+                parser = comparison.build_parser()
+                args = parser.parse_args(self.live_args(policy, output))
+                variants = comparison.parse_variants(args.variant)
+                comparison.preflight(args, parser, variants)
+                identity = comparison.run_identity(project, "candidate", policy, 1, args, variants)
+                raw = comparison.private_root(output) / "raw" / "fixture-candidate-1.jsonl"
+                raw.parent.mkdir(parents=True)
+                raw.write_text(json.dumps({"record_type": "identity", "identity": identity}) + "\n" + json.dumps({"record_type": "call", "status": "started"}) + "\n")
+                self.assertEqual(comparison.main([*self.live_args(policy, output), "--resume"]), 1)
+            self.assertFalse((root / "fake-codex.calls").exists())
+
     def test_seeded_plan_is_deterministic_and_public_export_redacts_adversarial_values(self):
         """Changing identity/redaction would expose unstable plans or private data."""
         with tempfile.TemporaryDirectory() as tmp:

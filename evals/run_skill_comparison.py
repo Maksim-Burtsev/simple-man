@@ -426,7 +426,7 @@ def write_summary(output: Path, records: list[dict[str, object]]) -> None:
 
 def summary_from_trace(raw: Path, identity: dict[str, object], status: str) -> dict[str, object]:
     records = parse_jsonl(raw)
-    result = next(record for record in reversed(records) if record.get("record_type") == "result")
+    result = next((record for record in reversed(records) if record.get("record_type") == "result"), {})
     return {"identity": identity, "status": status, "messages": [record["text"] for record in records if record.get("record_type") == "message"], "event": [record["event"] for record in records if record.get("record_type") == "event"], "stderr": result.get("stderr", "")}
 
 
