@@ -82,7 +82,42 @@ The runner records all of them. It does not double-count
 `reasoning_output_tokens`. Raw Codex usage is diagnostic; the primary metric is
 the controlled visible token total.
 
-## Commands
+## Skill-comparison foundation runner
+
+`evals/run_skill_comparison.py` is the isolated real-agent comparison runner.
+It does not generate the historical Markdown report.
+
+Preview a deterministic plan without authentication or model calls:
+
+```bash
+python3 evals/run_skill_comparison.py --dry-run --seed 7 \
+  --variant candidate=evals/policies/simple_man_candidate_runtime.md
+```
+
+Run a single policy variant on the supported macOS isolation host:
+
+```bash
+python3 evals/run_skill_comparison.py \
+  --variant candidate=evals/policies/simple_man_candidate_runtime.md \
+  --model gpt-5.5 --effort xhigh --max-calls 3 --output-dir /tmp/simple-man-eval
+```
+
+Repeat `--variant NAME=PATH` to compare policies. Live mode requires `--model`,
+`--effort`, and an all-plan `--max-calls` cap. `--max-usd` remains unavailable
+without a verified versioned price mapping.
+
+The output directory contains only `summary.json`: non-secret run identity,
+status, and usage scalars. A sibling private directory named
+`.simple-man-eval-private` contains raw stdout/stderr, durable ledgers, and
+disposable run data; do not publish it. Each attempt gets a deterministic
+identity. Re-run an existing identity only with `--resume`; completed attempts
+are not called again, while started/failed attempts return a consumed nonzero
+outcome. A fresh attempt requires a new `--output-dir`; the existing private
+ledger is never overwritten. `--resume` requires the exact saved identity
+(including runner, fixture, policy, model, and CLI identity); raw evidence without
+its ledger is refused before a model call.
+
+## Existing benchmark commands
 
 Preview the full run without model calls:
 
