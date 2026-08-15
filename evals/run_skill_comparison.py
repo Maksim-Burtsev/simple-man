@@ -1,44 +1,26 @@
 #!/usr/bin/env python3
+"""Run isolated Codex skill comparisons with resumable local evidence."""
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import os
 import shutil
 import subprocess
+import tempfile
 import textwrap
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-LOCAL_ROOT = REPO / ".local-fixtures" / "skill-comparison"
 SEEDS = REPO / "evals" / "fixtures" / "skill-comparison"
-RUNS = LOCAL_ROOT / "runs"
-OUTPUTS = LOCAL_ROOT / "outputs"
-RAW = LOCAL_ROOT / "raw"
-HOMES = LOCAL_ROOT / "codex-homes"
-REPORT = REPO / "evals" / "reports" / "codex-skill-comparison.md"
-
-MODEL = os.environ.get("MODEL", "gpt-5.5")
-EFFORT = os.environ.get("EFFORT", "xhigh")
-CODEX = os.environ.get("CODEX", "codex")
-CAVEMAN_SKILL = Path(
-    os.environ.get(
-        "CAVEMAN_SKILL",
-        str(
-            Path.home()
-            / ".codex"
-            / ".tmp"
-            / "marketplaces"
-            / "caveman-repo"
-            / "skills"
-            / "caveman"
-            / "SKILL.md"
-        ),
-    )
-)
 SIMPLE_MAN_SKILL = REPO / "skills" / "simple-man" / "SKILL.md"
 AUTH = Path.home() / ".codex" / "auth.json"
+CODEX = os.environ.get("CODEX", "codex")
+SCHEMA = 1
+DEFAULT_OUTPUT = Path(tempfile.gettempdir()) / "simple-man-skill-comparison"
 
 
 @dataclass(frozen=True)
@@ -51,382 +33,357 @@ class Project:
 
 PROJECTS = [
     Project(
-        key="node-auth-api",
-        title="Node auth API",
-        task=textwrap.dedent(
-            """
-            We have an auth bug: expired sessions are still accepted.
+        "node-auth-api", "Node auth API", textwrap.dedent("""
+        We have an auth bug: expired sessions are still accepted.
 
-            Please inspect the project, fix the bug, run the relevant tests, and
-            give me an engineering handoff with:
-            - root cause
-            - files changed
-            - validation command and result
-            - any remaining risk
+        Please inspect the project, fix the bug, run the relevant tests, and give me an engineering handoff with:
+        - root cause
+        - files changed
+        - validation command and result
+        - any remaining risk
 
-            Answer in English. Do not mention benchmark internals, isolated
-            CODEX_HOME directories, raw logs, or absolute run-copy paths.
-            """
-        ).strip(),
-        check=["npm", "test"],
+        Answer in English. Do not mention benchmark internals, isolated CODEX_HOME directories, raw logs, or absolute run-copy paths.
+        """).strip(), ["npm", "test"],
     ),
     Project(
-        key="python-payment-ledger",
-        title="Python payment ledger",
-        task=textwrap.dedent(
-            """
-            We have a duplicate-charge retry bug. A gateway timeout can happen
-            after the provider accepted the charge, and retrying with the same
-            idempotency key currently creates another local charge.
+        "python-payment-ledger", "Python payment ledger", textwrap.dedent("""
+        We have a duplicate-charge retry bug. A gateway timeout can happen after the provider accepted the charge, and retrying with the same idempotency key currently creates another local charge.
 
-            Please inspect the project, fix the idempotency bug, run the relevant
-            tests, and give me an engineering handoff with:
-            - root cause
-            - files changed
-            - validation command and result
-            - any remaining risk
+        Please inspect the project, fix the idempotency bug, run the relevant tests, and give me an engineering handoff with:
+        - root cause
+        - files changed
+        - validation command and result
+        - any remaining risk
 
-            Answer in English. Do not mention benchmark internals, isolated
-            CODEX_HOME directories, raw logs, or absolute run-copy paths.
-            """
-        ).strip(),
-        check=["python3", "-m", "unittest", "-v"],
+        Answer in English. Do not mention benchmark internals, isolated CODEX_HOME directories, raw logs, or absolute run-copy paths.
+        """).strip(), ["python3", "-m", "unittest", "-v"],
     ),
     Project(
-        key="sqlite-rollout-runner",
-        title="SQLite rollout runner",
-        task=textwrap.dedent(
-            """
-            We have an unsafe rollout order: the migration drops
-            legacy_sessions.expires_at before the backup reads that column.
+        "sqlite-rollout-runner", "SQLite rollout runner", textwrap.dedent("""
+        We have an unsafe rollout order: the migration drops legacy_sessions.expires_at before the backup reads that column.
 
-            Please inspect the project, fix the rollout order, run the relevant
-            tests, and give me an engineering handoff with:
-            - root cause
-            - files changed
-            - validation command and result
-            - any remaining risk
+        Please inspect the project, fix the rollout order, run the relevant tests, and give me an engineering handoff with:
+        - root cause
+        - files changed
+        - validation command and result
+        - any remaining risk
 
-            Answer in English. Do not mention benchmark internals, isolated
-            CODEX_HOME directories, raw logs, or absolute run-copy paths.
-            """
-        ).strip(),
-        check=["python3", "-m", "unittest", "-v"],
+        Answer in English. Do not mention benchmark internals, isolated CODEX_HOME directories, raw logs, or absolute run-copy paths.
+        """).strip(), ["python3", "-m", "unittest", "-v"],
     ),
-]
-
-MODES = [
-    ("baseline", "No brevity skill"),
-    ("caveman-ultra", "Caveman ultra"),
-    ("simple-man", "Simple Man"),
 ]
 
 
 def run(cmd: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    if len(cmd) >= 3 and cmd[1:3] == ["-m", "unittest"]:
-        merged_env["PYTHONDONTWRITEBYTECODE"] = "1"
-    return subprocess.run(cmd, cwd=cwd, env=merged_env, text=True, capture_output=True)
+    merged = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ}
+    merged.update(env or {})
+    if cmd[1:3] == ["-m", "unittest"]:
+        merged["PYTHONDONTWRITEBYTECODE"] = "1"
+    return subprocess.run(cmd, cwd=cwd, env=merged, text=True, capture_output=True)
 
 
-def write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-
-
-def reset_dir(path: Path) -> None:
+def reset_dir(path: Path, output: Path) -> None:
+    for parent in (path, *path.parents):
+        if parent == output.parent:
+            break
+        if parent.is_symlink():
+            raise ValueError(f"unsafe symlinked output path: {parent}")
     if path.exists():
         shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=True)
+    path.mkdir(parents=True)
 
 
-def remove_pycache(path: Path) -> None:
-    for pycache in path.rglob("__pycache__"):
-        if pycache.is_dir():
-            shutil.rmtree(pycache)
+def write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.write("".join(json.dumps(record, sort_keys=True) + "\n" for record in records))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
 
 
-def verify_seeds() -> dict[str, dict[str, str | int]]:
-    results: dict[str, dict[str, str | int]] = {}
+def write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(value, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def parse_jsonl(path: Path) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"malformed JSONL: {path.name}:{number}") from error
+        if not isinstance(value, dict):
+            raise ValueError(f"malformed JSONL: {path.name}:{number}")
+        records.append(value)
+    return records
+
+
+def validate_saved_trace(path: Path) -> None:
+    records = parse_jsonl(path)
+    events = [record["event"] for record in records if record.get("record_type") == "event" and isinstance(record.get("event"), dict)]
+    if events:
+        parse_codex_events("\n".join(json.dumps(event) for event in events))
+    elif records and "record_type" not in records[0]:
+        parse_codex_events(path.read_text(encoding="utf-8"))
+
+
+def parse_codex_events(stdout: str) -> tuple[list[dict[str, object]], dict[str, object]]:
+    events: list[dict[str, object]] = []
+    usage: dict[str, object] = {}
+    for number, line in enumerate(stdout.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"malformed Codex JSONL:{number}") from error
+        if not isinstance(event, dict):
+            raise ValueError(f"malformed Codex JSONL:{number}")
+        events.append(event)
+        if event.get("type") == "turn.completed" and isinstance(event.get("usage"), dict):
+            usage = event["usage"]
+    completed = [index for index, event in enumerate(events) if event.get("type") == "turn.completed"]
+    if completed != [len(events) - 1] or not usage:
+        raise ValueError("malformed Codex JSONL: expected one final turn.completed usage event")
+    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"):
+        if not isinstance(usage.get(key), int) or usage[key] < 0:
+            raise ValueError(f"malformed Codex JSONL: invalid usage.{key}")
+    return events, usage
+
+
+def agent_messages(events: list[dict[str, object]]) -> list[str]:
+    return [item["text"] for event in events if isinstance(event.get("item"), dict) and (item := event["item"]).get("type") == "agent_message" and isinstance(item.get("text"), str)]
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def source_commit() -> str:
+    result = run(["git", "rev-parse", "HEAD"], cwd=REPO)
+    if result.returncode:
+        raise RuntimeError("source commit unavailable")
+    return result.stdout.strip()
+
+
+def run_identity(project: Project, name: str, policy: Path | None, trial: int, args: argparse.Namespace, variants: list[tuple[str, Path | None]]) -> dict[str, object]:
+    identity: dict[str, object] = {
+        "schema": SCHEMA,
+        "source_commit": source_commit(),
+        "project": project.key,
+        "task_sha256": hashlib.sha256(project.task.encode()).hexdigest(),
+        "check": project.check,
+        "variant": name,
+        "variants": [{"name": variant, "policy_sha256": sha256_file(source) if source else None} for variant, source in variants],
+        "policy_sha256": sha256_file(policy) if policy else None,
+        "seed": args.seed,
+        "trial": trial,
+        "model": args.model,
+        "effort": args.effort,
+    }
+    identity["id"] = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    return identity
+
+
+def default_variants() -> list[tuple[str, Path | None]]:
+    return [("baseline", None), ("simple-man", SIMPLE_MAN_SKILL)]
+
+
+def parse_variants(values: list[str]) -> list[tuple[str, Path | None]]:
+    variants: list[tuple[str, Path | None]] = []
+    for value in values:
+        if "=" not in value:
+            raise ValueError("variant must be NAME=PATH")
+        name, raw_path = value.split("=", 1)
+        if not name or not raw_path or not name.replace("-", "").replace("_", "").isalnum() or any(existing == name for existing, _ in variants):
+            raise ValueError("variant must use a unique NAME=PATH")
+        policy = Path(raw_path).expanduser()
+        if not policy.is_file():
+            raise ValueError(f"policy missing for variant {name}")
+        variants.append((name, policy.resolve()))
+    return variants or default_variants()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--variant", action="append", default=[], metavar="NAME=PATH")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--max-calls", type=int)
+    parser.add_argument("--max-usd", type=float)
+    parser.add_argument("--model")
+    parser.add_argument("--effort")
+    parser.add_argument("--resume", action="store_true")
+    return parser
+
+
+def safe_output_dir(path: Path) -> Path:
+    if path.is_symlink():
+        raise ValueError("unsafe symlinked output path")
+    resolved = path.resolve()
+    if resolved == REPO or resolved.is_relative_to(REPO) or resolved == SEEDS or resolved.is_relative_to(SEEDS):
+        raise ValueError("output directory must be outside source and seed paths")
+    return resolved
+
+
+def preflight(args: argparse.Namespace, parser: argparse.ArgumentParser, variants: list[tuple[str, Path | None]]) -> None:
+    try:
+        args.output_dir = safe_output_dir(args.output_dir)
+    except ValueError as error:
+        parser.error(str(error))
+    for _, policy in variants:
+        if policy is not None and not policy.is_file():
+            parser.error(f"policy missing: {policy}")
+    raw_root = args.output_dir / "raw"
+    if raw_root.is_symlink():
+        parser.error("unsafe symlinked output path")
+    for raw in raw_root.glob("*.jsonl"):
+        if raw.is_symlink():
+            parser.error("unsafe symlinked output path")
+        try:
+            validate_saved_trace(raw)
+        except ValueError as error:
+            parser.error(str(error))
+    if args.dry_run:
+        return
+    if any(getattr(args, name) in (None, "") for name in ("model", "effort", "max_calls")):
+        parser.error("live mode requires --model, --effort, and --max-calls")
+    if args.max_calls <= 0:
+        parser.error("--max-calls must be positive")
+    planned = len(PROJECTS) * len(variants)
+    if planned > args.max_calls:
+        parser.error("--max-calls budget overflow before first model call")
+    if args.max_usd is not None:
+        parser.error("--max-usd requires a verified per-model price before any live call")
+    if not AUTH.is_file():
+        parser.error(f"auth missing: {AUTH}")
+
+
+def verify_seeds() -> None:
     for project in PROJECTS:
         proc = run(project.check, cwd=SEEDS / project.key)
-        results[project.key] = {
-            "exit_code": proc.returncode,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-        }
         print(f"seed check {project.key}: exit {proc.returncode}", flush=True)
-    return results
+        if proc.returncode == 0:
+            raise RuntimeError(f"seed must fail before fixes: {project.key}")
 
 
-def prepare_run_copy(project: Project, mode: str) -> Path:
-    run_dir = RUNS / project.key / mode
-    if run_dir.exists():
-        shutil.rmtree(run_dir)
-    shutil.copytree(SEEDS / project.key, run_dir)
-    init = run(["git", "init"], cwd=run_dir)
-    if init.returncode != 0:
-        raise RuntimeError(init.stderr)
-    add = run(["git", "add", "."], cwd=run_dir)
-    if add.returncode != 0:
-        raise RuntimeError(add.stderr)
-    commit = run(
-        [
-            "git",
-            "-c",
-            "user.name=Codex Benchmark",
-            "-c",
-            "user.email=codex-benchmark@example.com",
-            "commit",
-            "-m",
-            "Seed failing scenario",
-        ],
-        cwd=run_dir,
-    )
-    if commit.returncode != 0:
-        raise RuntimeError(commit.stderr)
-    return run_dir
+def copy_seed(seed: Path, target: Path) -> None:
+    try:
+        relative = seed.resolve().relative_to(REPO)
+    except ValueError:
+        files = [path for path in seed.rglob("*") if path.is_file()]
+    else:
+        tracked = run(["git", "ls-files", "-z", "--", str(relative)], cwd=REPO)
+        if tracked.returncode:
+            raise RuntimeError(tracked.stderr)
+        files = [REPO / path for path in tracked.stdout.split("\0") if path]
+    for source in files:
+        if source.is_symlink() or ".git" in source.relative_to(seed).parts or source.name == ".env" or source.name.startswith(".env."):
+            raise ValueError(f"unsafe seed file: {source.name}")
+        destination = target / source.relative_to(seed)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
-def run_codex(project: Project, mode: str) -> dict[str, str | int]:
-    run_dir = prepare_run_copy(project, mode)
-    out_file = OUTPUTS / f"{project.key}-{mode}.txt"
-    raw_file = RAW / f"{project.key}-{mode}.jsonl"
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    raw_file.parent.mkdir(parents=True, exist_ok=True)
-
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(HOMES / mode)
-
-    cmd = [
-        CODEX,
-        "--ask-for-approval",
-        "never",
-        "exec",
-        "--ephemeral",
-        "--skip-git-repo-check",
-        "-C",
-        str(run_dir),
-        "-m",
-        MODEL,
-        "-c",
-        f'model_reasoning_effort="{EFFORT}"',
-        "-s",
-        "workspace-write",
-        "--json",
-        "--output-last-message",
-        str(out_file),
-        project.task,
-    ]
-    print(f"codex {project.key} / {mode}: start", flush=True)
-    with raw_file.open("w", encoding="utf-8") as raw:
-        proc = subprocess.run(cmd, cwd=run_dir, env=env, text=True, stdout=raw, stderr=subprocess.PIPE)
-    print(f"codex {project.key} / {mode}: exit {proc.returncode}", flush=True)
-
-    final_text = out_file.read_text(encoding="utf-8") if out_file.exists() else ""
-    remove_pycache(run_dir)
-    check = run(project.check, cwd=run_dir)
-    remove_pycache(run_dir)
-    print(f"post-check {project.key} / {mode}: exit {check.returncode}", flush=True)
-
-    status = run(["git", "status", "--short"], cwd=run_dir)
-    changed_files = run(["git", "diff", "--name-only"], cwd=run_dir)
-    diff_stat = run(["git", "diff", "--stat"], cwd=run_dir)
-    return {
-        "codex_exit": proc.returncode,
-        "codex_stderr": proc.stderr,
-        "answer": final_text,
-        "check_exit": check.returncode,
-        "check_stdout": check.stdout,
-        "check_stderr": check.stderr,
-        "git_status": status.stdout,
-        "changed_files": changed_files.stdout,
-        "diff_stat": diff_stat.stdout,
-        "run_dir": str(run_dir),
-        "raw_file": str(raw_file),
-    }
+def prepare_run(project: Project, name: str, policy: Path | None, output: Path, seed: int) -> tuple[Path, dict[str, str]]:
+    run_dir, home = output / "runs" / project.key / name, output / "homes" / project.key / name
+    reset_dir(run_dir, output)
+    reset_dir(home, output)
+    copy_seed(SEEDS / project.key, run_dir)
+    for command in (["git", "init"], ["git", "add", "."], ["git", "-c", "user.name=Codex Eval", "-c", "user.email=codex-eval@example.com", "commit", "-m", "Seed failing scenario"]):
+        result = run(command, cwd=run_dir)
+        if result.returncode:
+            raise RuntimeError(result.stderr)
+    codex_home = home / ".codex"
+    codex_home.mkdir()
+    shutil.copy2(AUTH, codex_home / "auth.json")
+    if policy:
+        (codex_home / "AGENTS.md").write_text(policy.read_text(encoding="utf-8"), encoding="utf-8")
+    return run_dir, {"HOME": str(home), "CODEX_HOME": str(codex_home), "PYTHONHASHSEED": str(seed)}
 
 
-def fence(text: str) -> str:
-    body = text.rstrip()
-    delimiter = "```"
-    while delimiter in body:
-        delimiter += "`"
-    return f"{delimiter}text\n{body}\n{delimiter}"
+def recorded_status(path: Path, identity: dict[str, object]) -> str | None:
+    if not path.exists():
+        return None
+    records = parse_jsonl(path)
+    if not records:
+        return None
+    if records[0].get("identity") != identity:
+        raise ValueError("resume identity mismatch")
+    for record in reversed(records):
+        if record.get("record_type") == "result":
+            return str(record.get("status"))
+    return "started" if any(record.get("record_type") == "call" for record in records) else None
 
 
-def table_cell(text: object) -> str:
-    return (
-        str(text)
-        .strip()
-        .replace("\\", "\\\\")
-        .replace("|", "\\|")
-        .replace("\n", "; ")
-        or "(none)"
-    )
+def call_codex(project: Project, name: str, policy: Path | None, args: argparse.Namespace, identity: dict[str, object]) -> list[dict[str, object]]:
+    raw_file = args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl"
+    records: list[dict[str, object]] = [{"record_type": "identity", "identity": identity}, {"record_type": "call", "status": "started"}]
+    write_jsonl(raw_file, records)
+    try:
+        run_dir, env = prepare_run(project, name, policy, args.output_dir, args.seed)
+        command = [CODEX, "--ask-for-approval", "never", "exec", "--ephemeral", "--skip-git-repo-check", "-C", str(run_dir), "-m", args.model, "-c", f'model_reasoning_effort="{args.effort}"', "-s", "workspace-write", "--json", project.task]
+        proc = subprocess.run(command, cwd=run_dir, env={key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ} | env, text=True, capture_output=True)
+        events, usage = parse_codex_events(proc.stdout)
+        messages = agent_messages(events)
+        records.extend({"record_type": "event", "event": event} for event in events)
+        records.extend({"record_type": "message", "role": "final" if index == len(messages) - 1 else "commentary", "text": message} for index, message in enumerate(messages))
+        records.append({"record_type": "usage", "usage": usage})
+        check = run(project.check, cwd=run_dir)
+        records.append({"record_type": "result", "status": "completed" if proc.returncode == 0 and check.returncode == 0 else "failed", "codex_exit": proc.returncode, "check_exit": check.returncode})
+    except Exception as error:
+        records.append({"record_type": "result", "status": "failed", "error": str(error)})
+    write_jsonl(raw_file, records)
+    return records
 
 
-def rendered_answer(text: str) -> str:
-    answer = text.strip() or "(no final answer captured)"
-    return answer
+def write_summary(output: Path, records: list[dict[str, object]]) -> None:
+    runs = [{"id": record["identity"]["id"], "project": record["identity"]["project"], "variant": record["identity"]["variant"], "seed": record["identity"]["seed"], "trial": record["identity"]["trial"], "status": record["status"]} for record in records]
+    write_json(output / "summary.json", {"runs": runs})
 
 
-def compact_output(stdout: object, stderr: object, *, max_lines: int = 24) -> str:
-    text = (str(stdout or "") + str(stderr or "")).strip()
-    text = text.replace(str(SEEDS) + "/", "evals/fixtures/skill-comparison/")
-    text = text.replace(str(LOCAL_ROOT) + "/", ".local-fixtures/skill-comparison/")
-    text = text.replace(str(REPO) + "/", "")
-    text = text.replace(str(Path.home()), "~")
-    lines = text.splitlines()
-    if len(lines) <= max_lines:
-        return text
-    return "\n".join(lines[:max_lines] + [f"... ({len(lines) - max_lines} more lines)"])
-
-
-def result_badge(exit_code: object) -> str:
-    return "PASS" if int(exit_code) == 0 else f"FAIL exit {exit_code}"
-
-
-def seed_file_details(project: Project) -> list[str]:
-    root = SEEDS / project.key
-    lines = ["", "### Seed Project Files", ""]
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
-        rel = path.relative_to(root)
-        lines.extend(
-            [
-                f"#### `{rel}`",
-                "",
-                fence(path.read_text(encoding="utf-8")),
-                "",
-            ]
-        )
-    return lines
-
-
-def display_path(path: Path) -> str:
-    text = str(path)
-    text = text.replace(str(REPO) + "/", "")
-    text = text.replace(str(Path.home()), "~")
-    return text
-
-
-def generate_markdown(seed_results: dict[str, dict[str, str | int]], results: dict[str, dict[str, dict[str, str | int]]]) -> None:
-    generated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-
-    lines: list[str] = [
-        "# Codex Skill Comparison: Caveman Ultra vs Simple Man",
-        "",
-        "This report compares real Codex coding-agent behavior on three small, reproducible bug-fix projects. Each scenario was run three times from the same failing seed state: no brevity skill, Caveman ultra, and Simple Man.",
-        "",
-        "The tables below show only benchmark-relevant facts and the full final Codex answers. Seed fixtures are tracked under `evals/fixtures/skill-comparison`; raw Codex JSONL logs, stderr warnings, and disposable run copies stay local.",
-        "",
-        "## Method",
-        "",
-        f"- Generated: `{generated}`",
-        "- Base branch: `master`",
-        f"- Model: `{MODEL}`",
-        f"- Reasoning effort: `{EFFORT}`",
-        f"- Caveman source: `{display_path(CAVEMAN_SKILL)}`",
-        f"- Simple Man source: `{display_path(SIMPLE_MAN_SKILL)}`",
-        "- Isolation: one disposable git repo per scenario per mode; seed files were committed before Codex ran, so changed-file lists show actual Codex edits.",
-        "- Capture: final answers came from `codex exec --output-last-message`; validation was rerun outside Codex after each run.",
-        "- Baseline column: no brevity/persona skill injected.",
-        "",
-        "## Summary Matrix",
-        "",
-        "| Scenario | Seed check | No brevity skill | Caveman ultra | Simple Man |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-
-    for project in PROJECTS:
-        seed = seed_results[project.key]
-        matrix_cells = []
-        for mode, label in MODES:
-            data = results[project.key][mode]
-            changed = str(data["changed_files"]).strip().replace("\n", ", ") or "(none)"
-            matrix_cells.append(
-                f"{result_badge(data['check_exit'])}; `{' '.join(project.check)}`; {changed}; {len(str(data['answer']))} chars"
-            )
-
-        lines.append(
-            f"| {project.title} | expected failing seed: exit `{seed['exit_code']}` | "
-            f"{matrix_cells[0]} | {matrix_cells[1]} | {matrix_cells[2]} |"
-        )
-
-    for project in PROJECTS:
-        seed = seed_results[project.key]
-        lines.extend(
-            [
-                "",
-                f"## Scenario: {project.title}",
-                "",
-                "### Task Prompt",
-                "",
-                fence(project.task),
-                "",
-                "### Seed Failure",
-                "",
-                f"- Command: `{' '.join(project.check)}`",
-                f"- Exit: `{seed['exit_code']}`",
-                "",
-                "Seed output:",
-                "",
-                fence(compact_output(seed["stdout"], seed["stderr"])),
-            ]
-        )
-        lines.extend(seed_file_details(project))
-        lines.extend(
-            [
-                "### Mode Results Summary",
-                "",
-                "| Mode | Validation | Changed files | Diff stat | Answer length |",
-                "| --- | --- | --- | --- | --- |",
-            ]
-        )
-        for mode, label in MODES:
-            data = results[project.key][mode]
-            changed = str(data["changed_files"]).strip() or "(none)"
-            diff_stat = str(data["diff_stat"]).strip() or "(none)"
-            validation = (
-                f"{result_badge(data['check_exit'])}\n"
-                f"{' '.join(project.check)}\n"
-                f"Codex exit {data['codex_exit']}"
-            )
-            lines.append(
-                "| "
-                f"{table_cell(label)} | "
-                f"{table_cell(validation)} | "
-                f"{table_cell(changed)} | "
-                f"{table_cell(diff_stat)} | "
-                f"{len(str(data['answer']).strip())} chars |"
-            )
-
-        lines.extend(["", "### Full Final Answers", ""])
-        for mode, label in MODES:
-            data = results[project.key][mode]
-            answer = rendered_answer(str(data["answer"]))
-            lines.extend([f"#### {label}", "", answer, ""])
-
-    write(REPORT, "\n".join(lines))
-    print(f"report written: {REPORT}", flush=True)
-
-
-def main() -> int:
-    reset_dir(RUNS)
-    reset_dir(OUTPUTS)
-    reset_dir(RAW)
-    prepare_homes()
-    seed_results = verify_seeds()
-
-    results: dict[str, dict[str, dict[str, str | int]]] = {}
-    for project in PROJECTS:
-        results[project.key] = {}
-        for mode, _label in MODES:
-            results[project.key][mode] = run_codex(project, mode)
-
-    generate_markdown(seed_results, results)
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        variants = parse_variants(args.variant)
+    except ValueError as error:
+        parser.error(str(error))
+    preflight(args, parser, variants)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    plan = [(project, name, policy, run_identity(project, name, policy, 1, args, variants)) for project in PROJECTS for name, policy in variants]
+    resumed: dict[str, str | None] = {}
+    if args.resume:
+        for project, name, _, identity in plan:
+            try:
+                resumed[identity["id"]] = recorded_status(args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl", identity)
+            except ValueError as error:
+                parser.error(str(error))
+    if args.dry_run:
+        print(json.dumps({"seed": args.seed, "runs": [{"id": identity["id"], "project": project.key, "variant": name} for project, name, _, identity in plan]}, sort_keys=True))
+        return 0
+    verify_seeds()
+    summary: list[dict[str, object]] = []
+    for project, name, policy, identity in plan:
+        raw = args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl"
+        previous = resumed.get(identity["id"]) if args.resume else recorded_status(raw, identity)
+        if args.resume and previous is not None:
+            summary.append({"identity": identity, "status": previous})
+            continue
+        records = call_codex(project, name, policy, args, identity)
+        result = next(record for record in reversed(records) if record["record_type"] == "result")
+        summary.append({"identity": identity, "status": result["status"]})
+    write_summary(args.output_dir, summary)
     return 0
 
 

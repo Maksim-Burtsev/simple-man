@@ -11,7 +11,7 @@ SAMPLE_SNAPSHOT ?= /tmp/simple-man-caveman-sample-results.json
 MODEL_ARG := $(if $(MODEL),--model $(MODEL),)
 LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
-.PHONY: test package-check bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
+.PHONY: test package-check eval-foundation-check bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
 
 test: package-check
 	$(PYTHON) -m unittest discover -s tests
@@ -25,6 +25,9 @@ package-check:
 	cmp skills/simple-man/agents/openai.yaml plugins/simple-man/skills/simple-man/agents/openai.yaml
 	$(PYTHON) -m json.tool .agents/plugins/marketplace.json >/dev/null
 	$(PYTHON) -m json.tool plugins/simple-man/.codex-plugin/plugin.json >/dev/null
+
+eval-foundation-check:
+	$(PYTHON) -m unittest tests/test_eval_foundation.py -v
 
 bench:
 	$(PYTHON) evals/measure.py --snapshot $(BENCH_SNAPSHOT)
