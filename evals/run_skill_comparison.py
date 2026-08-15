@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import json
 import os
+import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -127,13 +129,41 @@ def parse_jsonl(path: Path) -> list[dict[str, object]]:
     return records
 
 
+def private_root(output: Path) -> Path:
+    return output.parent / f".{output.name}-private"
+
+
+def tree_hash(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file() and not item.is_symlink()):
+        digest.update(str(path.relative_to(root)).encode() + b"\0" + path.read_bytes())
+    return digest.hexdigest()
+
+
 def validate_saved_trace(path: Path) -> None:
     records = parse_jsonl(path)
-    events = [record["event"] for record in records if record.get("record_type") == "event" and isinstance(record.get("event"), dict)]
-    if events:
-        parse_codex_events("\n".join(json.dumps(event) for event in events))
-    elif records and "record_type" not in records[0]:
-        parse_codex_events(path.read_text(encoding="utf-8"))
+    if len(records) == 2 and records[0].get("record_type") == "identity" and records[1] == {"record_type": "call", "status": "started"}:
+        return
+    if len(records) == 3 and records[0].get("record_type") == "identity" and records[1] == {"record_type": "call", "status": "started"} and records[2].get("record_type") == "result" and records[2].get("status") == "failed" and isinstance(records[2].get("error"), str):
+        return
+    types = [record.get("record_type") for record in records]
+    if len(records) < 5 or types[:2] != ["identity", "call"] or types[-2:] != ["usage", "result"]:
+        raise ValueError("malformed saved trace state")
+    if not isinstance(records[0].get("identity"), dict) or records[1].get("status") != "started":
+        raise ValueError("malformed saved trace state")
+    events_end = 2
+    while events_end < len(records) and types[events_end] == "event":
+        events_end += 1
+    messages = records[events_end:-2]
+    if not messages or any(record.get("record_type") != "message" for record in messages):
+        raise ValueError("malformed saved trace state")
+    if [record.get("role") for record in messages].count("final") != 1 or messages[-1].get("role") != "final":
+        raise ValueError("malformed saved trace final message")
+    events = [record["event"] for record in records[2:events_end] if isinstance(record.get("event"), dict)]
+    parse_codex_events("\n".join(json.dumps(event) for event in events))
+    usage = records[-2].get("usage")
+    if not isinstance(usage, dict) or records[-1].get("status") not in {"completed", "failed"}:
+        raise ValueError("malformed saved trace state")
 
 
 def parse_codex_events(stdout: str) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -161,7 +191,10 @@ def parse_codex_events(stdout: str) -> tuple[list[dict[str, object]], dict[str, 
 
 
 def agent_messages(events: list[dict[str, object]]) -> list[str]:
-    return [item["text"] for event in events if isinstance(event.get("item"), dict) and (item := event["item"]).get("type") == "agent_message" and isinstance(item.get("text"), str)]
+    messages = [item["text"] for event in events if isinstance(event.get("item"), dict) and (item := event["item"]).get("type") == "agent_message" and isinstance(item.get("text"), str)]
+    if not messages:
+        raise ValueError("malformed Codex JSONL: missing final agent message")
+    return messages
 
 
 def sha256_file(path: Path) -> str:
@@ -179,6 +212,8 @@ def run_identity(project: Project, name: str, policy: Path | None, trial: int, a
     identity: dict[str, object] = {
         "schema": SCHEMA,
         "source_commit": source_commit(),
+        "runner_sha256": sha256_file(Path(__file__)),
+        "fixture_sha256": tree_hash(SEEDS / project.key),
         "project": project.key,
         "task_sha256": hashlib.sha256(project.task.encode()).hexdigest(),
         "check": project.check,
@@ -189,6 +224,7 @@ def run_identity(project: Project, name: str, policy: Path | None, trial: int, a
         "trial": trial,
         "model": args.model,
         "effort": args.effort,
+        "codex_cli": getattr(args, "codex_cli", CODEX),
     }
     identity["id"] = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     return identity
@@ -244,7 +280,7 @@ def preflight(args: argparse.Namespace, parser: argparse.ArgumentParser, variant
     for _, policy in variants:
         if policy is not None and not policy.is_file():
             parser.error(f"policy missing: {policy}")
-    raw_root = args.output_dir / "raw"
+    raw_root = private_root(args.output_dir) / "raw"
     if raw_root.is_symlink():
         parser.error("unsafe symlinked output path")
     for raw in raw_root.glob("*.jsonl"):
@@ -255,18 +291,25 @@ def preflight(args: argparse.Namespace, parser: argparse.ArgumentParser, variant
         except ValueError as error:
             parser.error(str(error))
     if args.dry_run:
+        args.codex_cli = CODEX
         return
     if any(getattr(args, name) in (None, "") for name in ("model", "effort", "max_calls")):
         parser.error("live mode requires --model, --effort, and --max-calls")
+    if platform.system() != "Darwin":
+        parser.error("live mode is supported only on the current macOS isolation runner")
     if args.max_calls <= 0:
         parser.error("--max-calls must be positive")
     planned = len(PROJECTS) * len(variants)
     if planned > args.max_calls:
         parser.error("--max-calls budget overflow before first model call")
     if args.max_usd is not None:
-        parser.error("--max-usd requires a verified per-model price before any live call")
+        parser.error("--max-usd is unavailable without a verified versioned price mapping; use --max-calls and token caps for Codex subscription runs")
     if not AUTH.is_file():
         parser.error(f"auth missing: {AUTH}")
+    version = run([CODEX, "--version"], cwd=REPO)
+    if version.returncode or not version.stdout.strip():
+        parser.error("Codex CLI identity unavailable")
+    args.codex_cli = version.stdout.strip()
 
 
 def verify_seeds() -> None:
@@ -327,11 +370,11 @@ def recorded_status(path: Path, identity: dict[str, object]) -> str | None:
 
 
 def call_codex(project: Project, name: str, policy: Path | None, args: argparse.Namespace, identity: dict[str, object]) -> list[dict[str, object]]:
-    raw_file = args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl"
+    raw_file = private_root(args.output_dir) / "raw" / f"{project.key}-{name}-1.jsonl"
     records: list[dict[str, object]] = [{"record_type": "identity", "identity": identity}, {"record_type": "call", "status": "started"}]
     write_jsonl(raw_file, records)
     try:
-        run_dir, env = prepare_run(project, name, policy, args.output_dir, args.seed)
+        run_dir, env = prepare_run(project, name, policy, private_root(args.output_dir), args.seed)
         command = [CODEX, "--ask-for-approval", "never", "exec", "--ephemeral", "--skip-git-repo-check", "-C", str(run_dir), "-m", args.model, "-c", f'model_reasoning_effort="{args.effort}"', "-s", "workspace-write", "--json", project.task]
         proc = subprocess.run(command, cwd=run_dir, env={key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ} | env, text=True, capture_output=True)
         events, usage = parse_codex_events(proc.stdout)
@@ -347,9 +390,45 @@ def call_codex(project: Project, name: str, policy: Path | None, args: argparse.
     return records
 
 
+def redact(value: object, paths: tuple[str, ...]) -> object:
+    if isinstance(value, dict):
+        return {key: "[REDACTED]" if re.search(r"auth|token|secret|key|password", key, re.I) else redact(item, paths) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact(item, paths) for item in value]
+    if not isinstance(value, str):
+        return value
+    for path in paths:
+        value = value.replace(path, "[PATH]")
+    value = re.sub(r"(?i)(authorization|token|secret|api[_-]?key|password)\s*[:=]\s*[^\s,]+", r"\1=[REDACTED]", value)
+    value = re.sub(r"(?i)\b(secret|bearer)\b", "[REDACTED]", value)
+    return re.sub(r"/(?:[^\s\"']+)", "[PATH]", value)
+
+
+def public_export(output: Path, records: list[dict[str, object]]) -> dict[str, object]:
+    paths = (str(REPO), str(output), str(private_root(output)), str(Path.home()))
+    runs = []
+    for record in records:
+        identity = record["identity"]
+        runs.append(redact({"id": identity["id"], "project": identity["project"], "variant": identity["variant"], "seed": identity["seed"], "trial": identity["trial"], "status": record["status"], "messages": record.get("messages", []), "stderr": record.get("stderr", ""), "event": record.get("event", {})}, paths))
+    return {"runs": runs}
+
+
 def write_summary(output: Path, records: list[dict[str, object]]) -> None:
-    runs = [{"id": record["identity"]["id"], "project": record["identity"]["project"], "variant": record["identity"]["variant"], "seed": record["identity"]["seed"], "trial": record["identity"]["trial"], "status": record["status"]} for record in records]
-    write_json(output / "summary.json", {"runs": runs})
+    write_json(output / "summary.json", public_export(output, records))
+
+
+def render_dry_run(argv: list[str]) -> str:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        variants = parse_variants(args.variant)
+    except ValueError as error:
+        parser.error(str(error))
+    if not args.dry_run:
+        parser.error("render_dry_run requires --dry-run")
+    preflight(args, parser, variants)
+    plan = [(project, name, policy, run_identity(project, name, policy, 1, args, variants)) for project in PROJECTS for name, policy in variants]
+    return json.dumps({"seed": args.seed, "runs": [{"id": identity["id"], "project": project.key, "variant": name} for project, name, _, identity in plan]}, sort_keys=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -366,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.resume:
         for project, name, _, identity in plan:
             try:
-                resumed[identity["id"]] = recorded_status(args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl", identity)
+                resumed[identity["id"]] = recorded_status(private_root(args.output_dir) / "raw" / f"{project.key}-{name}-1.jsonl", identity)
             except ValueError as error:
                 parser.error(str(error))
     if args.dry_run:
@@ -375,14 +454,20 @@ def main(argv: list[str] | None = None) -> int:
     verify_seeds()
     summary: list[dict[str, object]] = []
     for project, name, policy, identity in plan:
-        raw = args.output_dir / "raw" / f"{project.key}-{name}-1.jsonl"
+        raw = private_root(args.output_dir) / "raw" / f"{project.key}-{name}-1.jsonl"
         previous = resumed.get(identity["id"]) if args.resume else recorded_status(raw, identity)
         if args.resume and previous is not None:
             summary.append({"identity": identity, "status": previous})
+            if previous != "completed":
+                write_summary(args.output_dir, summary)
+                return 1
             continue
         records = call_codex(project, name, policy, args, identity)
         result = next(record for record in reversed(records) if record["record_type"] == "result")
-        summary.append({"identity": identity, "status": result["status"]})
+        summary.append({"identity": identity, "status": result["status"], "messages": [record["text"] for record in records if record.get("record_type") == "message"]})
+        if result["status"] != "completed":
+            write_summary(args.output_dir, summary)
+            return 1
     write_summary(args.output_dir, summary)
     return 0
 

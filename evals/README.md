@@ -186,6 +186,10 @@ benchmark numbers.
 
 ## Limits
 
+- `run_skill_comparison.py --max-usd` is available only with a verified,
+  versioned model-price mapping. This repository has none, so the runner fails
+  closed when the flag is supplied; Codex subscription runs use `--max-calls`
+  and token caps instead.
 - This is a Codex integration benchmark, not a universal model claim.
 - Raw Codex hidden harness overhead is recorded but not used for the headline
   visible-token metrics because it can vary with cache state and local feature
