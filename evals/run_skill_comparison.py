@@ -159,10 +159,16 @@ def validate_saved_trace(path: Path) -> None:
         raise ValueError("malformed saved trace state")
     if [record.get("role") for record in messages].count("final") != 1 or messages[-1].get("role") != "final":
         raise ValueError("malformed saved trace final message")
-    events = [record["event"] for record in records[2:events_end] if isinstance(record.get("event"), dict)]
-    parse_codex_events("\n".join(json.dumps(event) for event in events))
+    if any(not isinstance(record.get("text"), str) or not record["text"] for record in messages):
+        raise ValueError("malformed saved trace message text")
+    events = []
+    for record in records[2:events_end]:
+        if not isinstance(record.get("event"), dict):
+            raise ValueError("malformed saved trace event")
+        events.append(record["event"])
+    _, expected_usage = parse_codex_events("\n".join(json.dumps(event) for event in events))
     usage = records[-2].get("usage")
-    if not isinstance(usage, dict) or records[-1].get("status") not in {"completed", "failed"}:
+    if usage != expected_usage or records[-1].get("status") not in {"completed", "failed"}:
         raise ValueError("malformed saved trace state")
 
 
@@ -383,7 +389,7 @@ def call_codex(project: Project, name: str, policy: Path | None, args: argparse.
         records.extend({"record_type": "message", "role": "final" if index == len(messages) - 1 else "commentary", "text": message} for index, message in enumerate(messages))
         records.append({"record_type": "usage", "usage": usage})
         check = run(project.check, cwd=run_dir)
-        records.append({"record_type": "result", "status": "completed" if proc.returncode == 0 and check.returncode == 0 else "failed", "codex_exit": proc.returncode, "check_exit": check.returncode})
+        records.append({"record_type": "result", "status": "completed" if proc.returncode == 0 and check.returncode == 0 else "failed", "codex_exit": proc.returncode, "check_exit": check.returncode, "stderr": proc.stderr})
     except Exception as error:
         records.append({"record_type": "result", "status": "failed", "error": str(error)})
     write_jsonl(raw_file, records)
@@ -399,7 +405,8 @@ def redact(value: object, paths: tuple[str, ...]) -> object:
         return value
     for path in paths:
         value = value.replace(path, "[PATH]")
-    value = re.sub(r"(?i)(authorization|token|secret|api[_-]?key|password)\s*[:=]\s*[^\s,]+", r"\1=[REDACTED]", value)
+    value = re.sub(r"(?i)authorization\s*[:=]\s*(?:bearer\s+)?[^\s,]+", "Authorization=[REDACTED]", value)
+    value = re.sub(r"(?i)(token|secret|api[_-]?key|password)\s*[:=]\s*[^\s,]+", r"\1=[REDACTED]", value)
     value = re.sub(r"(?i)\b(secret|bearer)\b", "[REDACTED]", value)
     return re.sub(r"/(?:[^\s\"']+)", "[PATH]", value)
 
@@ -415,6 +422,12 @@ def public_export(output: Path, records: list[dict[str, object]]) -> dict[str, o
 
 def write_summary(output: Path, records: list[dict[str, object]]) -> None:
     write_json(output / "summary.json", public_export(output, records))
+
+
+def summary_from_trace(raw: Path, identity: dict[str, object], status: str) -> dict[str, object]:
+    records = parse_jsonl(raw)
+    result = next(record for record in reversed(records) if record.get("record_type") == "result")
+    return {"identity": identity, "status": status, "messages": [record["text"] for record in records if record.get("record_type") == "message"], "event": [record["event"] for record in records if record.get("record_type") == "event"], "stderr": result.get("stderr", "")}
 
 
 def render_dry_run(argv: list[str]) -> str:
@@ -457,14 +470,14 @@ def main(argv: list[str] | None = None) -> int:
         raw = private_root(args.output_dir) / "raw" / f"{project.key}-{name}-1.jsonl"
         previous = resumed.get(identity["id"]) if args.resume else recorded_status(raw, identity)
         if args.resume and previous is not None:
-            summary.append({"identity": identity, "status": previous})
+            summary.append(summary_from_trace(raw, identity, previous))
             if previous != "completed":
                 write_summary(args.output_dir, summary)
                 return 1
             continue
         records = call_codex(project, name, policy, args, identity)
         result = next(record for record in reversed(records) if record["record_type"] == "result")
-        summary.append({"identity": identity, "status": result["status"], "messages": [record["text"] for record in records if record.get("record_type") == "message"]})
+        summary.append({"identity": identity, "status": result["status"], "messages": [record["text"] for record in records if record.get("record_type") == "message"], "event": [record["event"] for record in records if record.get("record_type") == "event"], "stderr": result.get("stderr", "")})
         if result["status"] != "completed":
             write_summary(args.output_dir, summary)
             return 1

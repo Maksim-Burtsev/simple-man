@@ -1,4 +1,6 @@
 import json
+import contextlib
+import io
 import os
 import stat
 import subprocess
@@ -39,7 +41,9 @@ class EvalFoundationTest(unittest.TestCase):
             "count = pathlib.Path(__file__).with_suffix('.calls')",
             "count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))",
             "cwd.joinpath('fixed').write_text('ok')",
-            "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'token=leak /tmp/output'}}))",
+            "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'Authorization: Bearer live_token /Users/name/repo'}}))",
+            "print(json.dumps({'type':'item.completed','item':{'type':'tool_result','nested':{'api_key':'nested_token','path':'/tmp/private'}}}))",
+            "print('password=stderr_token /tmp/stderr', file=sys.stderr)",
         ]
         if malformed:
             body.append("print('{not-json')")
@@ -112,8 +116,12 @@ class EvalFoundationTest(unittest.TestCase):
             with mock.patch.multiple(comparison, SEEDS=seeds, PROJECTS=[project], AUTH=auth, CODEX="fake"):
                 with mock.patch.object(comparison, "source_commit", return_value="base"):
                     with mock.patch.object(comparison.platform, "system", return_value="Darwin"):
-                        plan_a = comparison.render_dry_run(["--dry-run", "--seed", "7", "--variant", f"candidate={policy}", "--output-dir", str(output)])
-                        plan_b = comparison.render_dry_run(["--dry-run", "--seed", "7", "--variant", f"candidate={policy}", "--output-dir", str(output)])
+                        streams = [io.StringIO(), io.StringIO()]
+                        with contextlib.redirect_stdout(streams[0]):
+                            self.assertEqual(comparison.main(["--dry-run", "--seed", "7", "--variant", f"candidate={policy}", "--output-dir", str(output)]), 0)
+                        with contextlib.redirect_stdout(streams[1]):
+                            self.assertEqual(comparison.main(["--dry-run", "--seed", "7", "--variant", f"candidate={policy}", "--output-dir", str(output)]), 0)
+                        plan_a, plan_b = (stream.getvalue() for stream in streams)
             self.assertEqual(plan_a, plan_b)
 
             exported = comparison.public_export(
@@ -123,6 +131,35 @@ class EvalFoundationTest(unittest.TestCase):
             text = json.dumps(exported)
             for forbidden in ("secret", "Bearer", "/Users/name/repo", str(output)):
                 self.assertNotIn(forbidden, text)
+
+    def test_real_main_completed_resume_and_public_artifact_are_safe(self):
+        """Removing completion/resume or artifact redaction must repeat or leak fake output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seeds, policy, auth, project = self.fixture(root)
+            fake = self.fake_codex(root)
+            output = root / "output"
+            with mock.patch.multiple(comparison, SEEDS=seeds, PROJECTS=[project], AUTH=auth, CODEX=str(fake)), mock.patch.object(comparison.platform, "system", return_value="Darwin"):
+                self.assertEqual(comparison.main(self.live_args(policy, output)), 0)
+                self.assertEqual(comparison.main([*self.live_args(policy, output), "--resume"]), 0)
+            self.assertEqual((root / "fake-codex.calls").read_text(), "1")
+            public = (output / "summary.json").read_text()
+            self.assertIn("tool_result", public)
+            for forbidden in ("live_token", "nested_token", "stderr_token", "/Users/name/repo", "/tmp/private", "/tmp/stderr", "Bearer"):
+                self.assertNotIn(forbidden, public)
+
+            raw = comparison.private_root(output) / "raw" / "fixture-candidate-1.jsonl"
+            original = [json.loads(line) for line in raw.read_text().splitlines()]
+            corruptions = []
+            event = json.loads(json.dumps(original)); event[2]["event"] = "corrupt"; corruptions.append(event)
+            usage = json.loads(json.dumps(original)); usage[-2]["usage"]["output_tokens"] = 99; corruptions.append(usage)
+            message = json.loads(json.dumps(original)); next(record for record in message if record.get("record_type") == "message").pop("text"); corruptions.append(message)
+            for records in corruptions:
+                raw.write_text("".join(json.dumps(record) + "\n" for record in records))
+                with mock.patch.multiple(comparison, SEEDS=seeds, PROJECTS=[project], AUTH=auth, CODEX=str(fake)), mock.patch.object(comparison.platform, "system", return_value="Darwin"):
+                    with self.assertRaises(SystemExit):
+                        comparison.main([*self.live_args(policy, output), "--resume"])
+            self.assertEqual((root / "fake-codex.calls").read_text(), "1")
 
 
 if __name__ == "__main__":
