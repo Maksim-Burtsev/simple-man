@@ -508,6 +508,29 @@ class CodingGateTests(unittest.TestCase):
                     )
                 popen.assert_not_called()
 
+    def test_darwin_supervisor_fails_closed_when_required_spi_is_missing(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor.sandbox = object()
+        supervisor.proc = object()
+        supervisor.bsm = object()
+        supervisor.system = object()
+
+        with self.assertRaisesRegex(
+            gate.InfrastructureError, "Darwin process SPI is unavailable"
+        ):
+            supervisor._configure_spi()
+
+    def test_darwin_cleanup_does_not_count_identity_churn_as_quiet(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor._cleanup_scan = mock.Mock(
+            side_effect=((0, True), (0, False), (0, False))
+        )
+
+        with mock.patch.object(gate.time, "sleep"):
+            supervisor.cleanup()
+
+        self.assertEqual(supervisor._cleanup_scan.call_count, 3)
+
     @unittest.skipUnless(
         gate.platform.system() == "Linux",
         "credential-free process attestation is exercised by Linux CI",
@@ -743,7 +766,7 @@ class CodingGateTests(unittest.TestCase):
         gate.platform.system() == "Darwin" and shutil.which("codex"),
         "real offline Codex sandbox probe requires macOS",
     )
-    def test_model_answer_profile_real_macos_probe_is_fail_closed_or_ready(self):
+    def test_model_answer_profile_real_macos_probe_is_ready_and_reaps_exact_tag(self):
         with tempfile.TemporaryDirectory(prefix="coding-gate-model-profile-") as tmp:
             root = Path(tmp)
             workspace = root / "workspace"
@@ -811,24 +834,231 @@ class CodingGateTests(unittest.TestCase):
                     contract,
                     denied_targets=denied,
                 )
+                self.assertTrue(probe.descendant_passed, probe)
+                self.assertTrue(probe.filesystem_passed, probe)
+                self.assertTrue(probe.network_passed, probe)
+                self.assertEqual(probe.denied_categories, frozenset(denied))
+                self.assertEqual(probe.status, "READY")
+                ready = gate.require_live_model_isolation(probe)
+                self.assertTrue(ready.ready)
+                answer_version = gate.run_model_answer(
+                    ready,
+                    ("--version",),
+                    env=gate.validation_environment(root / "answer-environment"),
+                    timeout_seconds=2,
+                )
+                self.assertEqual(answer_version.returncode, 0, answer_version)
+                self.assertIn("codex", answer_version.stdout.lower())
+                supervisor = gate._DarwinProcessSupervisor(ready.sandbox_tag)
+                controller_identity = supervisor._identity(os.getpid())
+                self.assertIsNotNone(controller_identity)
+                controller_token = supervisor._audit_token(controller_identity)
+                self.assertIsNotNone(controller_token)
+                self.assertGreater(controller_identity.unique_id, 0)
+                self.assertEqual(
+                    supervisor._decode_audit_token(controller_token),
+                    (
+                        controller_identity.pid,
+                        controller_identity.uid,
+                        controller_identity.id_version,
+                    ),
+                )
 
-        if probe.descendant_passed:
-            self.assertTrue(probe.filesystem_passed, probe)
-            self.assertTrue(probe.network_passed, probe)
-            self.assertEqual(probe.denied_categories, frozenset(denied))
-            self.assertEqual(probe.status, "READY")
-            ready = gate.require_live_model_isolation(probe)
-            self.assertTrue(ready.ready)
-            validation = gate.SourceIsolation.live(
-                sandbox_executable=shutil.which("codex"),
-                protected_roots=(ROOT, gate.WORKER_ROOT, Path.home()),
-                readiness=probe,
-            )
-            self.assertTrue(validation.process_boundary_proven)
-        else:
-            self.assertEqual(probe.status, "INCONCLUSIVE")
-            with self.assertRaises(gate.InfrastructureError):
-                gate.require_live_model_isolation(probe)
+                exec_ready = root / "exec-ready"
+                exec_go = root / "exec-go"
+                exec_child = subprocess.Popen(
+                    (
+                        sys.executable,
+                        "-c",
+                        "import os,sys,time; from pathlib import Path; "
+                        f"ready=Path({str(exec_ready)!r}); go=Path({str(exec_go)!r}); "
+                        "ready.write_text('ready'); "
+                        "\nwhile not go.exists(): time.sleep(0.01)\n"
+                        "os.execv(sys.executable,[sys.executable,'-c',"
+                        "'import time; time.sleep(5)'])",
+                    ),
+                    start_new_session=True,
+                )
+                try:
+                    deadline = time.monotonic() + 2
+                    while not exec_ready.is_file() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(exec_ready.is_file())
+                    old_identity = supervisor._identity(exec_child.pid)
+                    self.assertIsNotNone(old_identity)
+                    old_token = supervisor._audit_token(old_identity)
+                    self.assertIsNotNone(old_token)
+                    exec_go.write_text("go")
+                    current_identity = old_identity
+                    while (
+                        current_identity == old_identity
+                        and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.01)
+                        current_identity = supervisor._identity(exec_child.pid)
+                    self.assertIsNotNone(current_identity)
+                    self.assertEqual(
+                        current_identity.unique_id, old_identity.unique_id
+                    )
+                    self.assertNotEqual(
+                        current_identity.id_version, old_identity.id_version
+                    )
+                    self.assertFalse(
+                        supervisor._signal_exact(
+                            gate._DarwinTaggedProcess(old_identity, old_token)
+                        )
+                    )
+                    self.assertTrue(gate._pid_exists(exec_child.pid))
+                finally:
+                    try:
+                        os.killpg(exec_child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    exec_child.wait()
+                supervisor.close()
+
+                tag_denied, tag_control = ready.sandbox_tag
+                model_env = gate.validation_environment(root / "tamper-environment")
+                model_env.update(
+                    {
+                        "TEMP": str(ready.tool_tmp),
+                        "TMP": str(ready.tool_tmp),
+                        "TMPDIR": str(ready.tool_tmp),
+                    }
+                )
+                tamper = gate._run_model_execution(
+                    ready,
+                    ready.sandbox_command(
+                        (
+                            sys.executable,
+                            "-I",
+                            "-c",
+                            "from pathlib import Path; import sys; "
+                            f"control=Path({str(tag_control)!r}); "
+                            "\ntry:\n control.unlink(); print('deleted')\n"
+                            "except OSError:\n print('blocked')\n",
+                        )
+                    ),
+                    env=model_env,
+                )
+                self.assertEqual(tamper.stdout.strip(), "blocked", tamper)
+                self.assertTrue(tag_control.is_file())
+
+                clang = shutil.which("clang")
+                if clang is not None:
+                    loop_source = root / "exec-loop.c"
+                    loop_binary = workspace / "exec-loop"
+                    loop_source.write_text(
+                        "#include <unistd.h>\n"
+                        "int main(int argc, char **argv) {\n"
+                        "  (void)argc;\n"
+                        "  char *next[] = {argv[0], 0};\n"
+                        "  execv(argv[0], next);\n"
+                        "  return 125;\n"
+                        "}\n"
+                    )
+                    subprocess.run(
+                        (clang, "-O2", "-o", str(loop_binary), str(loop_source)),
+                        check=True,
+                        capture_output=True,
+                    )
+                    for attempt in range(5):
+                        loop_pid_file = workspace / f"exec-loop-{attempt}.pid"
+                        loop_parent = (
+                            "import subprocess; from pathlib import Path; "
+                            f"child=subprocess.Popen([{str(loop_binary)!r}],"
+                            "start_new_session=True,stdout=subprocess.DEVNULL,"
+                            "stderr=subprocess.DEVNULL); "
+                            f"Path({str(loop_pid_file)!r}).write_text(str(child.pid))"
+                        )
+                        loop_pid = None
+                        try:
+                            loop_execution = gate._run_model_execution(
+                                ready,
+                                ready.sandbox_command(
+                                    (sys.executable, "-I", "-c", loop_parent)
+                                ),
+                                env=gate.validation_environment(
+                                    root / f"exec-loop-environment-{attempt}"
+                                ),
+                                timeout_seconds=2,
+                            )
+                            self.assertEqual(
+                                loop_execution.returncode, 0, loop_execution
+                            )
+                            loop_pid = int(loop_pid_file.read_text())
+                            deadline = time.monotonic() + 0.5
+                            while (
+                                gate._pid_exists(loop_pid)
+                                and time.monotonic() < deadline
+                            ):
+                                time.sleep(0.01)
+                            self.assertFalse(gate._pid_exists(loop_pid))
+                        finally:
+                            if loop_pid is not None and gate._pid_exists(loop_pid):
+                                try:
+                                    os.killpg(loop_pid, signal.SIGKILL)
+                                except ProcessLookupError:
+                                    pass
+
+                escaped = workspace / "detached-escaped"
+                pid_file = workspace / "detached-pid"
+                child = (
+                    "import time; from pathlib import Path; "
+                    f"control=Path({str(tag_control)!r}); denied=Path({str(tag_denied)!r}); "
+                    "\ntry:\n control.unlink(); control.symlink_to(denied)\nexcept OSError:\n pass\n"
+                    f"time.sleep(0.2); Path({str(escaped)!r}).write_text('escaped'); time.sleep(5)"
+                )
+                parent = (
+                    "import os,subprocess,sys; from pathlib import Path; "
+                    "env=dict(os.environ); env.pop('CODEX_CODING_GATE_RUN_TOKEN',None); "
+                    f"child=subprocess.Popen([sys.executable,'-c',{child!r}],"
+                    "start_new_session=True,env=env,stdout=subprocess.DEVNULL,"
+                    "stderr=subprocess.DEVNULL); "
+                    f"Path({str(pid_file)!r}).write_text(str(child.pid))"
+                )
+                unrelated = subprocess.Popen(
+                    (sys.executable, "-c", "import time; time.sleep(5)"),
+                    start_new_session=True,
+                )
+                try:
+                    execution = gate._run_model_execution(
+                        ready,
+                        ready.sandbox_command(
+                            (sys.executable, "-I", "-c", parent)
+                        ),
+                        env=gate.validation_environment(root / "execution-environment"),
+                        timeout_seconds=2,
+                    )
+                    self.assertEqual(execution.returncode, 0, execution)
+                    detached_pid = int(pid_file.read_text())
+                    time.sleep(0.3)
+                    self.assertFalse(escaped.exists())
+                    self.assertFalse(gate._pid_exists(detached_pid))
+                    self.assertTrue(gate._pid_exists(unrelated.pid))
+                    self.assertTrue(tag_control.is_file())
+                    self.assertFalse(tag_control.is_symlink())
+                finally:
+                    try:
+                        os.killpg(unrelated.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    unrelated.wait()
+
+                validation_isolation = gate.SourceIsolation.live(
+                    sandbox_executable=shutil.which("codex"),
+                    protected_roots=(ROOT, gate.WORKER_ROOT, Path.home()),
+                    readiness=probe,
+                )
+                self.assertTrue(validation_isolation.process_boundary_proven)
+                validation_execution = gate.run_bounded(
+                    (sys.executable, "-c", "print('validated')"),
+                    cwd=workspace,
+                    env=gate.validation_environment(root / "validation-environment"),
+                    isolation=validation_isolation,
+                )
+                self.assertEqual(validation_execution.returncode, 0)
+                self.assertEqual(validation_execution.stdout.strip(), "validated")
 
     def test_bounded_runner_reports_timeout_output_and_tree_caps(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as environment:

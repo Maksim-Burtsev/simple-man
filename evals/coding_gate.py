@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
+import errno
 import hashlib
 import hmac
 import json
@@ -8,7 +11,6 @@ import os
 import platform
 import re
 import secrets
-import select
 import shutil
 import signal
 import socket
@@ -71,13 +73,15 @@ class UnsupportedPlatformError(InfrastructureError):
 
 
 _ATTESTATION_KEY = secrets.token_bytes(32)
-_SUPERVISOR_GENERATION = "kernel-descendants-v1"
+_SUPERVISOR_GENERATION = "kernel-descendants-v2"
 
 
 @dataclass(frozen=True)
 class _ProcessAttestation:
     system: str
     nonce: str
+    tag_denied: str
+    tag_control: str
     signature: str
 
 
@@ -104,10 +108,29 @@ def _verify_process_attestation(attestation: object) -> bool:
             "system": attestation.system,
             "nonce": attestation.nonce,
             "supervisor": _SUPERVISOR_GENERATION,
+            "tag_denied": attestation.tag_denied,
+            "tag_control": attestation.tag_control,
         },
     )
-    return attestation.system == platform.system() and hmac.compare_digest(
-        attestation.signature, expected
+    if attestation.system == "Darwin":
+        denied = Path(attestation.tag_denied)
+        control = Path(attestation.tag_control)
+        tag_valid = (
+            denied.is_absolute()
+            and control.is_absolute()
+            and denied.parent == control.parent
+            and denied != control
+            and denied.is_file()
+            and control.is_file()
+            and not denied.is_symlink()
+            and not control.is_symlink()
+        )
+    else:
+        tag_valid = not attestation.tag_denied and not attestation.tag_control
+    return (
+        attestation.system == platform.system()
+        and tag_valid
+        and hmac.compare_digest(attestation.signature, expected)
     )
 
 
@@ -250,8 +273,14 @@ class SourceIsolation:
             for root in roots
         ):
             raise IntegrityError("live validation workspace overlaps a protected root")
+        tag_denied = Path(self._process_attestation.tag_denied)
+        tag_control = Path(self._process_attestation.tag_control)
         filesystem = ",".join(
-            f"{json.dumps(str(root))}=\"deny\"" for root in roots
+            [f"{json.dumps(str(root))}=\"deny\"" for root in roots]
+            + [
+                f"{json.dumps(str(tag_denied))}=\"deny\"",
+                f"{json.dumps(str(tag_control))}=\"read\"",
+            ]
         )
         profile = (
             "{extends=\":read-only\",filesystem={"
@@ -280,6 +309,7 @@ class ModelSourceIsolation:
     categories: tuple[tuple[str, tuple[Path, ...]], ...]
     tool_home: Path
     tool_tmp: Path
+    sandbox_tag: tuple[Path, Path] | None = None
     _process_attestation: _ProcessAttestation | None = field(
         default=None, repr=False, compare=False
     )
@@ -305,9 +335,18 @@ class ModelSourceIsolation:
 
     @property
     def profile_arguments(self) -> tuple[str, ...]:
-        filesystem = ",".join(
+        filesystem_entries = [
             f"{json.dumps(str(path))}=\"deny\"" for path in self.protected_roots
-        )
+        ]
+        if self.sandbox_tag is not None:
+            tag_denied, tag_control = self.sandbox_tag
+            filesystem_entries.extend(
+                (
+                    f"{json.dumps(str(tag_denied))}=\"deny\"",
+                    f"{json.dumps(str(tag_control))}=\"read\"",
+                )
+            )
+        filesystem = ",".join(filesystem_entries)
         profile = (
             "{extends=\":workspace\",filesystem={"
             + filesystem
@@ -400,6 +439,11 @@ def _model_contract_digest(contract: ModelSourceIsolation) -> str:
         ],
         "tool_home": str(contract.tool_home),
         "tool_tmp": str(contract.tool_tmp),
+        "sandbox_tag": (
+            [str(path) for path in contract.sandbox_tag]
+            if contract.sandbox_tag is not None
+            else None
+        ),
         "profile_arguments": list(contract.profile_arguments),
     }
     return hashlib.sha256(
@@ -425,6 +469,9 @@ def _verify_model_readiness(contract: ModelSourceIsolation) -> bool:
     )
     return (
         bool(contract_sha256)
+        and contract.sandbox_tag is not None
+        and tuple(str(path) for path in contract.sandbox_tag)
+        == (process.tag_denied, process.tag_control)
         and readiness.contract_sha256 == contract_sha256
         and readiness.process_signature == process.signature
         and hmac.compare_digest(readiness.signature, expected)
@@ -483,12 +530,21 @@ def build_model_source_isolation(
     for path in (tool_home, tool_tmp):
         if path.is_symlink() or not path.resolve().is_dir():
             raise IntegrityError("model tool HOME/TMP must be existing regular directories")
+    tag_root = tool_tmp.resolve() / f".coding-gate-tag-{secrets.token_hex(16)}"
+    tag_root.mkdir(mode=0o700)
+    tag_denied = tag_root / "denied"
+    tag_control = tag_root / "control"
+    tag_denied.write_text("coding-gate denied tag\n")
+    tag_control.write_text("coding-gate allowed control\n")
+    tag_denied.chmod(0o400)
+    tag_control.chmod(0o400)
     return ModelSourceIsolation(
         sandbox_executable=str(Path(executable).resolve()),
         workspace=resolved_workspace,
         categories=categories,
         tool_home=tool_home.resolve(),
         tool_tmp=tool_tmp.resolve(),
+        sandbox_tag=(tag_denied.resolve(), tag_control.resolve()),
     )
 
 
@@ -568,7 +624,7 @@ def probe_model_source_isolation(
         ):
             raise IntegrityError("probe target is outside its protected category")
     try:
-        process_attestation = _attest_process_boundary()
+        process_attestation = _attest_process_boundary(contract)
     except (InfrastructureError, UnsupportedPlatformError) as exc:
         return IsolationProbe(
             "INCONCLUSIVE",
@@ -1044,115 +1100,439 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
-_BOOTSTRAP = (
-    "import os,sys; fd=int(sys.argv[1]); ready=os.read(fd,1); os.close(fd); "
-    "ready == b'1' or os._exit(126); os.execvpe(sys.argv[2],sys.argv[2:],os.environ)"
-)
+class _ProcBsdInfo(ctypes.Structure):
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+class _ProcUniqIdentifierInfo(ctypes.Structure):
+    _fields_ = [
+        ("p_uuid", ctypes.c_uint8 * 16),
+        ("p_uniqueid", ctypes.c_uint64),
+        ("p_puniqueid", ctypes.c_uint64),
+        ("p_idversion", ctypes.c_int32),
+        ("p_orig_ppidversion", ctypes.c_int32),
+        ("p_reserve2", ctypes.c_uint64),
+        ("p_reserve3", ctypes.c_uint64),
+    ]
+
+
+class _ProcBsdInfoWithUniqId(ctypes.Structure):
+    _fields_ = [
+        ("pbsd", _ProcBsdInfo),
+        ("p_uniqidentifier", _ProcUniqIdentifierInfo),
+    ]
+
+
+class _AuditToken(ctypes.Structure):
+    _fields_ = [("values", ctypes.c_uint32 * 8)]
+
+
+@dataclass(frozen=True)
+class _DarwinIdentity:
+    pid: int
+    uid: int
+    start_seconds: int
+    start_microseconds: int
+    unique_id: int
+    id_version: int
+
+
+@dataclass(frozen=True)
+class _DarwinTaggedProcess:
+    identity: _DarwinIdentity
+    audit_token: tuple[int, ...]
 
 
 class _DarwinProcessSupervisor:
-    def __init__(self) -> None:
-        required = (
-            "kqueue",
-            "kevent",
-            "KQ_FILTER_PROC",
-            "KQ_EV_ADD",
-            "KQ_EV_DELETE",
-            "KQ_EV_ENABLE",
-            "KQ_EV_CLEAR",
-            "KQ_EV_ERROR",
-            "KQ_NOTE_FORK",
-            "KQ_NOTE_TRACK",
-            "KQ_NOTE_TRACKERR",
-            "KQ_NOTE_CHILD",
-            "KQ_NOTE_EXIT",
-        )
-        if any(not hasattr(select, name) for name in required):
+    _PROC_PIDT_BSDINFOWITHUNIQID = 18
+    _SANDBOX_FILTER_PATH = 1
+    _TASK_AUDIT_TOKEN = 15
+    _TASK_AUDIT_TOKEN_COUNT = 8
+
+    def __init__(self, tag: tuple[Path, Path] | None) -> None:
+        if tag is None:
             raise InfrastructureError(
-                "process supervision is INCONCLUSIVE: Darwin kqueue tracking is unavailable"
+                "process supervision is INCONCLUSIVE: Darwin sandbox tag is absent"
             )
-        self.queue = select.kqueue()
-        self.root_pid: int | None = None
-        self.alive: set[int] = set()
-        self.tracking_error = False
+        self.tag_denied, self.tag_control = (path.resolve() for path in tag)
+        if (
+            self.tag_denied.parent != self.tag_control.parent
+            or self.tag_denied == self.tag_control
+            or not self.tag_denied.is_file()
+            or not self.tag_control.is_file()
+            or self.tag_denied.is_symlink()
+            or self.tag_control.is_symlink()
+        ):
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: Darwin sandbox tag is invalid"
+            )
+        sandbox_library = ctypes.util.find_library("sandbox")
+        proc_library = ctypes.util.find_library("proc")
+        bsm_library = ctypes.util.find_library("bsm")
+        if sandbox_library is None or proc_library is None or bsm_library is None:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: Darwin process SPI is unavailable"
+            )
         try:
-            self._change(os.getpid(), select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_CLEAR)
-            self._change(os.getpid(), select.KQ_EV_DELETE)
-        except BaseException:
-            self.queue.close()
-            raise
+            self.sandbox = ctypes.CDLL(sandbox_library, use_errno=True)
+            self.proc = ctypes.CDLL(proc_library, use_errno=True)
+            self.bsm = ctypes.CDLL(bsm_library, use_errno=True)
+            self.system = ctypes.CDLL(None, use_errno=True)
+            self.mach_task_self = ctypes.c_uint32.in_dll(
+                self.system, "mach_task_self_"
+            ).value
+        except (OSError, ValueError) as exc:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: cannot load Darwin process SPI"
+            ) from exc
+        expected_sizes = {
+            _ProcBsdInfo: 136,
+            _ProcUniqIdentifierInfo: 56,
+            _ProcBsdInfoWithUniqId: 192,
+            _AuditToken: 32,
+        }
+        if any(ctypes.sizeof(kind) != size for kind, size in expected_sizes.items()):
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: Darwin process ABI is incompatible"
+            )
+        self._configure_spi()
+        try:
+            no_report = ctypes.c_uint32.in_dll(
+                self.sandbox, "SANDBOX_CHECK_NO_REPORT"
+            ).value
+        except ValueError as exc:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: sandbox no-report flag is unavailable"
+            ) from exc
+        self.sandbox_filter = self._SANDBOX_FILTER_PATH | no_report
+        self.uid = os.geteuid()
+        if self.uid == 0:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE for a root Darwin controller"
+            )
+        controller = self._identity(os.getpid())
+        if controller is None or controller.uid != self.uid:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: cannot identify controller"
+            )
+        self.baseline = frozenset(self._same_uid_identities())
+        matches, unstable = self._scan_tagged(include_baseline=True)
+        if matches or unstable:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: sandbox tag collision"
+            )
+
+    def _configure_spi(self) -> None:
+        try:
+            self._configure_spi_unchecked()
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: Darwin process SPI is unavailable"
+            ) from exc
+
+    def _configure_spi_unchecked(self) -> None:
+        self.sandbox.sandbox_check.restype = ctypes.c_int
+        # sandbox_check is variadic. Only its three fixed arguments belong here.
+        self.sandbox.sandbox_check.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+        ]
+        self.sandbox.sandbox_check_by_audit_token.restype = ctypes.c_int
+        self.sandbox.sandbox_check_by_audit_token.argtypes = [
+            _AuditToken,
+            ctypes.c_char_p,
+            ctypes.c_int,
+        ]
+        self.proc.proc_listallpids.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.proc.proc_listallpids.restype = ctypes.c_int
+        self.proc.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        self.proc.proc_pidinfo.restype = ctypes.c_int
+        self.proc.proc_signal_with_audittoken.argtypes = [
+            ctypes.POINTER(_AuditToken),
+            ctypes.c_int,
+        ]
+        self.proc.proc_signal_with_audittoken.restype = ctypes.c_int
+        self.bsm.audit_token_to_pid.argtypes = [_AuditToken]
+        self.bsm.audit_token_to_pid.restype = ctypes.c_int
+        self.bsm.audit_token_to_euid.argtypes = [_AuditToken]
+        self.bsm.audit_token_to_euid.restype = ctypes.c_uint32
+        self.bsm.audit_token_to_pidversion.argtypes = [_AuditToken]
+        self.bsm.audit_token_to_pidversion.restype = ctypes.c_int
+        self.system.task_name_for_pid.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        self.system.task_name_for_pid.restype = ctypes.c_int
+        self.system.task_info.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        self.system.task_info.restype = ctypes.c_int
+        self.system.mach_port_deallocate.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+        ]
+        self.system.mach_port_deallocate.restype = ctypes.c_int
+
+    def _pids(self) -> tuple[int, ...]:
+        capacity = self.proc.proc_listallpids(None, 0)
+        if capacity <= 0:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: cannot list Darwin processes"
+            )
+        for _ in range(3):
+            values = (ctypes.c_int * (capacity + 64))()
+            count = self.proc.proc_listallpids(values, ctypes.sizeof(values))
+            if count < 0:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: cannot list Darwin processes"
+                )
+            if count < len(values):
+                return tuple(pid for pid in values[:count] if pid > 0)
+            capacity *= 2
+        raise InfrastructureError(
+            "process supervision is INCONCLUSIVE: Darwin process list is unstable"
+        )
+
+    def _identity(self, pid: int) -> _DarwinIdentity | None:
+        info = _ProcBsdInfoWithUniqId()
+        result = self.proc.proc_pidinfo(
+            pid,
+            self._PROC_PIDT_BSDINFOWITHUNIQID,
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+        if result <= 0:
+            return None
+        if result != ctypes.sizeof(info) or info.pbsd.pbi_pid != pid:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: malformed Darwin process identity"
+            )
+        return _DarwinIdentity(
+            pid,
+            int(info.pbsd.pbi_uid),
+            int(info.pbsd.pbi_start_tvsec),
+            int(info.pbsd.pbi_start_tvusec),
+            int(info.p_uniqidentifier.p_uniqueid),
+            int(info.p_uniqidentifier.p_idversion),
+        )
+
+    def _same_uid_identities(self) -> tuple[_DarwinIdentity, ...]:
+        identities = []
+        for pid in self._pids():
+            identity = self._identity(pid)
+            if identity is not None and identity.uid == self.uid:
+                identities.append(identity)
+        return tuple(identities)
+
+    def _sandbox_decision(self, pid: int, path: Path) -> int:
+        ctypes.set_errno(0)
+        return self.sandbox.sandbox_check(
+            pid,
+            b"file-read-data",
+            self.sandbox_filter,
+            ctypes.c_char_p(os.fsencode(path)),
+        )
+
+    def _sandbox_decision_by_token(
+        self, token_values: tuple[int, ...], path: Path
+    ) -> int:
+        token = self._make_audit_token(token_values)
+        ctypes.set_errno(0)
+        return self.sandbox.sandbox_check_by_audit_token(
+            token,
+            b"file-read-data",
+            self.sandbox_filter,
+            ctypes.c_char_p(os.fsencode(path)),
+        )
 
     @staticmethod
-    def _fflags() -> int:
-        return select.KQ_NOTE_FORK | select.KQ_NOTE_TRACK | select.KQ_NOTE_EXIT
+    def _make_audit_token(token_values: tuple[int, ...]) -> _AuditToken:
+        if len(token_values) != _DarwinProcessSupervisor._TASK_AUDIT_TOKEN_COUNT:
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: malformed process audit token"
+            )
+        return _AuditToken((ctypes.c_uint32 * len(token_values))(*token_values))
 
-    def _change(self, pid: int, flags: int) -> None:
-        event = select.kevent(
-            pid,
-            filter=select.KQ_FILTER_PROC,
-            flags=flags,
-            fflags=self._fflags(),
+    def _decode_audit_token(
+        self, token_values: tuple[int, ...]
+    ) -> tuple[int, int, int]:
+        token = self._make_audit_token(token_values)
+        return (
+            int(self.bsm.audit_token_to_pid(token)),
+            int(self.bsm.audit_token_to_euid(token)),
+            int(self.bsm.audit_token_to_pidversion(token)),
         )
-        returned = self.queue.control([event], 1, 0)
-        for result in returned:
-            if result.flags & select.KQ_EV_ERROR and result.data:
+
+    def _audit_token(self, identity: _DarwinIdentity) -> tuple[int, ...] | None:
+        task = ctypes.c_uint32()
+        if self.system.task_name_for_pid(
+            self.mach_task_self, identity.pid, ctypes.byref(task)
+        ) != 0:
+            return None
+        try:
+            token = _AuditToken()
+            count = ctypes.c_uint32(self._TASK_AUDIT_TOKEN_COUNT)
+            result = self.system.task_info(
+                task.value,
+                self._TASK_AUDIT_TOKEN,
+                ctypes.byref(token),
+                ctypes.byref(count),
+            )
+            if result != 0 or count.value != self._TASK_AUDIT_TOKEN_COUNT:
+                return None
+            return tuple(int(value) for value in token.values)
+        finally:
+            if self.system.mach_port_deallocate(
+                self.mach_task_self, task.value
+            ) != 0:
                 raise InfrastructureError(
-                    "process supervision is INCONCLUSIVE: " + os.strerror(result.data)
+                    "process supervision is INCONCLUSIVE: cannot release Mach task port"
                 )
 
-    def launch(self, command: Sequence[str]) -> tuple[tuple[str, ...], tuple[int, ...], int]:
-        read_fd, write_fd = os.pipe()
-        return (
-            (sys.executable, "-I", "-c", _BOOTSTRAP, str(read_fd), *command),
-            (read_fd,),
-            write_fd,
+    def _scan_tagged(
+        self, *, include_baseline: bool = False, terminate: bool = False
+    ) -> tuple[int, bool]:
+        matches = 0
+        unstable = False
+        strict_churn = not include_baseline or terminate
+        for identity in self._same_uid_identities():
+            if not include_baseline and identity in self.baseline:
+                continue
+            denied = self._sandbox_decision(identity.pid, self.tag_denied)
+            if self._identity(identity.pid) != identity:
+                unstable = unstable or strict_churn or denied == 1
+                continue
+            if denied not in (0, 1):
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: sandbox tag query failed"
+                )
+            control = self._sandbox_decision(identity.pid, self.tag_control)
+            if self._identity(identity.pid) != identity:
+                unstable = unstable or strict_churn or (denied == 1 and control == 0)
+                continue
+            if control not in (0, 1):
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: sandbox tag query failed"
+                )
+            if denied != 1 or control != 0:
+                continue
+            matches += 1
+            token = self._audit_token(identity)
+            if self._identity(identity.pid) != identity:
+                unstable = True
+                continue
+            if token is None:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: invalid process audit token"
+                )
+            token_pid, token_euid, token_pidversion = self._decode_audit_token(token)
+            if (
+                token_pid != identity.pid
+                or token_euid != self.uid
+                or token_pidversion != identity.id_version
+            ):
+                if self._identity(identity.pid) != identity:
+                    unstable = True
+                    continue
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: invalid process audit token"
+                )
+            denied = self._sandbox_decision_by_token(token, self.tag_denied)
+            control = self._sandbox_decision_by_token(token, self.tag_control)
+            if denied != 1 or control != 0:
+                if self._identity(identity.pid) != identity:
+                    unstable = True
+                    continue
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: audit-token tag changed"
+                )
+            if self._identity(identity.pid) != identity:
+                unstable = True
+                continue
+            if terminate and not self._signal_exact(
+                _DarwinTaggedProcess(identity, token)
+            ):
+                unstable = True
+        return matches, unstable
+
+    def _signal_exact(self, process: _DarwinTaggedProcess) -> bool:
+        token = self._make_audit_token(process.audit_token)
+        result = self.proc.proc_signal_with_audittoken(
+            ctypes.byref(token), signal.SIGKILL
+        )
+        if result == 0:
+            return True
+        if result == errno.ESRCH:
+            return False
+        raise InfrastructureError(
+            "process supervision is INCONCLUSIVE: cannot signal tagged process"
         )
 
-    def register(self, process: subprocess.Popen[bytes], release_fd: int) -> None:
-        self.root_pid = process.pid
-        self.alive = {process.pid}
-        self._change(
-            process.pid,
-            select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_CLEAR,
-        )
-        os.write(release_fd, b"1")
+    def launch(
+        self, command: Sequence[str]
+    ) -> tuple[tuple[str, ...], tuple[int, ...], int | None]:
+        return tuple(command), (), None
+
+    def register(self, process: subprocess.Popen[bytes], release_fd: int | None) -> None:
+        if release_fd is not None:
+            raise InfrastructureError("unexpected Darwin supervisor release descriptor")
 
     def poll(self, timeout: float = 0) -> None:
-        for event in self.queue.control(None, MAX_FILES, timeout):
-            if event.flags & select.KQ_EV_ERROR:
-                self.tracking_error = True
-            if event.fflags & select.KQ_NOTE_TRACKERR:
-                self.tracking_error = True
-            if event.fflags & select.KQ_NOTE_CHILD:
-                self.alive.add(int(event.ident))
-            if event.fflags & select.KQ_NOTE_EXIT:
-                self.alive.discard(int(event.ident))
+        if timeout:
+            time.sleep(timeout)
 
     def cleanup(self) -> None:
-        deadline = time.monotonic() + 1
+        deadline = time.monotonic() + 2
         quiet = 0
         while quiet < 2:
-            self.poll(0.01)
-            if self.tracking_error:
-                raise InfrastructureError(
-                    "process supervision is INCONCLUSIVE: kqueue lost a descendant"
-                )
-            survivors = set(self.alive)
-            for pid in survivors:
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    self.alive.discard(pid)
-                except PermissionError as exc:
-                    raise InfrastructureError("cannot kill supervised descendant") from exc
-            before = set(self.alive)
-            self.poll(0.01)
-            quiet = quiet + 1 if not self.alive and not before else 0
+            matches, unstable = self._cleanup_scan()
+            quiet = quiet + 1 if matches == 0 and not unstable else 0
             if time.monotonic() >= deadline:
-                raise InfrastructureError("supervised descendants survived cleanup")
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: tagged processes survived cleanup"
+                )
+            time.sleep(0.001 if matches or unstable else 0.01)
+
+    def _cleanup_scan(self) -> tuple[int, bool]:
+        return self._scan_tagged(terminate=True)
 
     def close(self) -> None:
-        self.queue.close()
+        pass
 
 
 def _linux_parent_map() -> dict[int, int]:
@@ -1247,10 +1627,12 @@ class _LinuxProcessSupervisor:
             raise InfrastructureError("cannot restore Linux child subreaper")
 
 
-def _process_supervisor() -> _DarwinProcessSupervisor | _LinuxProcessSupervisor:
+def _process_supervisor(
+    sandbox_tag: tuple[Path, Path] | None = None,
+) -> _DarwinProcessSupervisor | _LinuxProcessSupervisor:
     system = platform.system()
     if system == "Darwin":
-        return _DarwinProcessSupervisor()
+        return _DarwinProcessSupervisor(sandbox_tag)
     if system == "Linux":
         return _LinuxProcessSupervisor()
     raise UnsupportedPlatformError("kernel descendant supervision is unsupported")
@@ -1267,6 +1649,7 @@ def run_bounded(
     trusted_offline: bool = False,
     require_process_supervision: bool = False,
     _process_attestation: _ProcessAttestation | None = None,
+    _sandbox_tag: tuple[Path, Path] | None = None,
     timeout_seconds: int = TIMEOUT_SECONDS,
     max_output_bytes: int = MAX_OUTPUT_BYTES,
 ) -> CommandResult:
@@ -1277,9 +1660,18 @@ def run_bounded(
         raise InfrastructureError("process supervision attestation is invalid")
     if isolation is None and not trusted_offline and attestation is None:
         raise IntegrityError("unisolated command execution is allowed only for offline self-checks")
+    if attestation is not None:
+        attested_tag = (
+            (Path(attestation.tag_denied), Path(attestation.tag_control))
+            if attestation.tag_denied and attestation.tag_control
+            else None
+        )
+        if _sandbox_tag is not None and _sandbox_tag != attested_tag:
+            raise IntegrityError("sandbox tag must come from the process attestation")
+        _sandbox_tag = attested_tag
     actual = isolation.wrap(command, cwd) if isolation else tuple(command)
     supervisor = (
-        _process_supervisor()
+        _process_supervisor(_sandbox_tag)
         if isolation is not None
         or require_process_supervision
         or _verify_process_attestation(attestation)
@@ -1414,29 +1806,49 @@ def _pid_exists(pid: int) -> bool:
     return True
 
 
-def _attest_process_boundary() -> _ProcessAttestation:
+def _attest_process_boundary(
+    contract: ModelSourceIsolation | None = None,
+) -> _ProcessAttestation:
+    system = platform.system()
     with tempfile.TemporaryDirectory(prefix="coding-gate-boundary-probe-") as temporary:
-        root = Path(temporary)
-        marker = root / "escaped"
-        pid_file = root / "descendant-pid"
+        environment_root = Path(temporary)
+        if system == "Darwin":
+            if contract is None or contract.sandbox_tag is None:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: model sandbox tag is absent"
+                )
+            root = contract.workspace
+            sandbox_tag = contract.sandbox_tag
+        else:
+            root = environment_root
+            sandbox_tag = None
+        suffix = secrets.token_hex(8)
+        marker = root / f".boundary-escaped-{suffix}"
+        pid_file = root / f".boundary-pid-{suffix}"
         child = (
             "import time; from pathlib import Path; "
-            f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped'); time.sleep(5)"
+            f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped'); time.sleep(2)"
         )
         parent = (
-            "import subprocess,sys; from pathlib import Path; "
-            f"child=subprocess.Popen([sys.executable,'-c',{child!r}],start_new_session=True); "
+            "import os,subprocess,sys; from pathlib import Path; "
+            "env=dict(os.environ); env.pop('CODEX_CODING_GATE_RUN_TOKEN',None); "
+            f"child=subprocess.Popen([sys.executable,'-c',{child!r}],start_new_session=True,"
+            "env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); "
             f"Path({str(pid_file)!r}).write_text(str(child.pid))"
         )
-        env = validation_environment(root / "environment")
+        command = (sys.executable, "-I", "-c", parent)
+        if contract is not None:
+            command = contract.sandbox_command(command)
+        env = validation_environment(environment_root / "environment")
         descendant_pid: int | None = None
         try:
             result = run_bounded(
-                (sys.executable, "-I", "-c", parent),
+                command,
                 cwd=root,
                 env=env,
                 trusted_offline=True,
                 require_process_supervision=True,
+                _sandbox_tag=sandbox_tag,
                 timeout_seconds=1,
             )
             if result.returncode != 0 or not pid_file.is_file():
@@ -1444,31 +1856,30 @@ def _attest_process_boundary() -> _ProcessAttestation:
                     "process supervision is INCONCLUSIVE: descendant probe did not run"
                 )
             descendant_pid = int(pid_file.read_text())
-            deadline = time.monotonic() + 0.5
-            while _pid_exists(descendant_pid) and time.monotonic() < deadline:
-                time.sleep(0.01)
             time.sleep(0.25)
-            if _pid_exists(descendant_pid) or marker.exists():
+            if marker.exists() or (system == "Linux" and _pid_exists(descendant_pid)):
                 raise InfrastructureError(
                     "process supervision is INCONCLUSIVE: detached descendant escaped"
                 )
         finally:
-            if descendant_pid is not None and _pid_exists(descendant_pid):
-                try:
-                    os.kill(descendant_pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-        system = platform.system()
+            marker.unlink(missing_ok=True)
+            pid_file.unlink(missing_ok=True)
         nonce = secrets.token_hex(16)
+        tag_denied = str(sandbox_tag[0]) if sandbox_tag is not None else ""
+        tag_control = str(sandbox_tag[1]) if sandbox_tag is not None else ""
         signature = _attestation_signature(
             "process",
             {
                 "system": system,
                 "nonce": nonce,
                 "supervisor": _SUPERVISOR_GENERATION,
+                "tag_denied": tag_denied,
+                "tag_control": tag_control,
             },
         )
-        return _ProcessAttestation(system, nonce, signature)
+        return _ProcessAttestation(
+            system, nonce, tag_denied, tag_control, signature
+        )
 
 
 def _copy_fixture(spec: FixtureSpec, destination: Path) -> dict[str, str]:
