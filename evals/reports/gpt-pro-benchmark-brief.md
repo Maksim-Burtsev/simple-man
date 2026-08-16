@@ -1,5 +1,7 @@
 # Simple Man Runtime Benchmark Brief
 
+> Historical report. Do not use as current release evidence.
+
 Date: 2026-05-22
 Repo: `Maksim-Burtsev/simple-man`
 Branch: `codex/benchmark-simple-man`

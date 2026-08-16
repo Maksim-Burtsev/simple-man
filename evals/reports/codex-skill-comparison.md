@@ -1,5 +1,7 @@
 # Codex Skill Comparison: Caveman Ultra vs Simple Man
 
+> Historical report. Do not use as current release evidence.
+
 This report compares real Codex coding-agent behavior on three small, reproducible bug-fix projects. Each scenario was run three times from the same failing seed state: no brevity skill, Caveman ultra, and Simple Man.
 
 The tables below show only benchmark-relevant facts and the full final Codex answers. Seed fixtures are tracked under `evals/fixtures/skill-comparison`; raw Codex JSONL logs, stderr warnings, and disposable run copies stay local.

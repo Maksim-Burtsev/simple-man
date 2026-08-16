@@ -357,46 +357,19 @@ class BenchmarkLibTests(unittest.TestCase):
                 self.assertNotIn("/" + "Users/", text)
                 self.assertNotIn("za" + "dro", text)
 
-    def test_readme_examples_are_wrapped_comparison_tables(self):
+    def test_readme_does_not_publish_historical_headline_examples(self):
         readme = (ROOT / "README.md").read_text()
-        examples = readme.split("## Examples", 1)[1].split("## Agent support", 1)[0]
 
-        self.assertIn("<table>", examples)
-        self.assertIn("No Simple Man", examples)
-        self.assertIn("With Simple Man", examples)
-        self.assertNotIn("```", examples)
-        self.assertNotIn("<pre", examples.lower())
+        self.assertIn("## Historical examples", readme)
+        self.assertNotIn("63% shorter", readme)
+        self.assertNotIn("49% shorter", readme)
+        self.assertNotIn("56% shorter", readme)
 
-    def test_readme_examples_match_captured_codex_answers(self):
-        readme = (ROOT / "README.md").read_text()
-        examples = readme.split("## Examples", 1)[1].split("## Agent support", 1)[0]
-        report = (ROOT / "evals" / "reports" / "codex-skill-comparison.md").read_text()
-
-        captured_phrases = [
-            "`authenticate` accepted any session returned by `store.get(token)`",
-            "Fixed.\n\n- Root cause: `authenticate` trusted `store.get(token)`",
-            "After a gateway timeout, the fake provider had already accepted a charge",
-            "Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally",
-            "`rollout.py` applied `migrations/001_drop_expires_at.sql` before running `backup_legacy_sessions.sql`",
-            "Root cause: `rollout()` ran `apply_drop_migration()` before `backup_legacy_sessions()`",
-        ]
-
-        for phrase in captured_phrases:
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, report)
-
-        rendered_phrases = [
-            "<code>authenticate</code> accepted any session returned by <code>store.get(token)</code>",
-            "Fixed.",
-            "After a gateway timeout, the fake provider had already accepted a charge",
-            "Root cause: no idempotency-key lookup; timeout lost the accepted provider charge locally",
-            "<code>rollout.py</code> applied <code>migrations/001_drop_expires_at.sql</code> before running <code>backup_legacy_sessions.sql</code>",
-            "Root cause: <code>rollout()</code> ran <code>apply_drop_migration()</code> before <code>backup_legacy_sessions()</code>",
-        ]
-
-        for phrase in rendered_phrases:
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, examples)
+    def test_existing_reports_are_labeled_historical(self):
+        for name in ("codex-skill-comparison.md", "gpt-pro-benchmark-brief.md"):
+            with self.subTest(name=name):
+                report = (ROOT / "evals" / "reports" / name).read_text()
+                self.assertIn("Historical report. Do not use as current release evidence.", report)
 
     def test_installer_is_idempotent_and_enables_global_codex_policy(self):
         with tempfile.TemporaryDirectory() as tmp:
