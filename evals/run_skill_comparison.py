@@ -635,8 +635,9 @@ def close_descriptors(*descriptors: int) -> None:
 
 def descriptor_lines(descriptor: int) -> Iterator[str]:
     os.lseek(descriptor, 0, os.SEEK_SET)
-    with os.fdopen(os.dup(descriptor), "r", encoding="utf-8", errors="replace") as handle:
-        yield from handle
+    with os.fdopen(os.dup(descriptor), "rb") as handle:
+        for line in handle:
+            yield line.decode("utf-8", errors="strict")
 
 
 def streamed_process(command: list[str], *, cwd: Path, env: dict[str, str], stdout_path: Path, stderr_path: Path) -> tuple[int, tuple[int, int, int, int]]:
@@ -662,17 +663,38 @@ def streamed_process(command: list[str], *, cwd: Path, env: dict[str, str], stdo
 def parse_codex_prefix(stdout: str | Iterable[str]) -> tuple[list[dict[str, object]], str | None]:
     events: list[dict[str, object]] = []
     lines = stdout.splitlines() if isinstance(stdout, str) else stdout
-    for number, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            return events, f"malformed Codex JSONL:{number}"
-        if not isinstance(event, dict):
-            return events, f"malformed Codex JSONL:{number}"
-        events.append(event)
+    try:
+        for number, line in enumerate(lines, 1):
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                return events, f"malformed Codex JSONL:{number}"
+            if not isinstance(event, dict):
+                return events, f"malformed Codex JSONL:{number}"
+            events.append(event)
+    except UnicodeDecodeError:
+        return events, "malformed Codex JSONL: invalid UTF-8"
     return events, None
+
+
+def safe_partial_events(events: list[dict[str, object]]) -> tuple[list[dict[str, object]], str | None]:
+    valid: list[dict[str, object]] = []
+    for event in events:
+        if event.get("type") == "turn.completed":
+            break
+        try:
+            message_records([event], require_final=False)
+        except ValueError as error:
+            return valid, str(error)
+        valid.append(event)
+    return valid, None
+
+
+def append_partial_records(records: list[dict[str, object]], events: list[dict[str, object]]) -> None:
+    records.extend({"record_type": "event", "event": event} for event in events)
+    records.extend(message_records(events, require_final=False))
 
 
 def call_codex(project: Project, name: str, policy: Path | None, args: argparse.Namespace, identity: dict[str, object]) -> list[dict[str, object]]:
@@ -691,13 +713,22 @@ def call_codex(project: Project, name: str, policy: Path | None, args: argparse.
         exit_code, capture = streamed_process(command, cwd=run_dir, env={key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ} | env, stdout_path=evidence[0], stderr_path=evidence[1])
         stdout_fd, stderr_fd, _, _ = capture
         raw = {"stdout_sha256": descriptor_sha256(stdout_fd), "stderr_sha256": descriptor_sha256(stderr_fd)}
-        events, parse_error = parse_codex_prefix(descriptor_lines(stdout_fd))
-        records.extend({"record_type": "event", "event": event} for event in events)
-        records.extend(message_records(events, require_final=False))
+        prefix, parse_error = parse_codex_prefix(descriptor_lines(stdout_fd))
+        partial_events, message_error = safe_partial_events(prefix)
+        if message_error:
+            append_partial_records(records, partial_events)
+            raise ValueError(message_error)
         if parse_error:
+            append_partial_records(records, partial_events)
             raise ValueError(parse_error)
-        events, usage = parse_codex_events(descriptor_lines(stdout_fd))
-        messages = message_records(events, require_final=True)
+        try:
+            events, usage = parse_codex_events(descriptor_lines(stdout_fd))
+            messages = message_records(events, require_final=True)
+        except ValueError:
+            append_partial_records(records, partial_events)
+            raise
+        records.extend({"record_type": "event", "event": event} for event in events)
+        records.extend(messages)
         if records[2:] != [{"record_type": "event", "event": event} for event in events] + messages:
             raise ValueError("parsed message divergence")
         records.append({"record_type": "usage", "usage": usage})

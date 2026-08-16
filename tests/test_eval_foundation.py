@@ -31,7 +31,7 @@ class EvalFoundationTest(unittest.TestCase):
         )
         return seeds, policy, auth, project
 
-    def fake_codex(self, root: Path, *, failing=False, malformed=False) -> Path:
+    def fake_codex(self, root: Path, *, failing=False, malformed=False, invalid_utf8=False, agent_text: object = "done") -> Path:
         fake = root / "fake-codex.py"
         body = [
             "#!/usr/bin/env python3",
@@ -47,9 +47,16 @@ class EvalFoundationTest(unittest.TestCase):
         ]
         if malformed:
             body.append("print('{not-json')")
+        elif invalid_utf8:
+            body.extend([
+                "sys.stdout.flush()",
+                "sys.stdout.buffer.write(b'{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"bad-\\xff\"}}\\n')",
+                "sys.stdout.buffer.write((json.dumps({'type':'turn.completed','usage':{'input_tokens':1,'cached_input_tokens':0,'output_tokens':1,'reasoning_output_tokens':0}}) + '\\n').encode())",
+                "sys.stdout.buffer.flush()",
+            ])
         else:
             body.extend([
-                "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'done'}}))",
+                "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':" + repr(agent_text) + "}}))",
                 "print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1,'cached_input_tokens':0,'output_tokens':1,'reasoning_output_tokens':0}}))",
             ])
         body.append(f"raise SystemExit({1 if failing else 0})")
@@ -110,6 +117,44 @@ class EvalFoundationTest(unittest.TestCase):
             self.assertIn("Authorization: Bearer live_token", (private / "raw" / "fixture-candidate-1.stdout.jsonl").read_text())
             self.assertIn("{not-json", (private / "raw" / "fixture-candidate-1.stdout.jsonl").read_text())
             self.assertIn("stderr_token", (private / "raw" / "fixture-candidate-1.stderr.txt").read_text())
+
+    def test_real_main_malformed_stdout_is_a_durable_consumed_failure(self):
+        """Replacement decoding or replaying a bad message must not complete or crash a paid call."""
+        cases = (
+            ("invalid UTF-8", {"invalid_utf8": True}, b"bad-\xff", "bad-\ufffd"),
+            ("empty agent message", {"agent_text": ""}, b'"text": ""', ""),
+            ("non-string agent message", {"agent_text": 7}, b'"text": 7', 7),
+        )
+        for label, fake_args, raw_fragment, malformed_text in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                seeds, policy, auth, project = self.fixture(root)
+                fake = self.fake_codex(root, **fake_args)
+                output = root / "output"
+
+                def invoke(argv):
+                    try:
+                        return comparison.main(argv)
+                    except BaseException as error:
+                        return error
+
+                with mock.patch.multiple(comparison, SEEDS=seeds, PROJECTS=[project], AUTH=auth, CODEX=str(fake)), mock.patch.object(comparison.platform, "system", return_value="Darwin"):
+                    initial = invoke(self.live_args(policy, output))
+                    resumed = invoke([*self.live_args(policy, output), "--resume"])
+                self.assertEqual(initial, 1)
+                self.assertEqual(resumed, 1)
+                self.assertEqual((root / "fake-codex.calls").read_text(), "1")
+                stdout = comparison.raw_path(comparison.safe_output_dir(output), project, "candidate", "stdout.jsonl").read_bytes()
+                self.assertIn(raw_fragment, stdout)
+                ledger = comparison.ledger_path(comparison.safe_output_dir(output), project, "candidate")
+                records = [json.loads(line) for line in ledger.read_text().splitlines()]
+                self.assertEqual(records[-1]["status"], "failed")
+                self.assertFalse(any(record.get("record_type") == "usage" for record in records))
+                comparison.validate_saved_trace(ledger, evidence=comparison.raw_paths(comparison.safe_output_dir(output), project, "candidate"))
+                self.assertFalse(any(record.get("record_type") == "event" and record["event"].get("item", {}).get("text") == malformed_text for record in records))
+                public_run = json.loads((output / "summary.json").read_text())["runs"][0]
+                self.assertEqual(set(public_run), {"id", "project", "variant", "seed", "trial", "status", "usage"})
+                self.assertEqual(public_run["status"], "failed")
 
     def test_real_main_started_only_resume_is_consumed_failure(self):
         """Removing started-attempt handling must crash or invoke fake Codex again."""
