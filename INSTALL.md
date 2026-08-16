@@ -17,15 +17,19 @@ codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
 codex plugin add simple-man@simple-man
 ```
 
-Plugin install makes the skill available in Codex; it does not enable the always-on policy.
+The pinned v0.2.0 plugin makes the skill available in Codex; it does not enable the always-on policy. Its manifest still uses an always-on label. The source manifest for upcoming v0.3 fixes that label; PR5 will update the release pin.
 
 ## Always-on Codex policy
+
+Released v0.2.0 installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
 ```
 
-The installer:
+That pinned installer writes `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`, always installs to `${CODEX_HOME:-$HOME/.codex}/skills/simple-man`, and keeps `simple-man.backup` on rerun.
+
+Source/upcoming v0.3 installer contract (available from a trusted checkout with `bash install.sh`; PR5 will update the release pin):
 
 - installs the skill to the first matching target below
 - writes a managed Simple Man block into `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`
@@ -39,7 +43,7 @@ Skill target precedence:
 3. existing legacy `$HOME/.codex/skills/simple-man`
 4. `$HOME/.agents/skills/simple-man` for a new default install
 
-An existing legacy install is updated in place; the installer does not create a second copy or migrate it to the portable root. Reruns do not leave discoverable backup skills. Empty or relative path overrides fail before any installation change.
+An existing legacy install is updated in place; the source installer does not create a second copy, migrate it, or create a backup skill. A pre-existing `simple-man.backup` without `SKILL.md` is preserved unchanged; one containing `SKILL.md` makes installation fail before any destination change. Empty, relative, or overlapping path overrides also fail before mutation.
 
 Restart Codex after installing so new sessions load the global instructions.
 

@@ -51,18 +51,20 @@ SKILL_DIR="$SKILL_ROOT/simple-man"
 LEGACY_BACKUP_DIR="$SKILL_DIR.backup"
 AGENTS_FILE="$CODEX_HOME_PATH/AGENTS.md"
 
+if [ -e "$LEGACY_BACKUP_DIR/SKILL.md" ] || [ -L "$LEGACY_BACKUP_DIR/SKILL.md" ]; then
+  fail "$LEGACY_BACKUP_DIR contains SKILL.md; move or rename that discoverable backup before installing"
+fi
+
 tmpdir="$(mktemp -d)"
 skill_stage=""
 agents_stage=""
 agents_backup=""
 old_skill_holder=""
-legacy_backup_holder=""
 skill_root_anchor=""
 agents_parent_anchor=""
 rollback_needed=0
 new_skill_installed=0
 old_skill_moved=0
-legacy_backup_moved=0
 agents_write_started=0
 agents_existed=0
 
@@ -75,6 +77,67 @@ nearest_existing_dir() {
     path="$parent"
   done
   printf '%s\n' "$path"
+}
+
+normalize_absolute_path() {
+  local path="$1"
+  local part
+  local result=""
+  local -a parts=()
+  local -a stack=()
+  local IFS='/'
+  read -r -a parts <<< "$path"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      ""|.) ;;
+      ..)
+        if [ "${#stack[@]}" -gt 0 ]; then
+          unset 'stack[${#stack[@]}-1]'
+        fi
+        ;;
+      *) stack+=("$part") ;;
+    esac
+  done
+  for part in "${stack[@]}"; do
+    result="$result/$part"
+  done
+  printf '%s\n' "${result:-/}"
+}
+
+physical_path() {
+  local path
+  local probe
+  local suffix=""
+  local base
+  path="$(normalize_absolute_path "$1")"
+  probe="$path"
+  while [ ! -e "$probe" ] && [ ! -L "$probe" ] && [ "$probe" != "/" ]; do
+    suffix="/$(basename "$probe")$suffix"
+    probe="$(dirname "$probe")"
+  done
+  if [ -d "$probe" ]; then
+    base="$(cd "$probe" && pwd -P)"
+  else
+    base="$(cd "$(dirname "$probe")" && pwd -P)/$(basename "$probe")"
+  fi
+  normalize_absolute_path "$base$suffix"
+}
+
+paths_overlap() {
+  local left="$1"
+  local right="$2"
+  [ "$left" = "/" ] || [ "$right" = "/" ] ||
+    [ "$left" = "$right" ] ||
+    [ "${left#"$right"/}" != "$left" ] ||
+    [ "${right#"$left"/}" != "$right" ]
+}
+
+file_mode() {
+  if stat -f '%Lp' "$1" >/dev/null 2>&1; then
+    stat -f '%Lp' "$1"
+  else
+    stat -c '%a' "$1"
+  fi
 }
 
 prune_to_anchor() {
@@ -108,10 +171,6 @@ rollback() {
   if [ "$old_skill_moved" -eq 1 ] && { [ -e "$old_skill_holder" ] || [ -L "$old_skill_holder" ]; }; then
     mv "$old_skill_holder" "$SKILL_DIR" || rc=1
   fi
-  if [ "$legacy_backup_moved" -eq 1 ] && { [ -e "$legacy_backup_holder" ] || [ -L "$legacy_backup_holder" ]; }; then
-    mv "$legacy_backup_holder" "$LEGACY_BACKUP_DIR" || rc=1
-  fi
-
   set -e
   return "$rc"
 }
@@ -135,7 +194,6 @@ cleanup() {
     [ -z "$agents_stage" ] || rm -f "$agents_stage"
     [ -z "$agents_backup" ] || rm -f "$agents_backup"
     [ -z "$old_skill_holder" ] || rm -rf "$old_skill_holder"
-    [ -z "$legacy_backup_holder" ] || rm -rf "$legacy_backup_holder"
   fi
 
   if [ "$status" -ne 0 ]; then
@@ -194,6 +252,14 @@ if [ -L "$AGENTS_FILE" ]; then
   AGENTS_WRITE_TARGET="$(cd "$(dirname "$AGENTS_WRITE_TARGET")" && pwd -P)/$(basename "$AGENTS_WRITE_TARGET")"
 elif [ -e "$AGENTS_FILE" ]; then
   [ -f "$AGENTS_FILE" ] || fail "AGENTS.md is not a regular file; no changes made"
+fi
+
+skill_lexical="$(normalize_absolute_path "$SKILL_DIR")"
+agents_lexical="$(normalize_absolute_path "$AGENTS_WRITE_TARGET")"
+skill_physical="$(physical_path "$SKILL_DIR")"
+agents_physical="$(physical_path "$AGENTS_WRITE_TARGET")"
+if paths_overlap "$skill_lexical" "$agents_lexical" || paths_overlap "$skill_physical" "$agents_physical"; then
+  fail "skill destination $SKILL_DIR and AGENTS destination $AGENTS_WRITE_TARGET overlap; choose disjoint roots"
 fi
 
 existing="$tmpdir/AGENTS.existing.md"
@@ -265,7 +331,7 @@ if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
 fi
 
 if [ "$agents_existed" -eq 1 ]; then
-  agents_mode="$(stat -f '%Lp' "$AGENTS_WRITE_TARGET" 2>/dev/null || stat -c '%a' "$AGENTS_WRITE_TARGET")"
+  agents_mode="$(file_mode "$AGENTS_WRITE_TARGET")"
   chmod "$agents_mode" "$agents_stage"
   agents_backup="$(mktemp "$AGENTS_PARENT/.AGENTS.md.simple-man.previous.XXXXXX")"
   cp -p "$AGENTS_WRITE_TARGET" "$agents_backup"
@@ -282,19 +348,10 @@ if [ -e "$SKILL_DIR" ] || [ -L "$SKILL_DIR" ]; then
   old_skill_holder="$(mktemp -d "$SKILL_ROOT/.simple-man.previous.XXXXXX")"
   rmdir "$old_skill_holder"
 fi
-if [ -e "$LEGACY_BACKUP_DIR" ] || [ -L "$LEGACY_BACKUP_DIR" ]; then
-  legacy_backup_holder="$(mktemp -d "$SKILL_ROOT/.simple-man.legacy-backup.XXXXXX")"
-  rmdir "$legacy_backup_holder"
-fi
-
 rollback_needed=1
 if [ -n "$old_skill_holder" ]; then
   mv "$SKILL_DIR" "$old_skill_holder"
   old_skill_moved=1
-fi
-if [ -n "$legacy_backup_holder" ]; then
-  mv "$LEGACY_BACKUP_DIR" "$legacy_backup_holder"
-  legacy_backup_moved=1
 fi
 mv "$skill_stage" "$SKILL_DIR"
 skill_stage=""
@@ -305,9 +362,8 @@ mv "$agents_stage" "$AGENTS_WRITE_TARGET"
 agents_stage=""
 
 rollback_needed=0
-rm -rf "$old_skill_holder" "$legacy_backup_holder"
+rm -rf "$old_skill_holder"
 old_skill_holder=""
-legacy_backup_holder=""
 rm -f "$agents_backup"
 agents_backup=""
 

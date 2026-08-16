@@ -105,17 +105,52 @@ class PackagingTests(unittest.TestCase):
             legacy = home / ".codex" / "skills" / "simple-man"
             legacy.mkdir(parents=True)
             (legacy / "SKILL.md").write_text("legacy skill\n")
-            old_backup = legacy.with_name("simple-man.backup")
-            old_backup.mkdir()
-            (old_backup / "SKILL.md").write_text("old discoverable backup\n")
 
             result = self.run_installer(home)
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assert_installed_skill(legacy)
             self.assert_one_discoverable_skill(home / ".codex" / "skills")
-            self.assertFalse(old_backup.exists())
             self.assertFalse((home / ".agents" / "skills" / "simple-man").exists())
+
+    def test_discoverable_preexisting_backup_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            legacy = home / ".codex" / "skills" / "simple-man"
+            backup = legacy.with_name("simple-man.backup")
+            legacy.mkdir(parents=True)
+            backup.mkdir()
+            (legacy / "SKILL.md").write_text("legacy skill\n")
+            (backup / "SKILL.md").write_text("user backup skill\n")
+            (backup / "notes.txt").write_text("user data\n")
+            before = self.tree_snapshot(home)
+
+            result = self.run_installer(home)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("simple-man.backup", result.stderr)
+            self.assertIn("SKILL.md", result.stderr)
+            self.assertEqual(self.tree_snapshot(home), before)
+
+    def test_non_skill_preexisting_backup_is_preserved_on_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            legacy = home / ".codex" / "skills" / "simple-man"
+            backup = legacy.with_name("simple-man.backup")
+            legacy.mkdir(parents=True)
+            backup.mkdir(mode=0o750)
+            (legacy / "SKILL.md").write_text("legacy skill\n")
+            notes = backup / "notes.txt"
+            notes.write_text("preserve arbitrary backup\n")
+            notes.chmod(0o640)
+            backup_before = self.tree_snapshot(backup)
+
+            result = self.run_installer(home)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_installed_skill(legacy)
+            self.assertEqual(self.tree_snapshot(backup), backup_before)
+            self.assert_one_discoverable_skill(home / ".codex" / "skills")
 
     def test_explicit_skill_root_wins_over_codex_home_and_legacy(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,6 +204,67 @@ class PackagingTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("SIMPLE_MAN_SKILL_ROOT", result.stderr)
                 self.assertEqual(list(home.iterdir()), [])
+
+    def test_agents_destination_ancestor_of_skill_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            codex_home = home / ".codex"
+            home.mkdir()
+            before = self.tree_snapshot(home)
+
+            result = self.run_installer(
+                home,
+                codex_home=codex_home,
+                skill_root=codex_home / "AGENTS.md",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("overlap", result.stderr)
+            self.assertEqual(self.tree_snapshot(home), before)
+
+    def test_skill_destination_ancestor_of_agents_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = root / "simple-man"
+            home.mkdir()
+            before = self.tree_snapshot(root)
+
+            result = self.run_installer(
+                home,
+                codex_home=codex_home,
+                skill_root=root,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("overlap", result.stderr)
+            self.assertEqual(self.tree_snapshot(root), before)
+
+    def test_symlinked_agents_target_inside_skill_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            skill_root = home / ".agents" / "skills"
+            skill = skill_root / "simple-man"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("existing skill\n")
+            target = skill / "shared-AGENTS.md"
+            target.write_text("# Existing policy\n")
+            codex_home.mkdir()
+            agents_file = codex_home / "AGENTS.md"
+            agents_file.symlink_to(os.path.relpath(target, codex_home))
+            before = self.tree_snapshot(home)
+
+            result = self.run_installer(
+                home,
+                codex_home=codex_home,
+                skill_root=skill_root,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("overlap", result.stderr)
+            self.assertEqual(self.tree_snapshot(home), before)
 
     def test_installer_rerun_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,6 +330,41 @@ class PackagingTests(unittest.TestCase):
             self.assertIn("simple-man-always-on-begin", target.read_text())
             self.assertEqual(target.read_text().count("simple-man-always-on-begin"), 1)
 
+    def test_failed_stat_probe_cannot_corrupt_fallback_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = root / "codex"
+            codex_home.mkdir()
+            agents_file = codex_home / "AGENTS.md"
+            agents_file.write_text("# Existing instructions\n")
+            agents_file.chmod(0o640)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_stat = fake_bin / "stat"
+            fake_stat.write_text(
+                "#!/bin/sh\n"
+                'if [ "$1" = "-f" ]; then\n'
+                "  echo failed-probe-noise\n"
+                "  exit 1\n"
+                "fi\n"
+                'if [ "$1" = "-c" ]; then\n'
+                "  echo 640\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 2\n"
+            )
+            fake_stat.chmod(0o755)
+
+            result = self.run_installer(
+                home,
+                codex_home=codex_home,
+                extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(stat.S_IMODE(agents_file.stat().st_mode), 0o640)
+
     def test_broken_agents_symlink_fails_before_installing_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -296,7 +427,7 @@ class PackagingTests(unittest.TestCase):
             skill.mkdir(parents=True)
             backup.mkdir()
             (skill / "SKILL.md").write_text("installed before run\n")
-            (backup / "SKILL.md").write_text("backup before run\n")
+            (backup / "notes.txt").write_text("backup before run\n")
             agents_file = codex_home / "AGENTS.md"
             agents_file.write_text("# Agents before run\n")
             agents_file.chmod(0o640)
@@ -420,9 +551,18 @@ class PackagingTests(unittest.TestCase):
 
             self.assertEqual(written.returncode, 0, written.stderr)
             for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md"):
-                self.assertEqual((repo / name).read_bytes(), snippet)
+                surface = repo / name
+                self.assertFalse(surface.is_symlink())
+                self.assertTrue(stat.S_ISREG(surface.lstat().st_mode))
+                self.assertEqual(stat.S_IMODE(surface.lstat().st_mode), 0o644)
+                self.assertEqual(surface.read_bytes(), snippet)
             self.assertEqual((plugin / "SKILL.md").read_text(), "canonical skill\n")
             self.assertEqual(stat.S_IMODE((plugin / "SKILL.md").stat().st_mode), 0o750)
+            self.assertFalse(plugin.is_symlink())
+            self.assertEqual(
+                stat.S_IMODE(plugin.lstat().st_mode),
+                stat.S_IMODE(canonical.lstat().st_mode),
+            )
             self.assertEqual(
                 (plugin / "agents" / "openai.yaml").read_text(),
                 "display: canonical\n",
@@ -444,6 +584,82 @@ class PackagingTests(unittest.TestCase):
                 capture_output=True,
             )
             self.assertEqual(checked.returncode, 0, checked.stderr)
+
+            claude = repo / "CLAUDE.md"
+            claude.chmod(0o600)
+            wrong_surface_mode = subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--check"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(wrong_surface_mode.returncode, 0)
+            subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--write"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(stat.S_IMODE(claude.lstat().st_mode), 0o644)
+
+            claude.unlink()
+            claude.symlink_to("AGENTS.md.snippet")
+            symlinked_surface = subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--check"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(symlinked_surface.returncode, 0)
+            subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--write"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertFalse(claude.is_symlink())
+            self.assertEqual(stat.S_IMODE(claude.lstat().st_mode), 0o644)
+
+            plugin.chmod(0o700)
+            wrong_plugin_mode = subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--check"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(wrong_plugin_mode.returncode, 0)
+            subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--write"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(
+                stat.S_IMODE(plugin.lstat().st_mode),
+                stat.S_IMODE(canonical.lstat().st_mode),
+            )
+
+            shutil.rmtree(plugin)
+            plugin.symlink_to(os.path.relpath(canonical, plugin.parent))
+            symlinked_plugin_root = subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--check"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(symlinked_plugin_root.returncode, 0)
+            subprocess.run(
+                ["python3", str(scripts / SYNC.name), "--write"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertFalse(plugin.is_symlink())
+            self.assertTrue(plugin.is_dir())
 
             (plugin / "stale-empty-directory").mkdir()
             extra_directory = subprocess.run(

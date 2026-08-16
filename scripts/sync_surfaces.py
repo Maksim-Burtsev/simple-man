@@ -19,28 +19,37 @@ CANONICAL_SKILL = ROOT / "skills" / "simple-man"
 PLUGIN_SKILL = ROOT / "plugins" / "simple-man" / "skills" / "simple-man"
 
 
+def object_entry(path: Path) -> tuple[object, ...]:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return ("missing",)
+    if stat.S_ISLNK(mode):
+        return ("symlink", os.readlink(path))
+    if stat.S_ISDIR(mode):
+        return ("directory", stat.S_IMODE(mode))
+    if stat.S_ISREG(mode):
+        return ("file", stat.S_IMODE(mode), path.read_bytes())
+    return ("other", stat.S_IFMT(mode), stat.S_IMODE(mode))
+
+
 def tree_entries(root: Path) -> dict[str, tuple[object, ...]]:
-    if not root.is_dir():
-        return {".": ("missing",)}
-    entries: dict[str, tuple[object, ...]] = {}
+    entries = {".": object_entry(root)}
+    if entries["."][0] != "directory":
+        return entries
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        if path.is_symlink():
-            entries[rel] = ("symlink", os.readlink(path))
-        elif path.is_dir():
-            entries[rel] = ("directory",)
-        else:
-            entries[rel] = (
-                "file",
-                stat.S_IMODE(path.stat().st_mode),
-                path.read_bytes(),
-            )
+        entries[rel] = object_entry(path)
     return entries
 
 
 def drifted_paths() -> list[Path]:
     expected = SNIPPET.read_bytes()
-    drift = [path for path in SURFACES if not path.is_file() or path.read_bytes() != expected]
+    drift = [
+        path
+        for path in SURFACES
+        if object_entry(path) != ("file", 0o644, expected)
+    ]
     if tree_entries(PLUGIN_SKILL) != tree_entries(CANONICAL_SKILL):
         drift.append(PLUGIN_SKILL)
     return drift
@@ -50,6 +59,7 @@ def replace_file(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
+        os.fchmod(fd, 0o644)
         with os.fdopen(fd, "wb") as handle:
             handle.write(content)
         os.replace(temporary, path)

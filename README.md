@@ -31,17 +31,19 @@ codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
 codex plugin add simple-man@simple-man
 ```
 
-Plugin installation makes the skill available; it does not enable the always-on policy.
+The pinned v0.2.0 plugin makes the skill available; it does not enable the always-on policy. Its manifest still uses an always-on label; the source manifest for upcoming v0.3 removes that misleading wording. PR5 will update the release pin.
 
 ## Always-on Codex policy
 
-Use the release-pinned installer when every Codex response should use the compact runtime policy:
+The currently released v0.2.0 installer enables the compact runtime policy:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
 ```
 
-The installer manages the always-on block in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. With no overrides, a new skill install goes to `$HOME/.agents/skills/simple-man`; an existing legacy `$HOME/.codex/skills/simple-man` is updated in place instead of creating a duplicate. See [INSTALL.md](./INSTALL.md) for overrides and project-level setup.
+That pinned installer writes `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`, installs the skill under `${CODEX_HOME:-$HOME/.codex}/skills/simple-man`, and keeps `simple-man.backup` on rerun.
+
+The installer in this source tree is the upcoming v0.3 contract: the AGENTS destination stays the same, while skill placement uses explicit overrides, an existing legacy install, then `$HOME/.agents/skills/simple-man`. It creates no backup skill and preserves pre-existing non-skill backup data. PR5 will change the pin to v0.3.0; see [INSTALL.md](./INSTALL.md) for the full source contract and project-level setup.
 
 ## What it changes
 
