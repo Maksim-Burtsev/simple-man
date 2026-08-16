@@ -1,4 +1,4 @@
-# Simple Man
+## Simple Man runtime policy
 
 Apply Simple Man to user-facing responses by default.
 
