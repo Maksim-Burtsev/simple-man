@@ -59,10 +59,24 @@ class EvalV2Tests(unittest.TestCase):
         ]
         runs = [
             {"case_id": case["id"], "arm": arm, "run_id": f"{case['id']}-{arm}",
+             "trial": 1, "model": "m", "effort": "e", "cli": "cli",
              "commentary": "c", "final": "f"}
             for case in cases for arm in ("A", "B")
         ]
-        mapping = lib.build_private_mapping(cases, runs, b"test-secret")
+        mapping = lib.build_private_mapping(
+            cases,
+            runs,
+            b"test-secret",
+            comparisons=[{
+                "comparison_id": "baseline-candidate",
+                "baseline_arm": "A",
+                "candidate_arm": "B",
+                "run_selectors": [
+                    {"case_id": case_id, "trial": 1, "model": "m", "effort": "e", "cli": "cli"}
+                    for case_id in ("one", "two")
+                ],
+            }],
+        )
         bundle = lib.build_public_bundle(cases, runs, mapping)
 
         self.assertEqual(len(bundle["pairs"]), 2)
@@ -101,14 +115,104 @@ class EvalV2Tests(unittest.TestCase):
         self.assertEqual((metrics["tp"], metrics["tn"], metrics["fp"], metrics["fn"]), (1, 1, 0, 0))
         self.assertEqual(metrics["explicit_accuracy"], 1.0)
         paired = lib.pair_measurements([
-            {"case_id": "one", "trial": 1, "model": "m", "effort": "e", "arm": "A", "commentary_visible_tokens": 3, "final_visible_tokens": 5, "input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 8, "latency_ms": 10},
-            {"case_id": "one", "trial": 1, "model": "m", "effort": "e", "arm": "B", "commentary_visible_tokens": 1, "final_visible_tokens": 3, "input_tokens": 90, "cached_input_tokens": 60, "output_tokens": 4, "latency_ms": 8},
+            {"case_id": "one", "trial": 1, "model": "m", "effort": "e", "cli": "cli", "arm": "A", "commentary_visible_tokens": 3, "final_visible_tokens": 5, "input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 8, "latency_ms": 10},
+            {"case_id": "one", "trial": 1, "model": "m", "effort": "e", "cli": "cli", "arm": "B", "commentary_visible_tokens": 1, "final_visible_tokens": 3, "input_tokens": 90, "cached_input_tokens": 60, "output_tokens": 4, "latency_ms": 8},
         ])
         self.assertEqual(paired[0]["A"]["visible_output_tokens"], 8)
         self.assertEqual(paired[0]["A"]["uncached_input_tokens"], 20)
         self.assertEqual(lib.clustered_bootstrap_ci(paired, "visible_output_tokens", seed=7, iterations=20), (0.5, 0.5))
         self.assertEqual(lib.paired_summary(paired)["visible_output_tokens"]["relative_reduction"], 0.5)
         self.assertIn("estimated_session_net", lib.paired_summary(paired)["estimate"])
+
+    def test_arbitrary_comparisons_cover_b_vs_c_and_winner_vs_baselines(self):
+        cases = [
+            {"id": case_id, "category": "status", "language": "en", "prompt": "p", "verified_context": {}}
+            for case_id in ("one", "two")
+        ]
+        runs = [
+            {
+                "case_id": case["id"], "cluster_id": case["id"], "trial": 1,
+                "model": "gpt-5.6-sol", "effort": "high", "cli": "codex-cli 0.145.0", "arm": arm,
+                "run_id": f"{case['id']}-{arm}", "commentary": "", "final": arm,
+                "commentary_visible_tokens": 0, "final_visible_tokens": tokens,
+                "input_tokens": 100, "cached_input_tokens": 80,
+                "output_tokens": tokens, "latency_ms": 1,
+            }
+            for case in cases
+            for arm, tokens in (("A", 10), ("B", 8), ("C", 6), ("generic", 7))
+        ]
+        comparisons = [{
+            "comparison_id": "naturalness-b-c",
+            "baseline_arm": "B",
+            "candidate_arm": "C",
+            "run_selectors": [
+                {"case_id": case_id, "trial": 1, "model": "gpt-5.6-sol", "effort": "high", "cli": "codex-cli 0.145.0"}
+                for case_id in ("one", "two")
+            ],
+        }]
+        mapping = lib.build_private_mapping(cases, runs, "secret", comparisons=comparisons)
+        mapped_arms = {
+            side["arm"]
+            for pair in mapping["pairs"].values()
+            for side in (pair["left"], pair["right"])
+        }
+        self.assertEqual(mapped_arms, {"B", "C"})
+
+        b_vs_c = lib.pair_measurements(runs, baseline_arm="B", candidate_arm="C")
+        c_vs_a = lib.pair_measurements(runs, baseline_arm="A", candidate_arm="C")
+        c_vs_generic = lib.pair_measurements(runs, baseline_arm="generic", candidate_arm="C")
+        self.assertEqual(lib.paired_summary(b_vs_c)["visible_output_tokens"]["relative_reduction"], 0.25)
+        self.assertEqual(lib.paired_summary(c_vs_a)["visible_output_tokens"]["relative_reduction"], 0.4)
+        self.assertEqual(
+            lib.clustered_bootstrap_ci(c_vs_generic, "visible_output_tokens", seed=1, iterations=10),
+            (1 / 7, 1 / 7),
+        )
+
+    def test_judge_identities_use_registered_comparison_slots_not_bundle_order(self):
+        plan = runner.build_plan(ROOT / "evals/release-plan.json")
+        bundle = {"pairs": [
+            {"pair_id": "pair_primary"},
+            {"pair_id": "pair_dev"},
+            {"pair_id": "pair_metrics_only"},
+        ]}
+        mapping = {"pairs": {
+            "pair_primary": {"comparison_id": "primary-winner-a"},
+            "pair_dev": {"comparison_id": "dev-naturalness-b-c"},
+            "pair_metrics_only": {"comparison_id": "primary-winner-generic"},
+        }}
+        records = runner._judge_records(plan)
+        bundle_sha256 = runner._bundle_sha256(bundle)
+        self.assertEqual(
+            runner._judge_identity(bundle["pairs"][0], bundle_sha256, plan, bundle["pairs"], mapping)["call_id"],
+            records[12]["call_id"],
+        )
+        self.assertEqual(
+            runner._judge_identity(bundle["pairs"][1], bundle_sha256, plan, bundle["pairs"], mapping)["call_id"],
+            records[0]["call_id"],
+        )
+        with self.assertRaises(ValueError):
+            runner._judge_identity(bundle["pairs"][2], bundle_sha256, plan, bundle["pairs"], mapping)
+
+    def test_comparison_identity_separates_same_case_by_trial_model_effort_and_cli(self):
+        case = {"id": "same", "category": "status", "language": "en", "prompt": "p", "verified_context": {}}
+        selectors = [
+            {"case_id": "same", "trial": 1, "model": "gpt-5.6-sol", "effort": "high", "cli": cli}
+            for cli in ("codex-cli 0.145.0", "codex-cli 0.146.0")
+        ]
+        runs = [
+            {**selector, "cluster_id": "same", "arm": arm, "run_id": f"{selector['cli']}-{arm}",
+             "commentary": "", "final": arm, "commentary_visible_tokens": 0,
+             "final_visible_tokens": 1, "input_tokens": 10, "cached_input_tokens": 5,
+             "output_tokens": 1, "latency_ms": 1}
+            for selector in selectors for arm in ("B", "C")
+        ]
+        mapping = lib.build_private_mapping(
+            [case], runs, "secret",
+            comparisons=[{"comparison_id": "b-c", "baseline_arm": "B", "candidate_arm": "C", "run_selectors": selectors}],
+        )
+        self.assertEqual(len(mapping["pairs"]), 2)
+        pairs = lib.pair_measurements(runs, baseline_arm="B", candidate_arm="C")
+        self.assertEqual({pair["cli"] for pair in pairs}, {"codex-cli 0.145.0", "codex-cli 0.146.0"})
 
     def test_balanced_schedule_has_exact_ordinal_balance(self):
         cases = [{"id": f"case-{number}"} for number in range(12)]
@@ -348,6 +452,60 @@ class EvalV2Tests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runner.main(["reveal", "--root", str(root)])
 
+    def test_manifest_reconstructs_source_policy_and_git_identity_at_every_phase(self):
+        with tempfile.TemporaryDirectory() as source_directory:
+            source_root = Path(source_directory) / "source"
+            plan = runner.build_plan(ROOT / "evals/release-plan.json")
+            for relative in runner._manifest_relative_paths(plan):
+                target = source_root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / relative, target)
+
+            source = source_root / "evals/eval_v2_lib.py"
+            policy = source_root / "skills/simple-man/SKILL.md"
+
+            def mutate_then_reject(path, command, prepare):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    prepare(root)
+                    original = path.read_bytes()
+                    try:
+                        path.write_bytes(original + b"\n# post-answer mutation\n")
+                        with self.assertRaises(ValueError):
+                            runner.main([command, "--root", str(root), *(["--fake"] if command == "judge" else [])])
+                    finally:
+                        path.write_bytes(original)
+
+            with mock.patch.object(runner, "MANIFEST_SOURCE_ROOT", source_root):
+                for path in (source, policy):
+                    with self.subTest(path=path.name, phase="judge"):
+                        mutate_then_reject(
+                            path,
+                            "judge",
+                            lambda root: runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"]),
+                        )
+                    with self.subTest(path=path.name, phase="seal"):
+                        def prepare_seal(root):
+                            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                            runner.main(["judge", "--root", str(root), "--fake"])
+                        mutate_then_reject(path, "seal", prepare_seal)
+                    with self.subTest(path=path.name, phase="reveal"):
+                        def prepare_reveal(root):
+                            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                            runner.main(["judge", "--root", str(root), "--fake"])
+                            runner.main(["seal", "--root", str(root)])
+                        mutate_then_reject(path, "reveal", prepare_reveal)
+
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                    manifest = json.loads((root / "private/manifest.json").read_text())
+        self.assertEqual(set(manifest["evaluated_git"]), {"head_sha", "tree_sha"})
+        self.assertIn("evals/eval_v2_lib.py", manifest["source_sha256"])
+        self.assertIn("evals/coding_gate.py", manifest["source_sha256"])
+        self.assertIn("skills/simple-man/SKILL.md", manifest["source_sha256"])
+        self.assertEqual(set(manifest["arm_policy_sha256"]), {"A", "B", "C", "generic"})
+
     def test_dry_plan_has_concrete_preregistered_call_identities(self):
         derived = runner.build_plan(ROOT / "evals/release-plan.json")
         records = derived["records"]
@@ -368,6 +526,112 @@ class EvalV2Tests(unittest.TestCase):
             {"A", "B", "C", "generic"},
         )
         self.assertNotIn("prompt", lib.canonical_json(records))
+
+        lane_identity = {
+            lane: {(record["model"], record["effort"], record["cli"])
+                   for record in records if record["lane"] == lane}
+            for lane in runner.LANES
+        }
+        self.assertEqual(lane_identity["primary_coding"], {("gpt-5.6-sol", "xhigh", "codex-cli 0.145.0")})
+        self.assertEqual(lane_identity["blind_judge_and_tiebreak"], {("gpt-5.6-terra", "medium", "codex-cli 0.145.0")})
+        self.assertEqual(lane_identity["compatibility"], {("gpt-5.5", "high", "codex-cli 0.145.0")})
+        for lane in set(runner.LANES) - {"primary_coding", "blind_judge_and_tiebreak", "compatibility"}:
+            self.assertEqual(lane_identity[lane], {("gpt-5.6-sol", "high", "codex-cli 0.145.0")})
+
+        record = next(record for record in records if record["lane"] == "dev_output")
+        self.assertEqual(
+            runner.execution_identity_status(
+                record,
+                actual_model=record["model"],
+                actual_effort=record["effort"],
+                actual_cli=record["cli"],
+            )["status"],
+            "READY",
+        )
+        self.assertEqual(
+            runner.execution_identity_status(
+                record,
+                actual_model="substituted-model",
+                actual_effort=record["effort"],
+                actual_cli=record["cli"],
+            )["status"],
+            "INCONCLUSIVE",
+        )
+        self.assertEqual(
+            runner.execution_identity_status(record, actual_model=None, actual_effort=None, actual_cli=None)["status"],
+            "INCONCLUSIVE",
+        )
+
+        comparisons = derived["comparison_contract"]
+        self.assertEqual(comparisons["judge_cap"], 28)
+        self.assertEqual(sum(item["max_judge_calls"] for item in comparisons["comparisons"]), 28)
+        self.assertEqual(
+            {(item["baseline_arm"], item["candidate_arm"]) for item in comparisons["comparisons"]},
+            {("B", "C"), ("A", "winner"), ("generic", "winner"), ("runner_up", "winner")},
+        )
+
+    def test_fake_executor_is_recorded_separately_from_planned_live_identity(self):
+        plan = runner.build_plan(ROOT / "evals/release-plan.json")
+        self.assertNotIn("offline-fake", lib.canonical_json(plan["records"]))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            schedule = json.loads((root / "private/schedule.json").read_text())
+            self.assertEqual({call["executor"] for call in schedule["calls"]}, {runner.FAKE_EXECUTOR_ID})
+            runner.main(["judge", "--root", str(root), "--fake"])
+            judge_manifest = json.loads((root / "private/judge-manifest.json").read_text())
+            self.assertEqual(judge_manifest["executor"], runner.FAKE_JUDGE_ID)
+            self.assertEqual(judge_manifest["model"], "gpt-5.6-terra")
+
+    def test_live_readiness_requires_frozen_policy_hashes_and_clean_exact_head(self):
+        plan = runner.build_plan(ROOT / "evals/release-plan.json")
+        record = next(record for record in plan["records"] if record["lane"] == "dev_output")
+        identity = {"actual_model": record["model"], "actual_effort": record["effort"], "actual_cli": record["cli"]}
+        self.assertEqual(
+            runner.live_execution_status(
+                plan, record, **identity, arm_policy_sha256={}, description_policy_sha256={},
+                evaluated_head_sha="a" * 40,
+            )["status"],
+            "INCONCLUSIVE",
+        )
+
+        frozen = copy.deepcopy(plan)
+        for configs in (frozen["arm_policies"], frozen["description_policies"]):
+            for name, policy in configs.items():
+                policy.update({"state": "frozen", "source": f"evals/policies/{name}.md", "offline_only": False})
+        policy_hashes = {name: "1" * 64 for name in frozen["arm_policies"]}
+        description_hashes = {name: "2" * 64 for name in frozen["description_policies"]}
+        source_hashes = {
+            policy["source"]: policy_hashes[name]
+            for name, policy in frozen["arm_policies"].items()
+        } | {
+            policy["source"]: description_hashes[name]
+            for name, policy in frozen["description_policies"].items()
+        }
+        with mock.patch("run_eval_v2._source_hashes", return_value=source_hashes), mock.patch(
+            "run_eval_v2._live_git_state", return_value={"head_sha": "a" * 40, "tree_sha": "c" * 40, "clean": True},
+        ):
+            self.assertEqual(
+                runner.live_execution_status(
+                    frozen, record, **identity, arm_policy_sha256=policy_hashes,
+                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40,
+                )["status"],
+                "READY",
+            )
+        with mock.patch("run_eval_v2._source_hashes", return_value=source_hashes), mock.patch(
+            "run_eval_v2._live_git_state", return_value={"head_sha": "b" * 40, "tree_sha": "c" * 40, "clean": True},
+        ):
+            self.assertEqual(
+                runner.live_execution_status(
+                    frozen, record, **identity, arm_policy_sha256=policy_hashes,
+                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40,
+                )["status"],
+                "INCONCLUSIVE",
+            )
+
+        future = copy.deepcopy(plan)
+        future["arm_policies"]["B"] = {"state": "frozen", "source": "evals/policies/simple_man_b.md", "offline_only": False}
+        self.assertIn("evals/policies/simple_man_b.md", runner._manifest_relative_paths(future))
 
     def test_resume_marks_started_failed_and_interrupted_answer_calls_spent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -405,9 +669,10 @@ class EvalV2Tests(unittest.TestCase):
             root = Path(directory)
             runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
             bundle = json.loads((root / "public/bundle.json").read_text())
+            mapping = json.loads((root / "private/mapping.json").read_text())
             plan = runner.build_plan(ROOT / "evals/release-plan.json")
             pair = bundle["pairs"][0]
-            identity = runner._judge_identity(pair, runner._bundle_sha256(bundle), plan, bundle["pairs"])
+            identity = runner._judge_identity(pair, runner._bundle_sha256(bundle), plan, bundle["pairs"], mapping)
             attempt = root / "private/judge-attempts" / pair["pair_id"]
             runner.start_attempt(attempt, identity)
 
@@ -465,6 +730,7 @@ class EvalV2Tests(unittest.TestCase):
         for case_id in ("one", "two"):
             for arm in ("A", "B"):
                 runs.append({"case_id": case_id, "cluster_id": "shared", "trial": 1, "model": "m", "effort": "e", "arm": arm,
+                             "cli": "cli",
                              "commentary_visible_tokens": 1, "final_visible_tokens": 1, "input_tokens": 10,
                              "cached_input_tokens": 5, "output_tokens": 2, "latency_ms": 1})
         pairs = lib.pair_measurements(runs)

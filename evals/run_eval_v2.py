@@ -23,14 +23,26 @@ LANES = {
     "primary_output_holdout": 60, "full_skill_parity": 8,
     "blind_judge_and_tiebreak": 28, "primary_coding": 9, "compatibility": 46,
 }
-RUNNER_ID = "eval_v2_fake_v3"
-DEFAULT_MODEL = "preregistered-user-model"
-DEFAULT_EFFORT = "preregistered-user-effort"
-DEFAULT_CLI = "offline-fake-cli-v1"
+RUNNER_ID = "eval_v2_v4"
+FAKE_EXECUTOR_ID = "offline-fake-v4"
+JUDGE_CONTRACT_ID = "strict-json-blind-v1"
+FAKE_JUDGE_ID = "offline-fake-judge-v4"
 OUTPUT_TREATMENTS = ("A", "B", "C", "generic")
 ACTIVATION_DESCRIPTIONS = ("D0", "D1")
 OWNER_FILE = ".eval-v2-owner.json"
 OWNER = {"schema_version": 1, "owner": "simple-man-eval-v2"}
+MANIFEST_SOURCE_ROOT = ROOT
+
+PLAN_FIELDS = {
+    "schema_version", "hard_cap", "lanes", "planned_calls", "execution_contract",
+    "arm_policies", "description_policies", "comparison_contract", "scoring_contract",
+    "bootstrap_contract",
+}
+POLICY_CONFIG_FIELDS = {"state", "source", "offline_only"}
+COMPARISON_FIELDS = {
+    "comparison_id", "baseline_arm", "candidate_arm", "case_set", "max_pairs",
+    "max_judge_calls", "judge_call_slots", "condition",
+}
 
 
 def _open_directory(path: Path, *, create: bool, private: bool) -> int:
@@ -250,43 +262,103 @@ def _prepare_root(root: Path) -> None:
 
 
 def validate_budget(plan: dict[str, Any]) -> None:
-    lib.require_exact_fields(plan, {"schema_version", "hard_cap", "lanes", "planned_calls"}, "release plan")
-    if plan["schema_version"] != 1 or type(plan["hard_cap"]) is not int or type(plan["planned_calls"]) is not int or plan["lanes"] != LANES:
+    lib.require_exact_fields(plan, PLAN_FIELDS, "release plan")
+    if plan["schema_version"] != 2 or type(plan["hard_cap"]) is not int or type(plan["planned_calls"]) is not int or plan["lanes"] != LANES:
         raise ValueError("release lanes must match preregistered contract")
     if plan["planned_calls"] != sum(LANES.values()) or plan["hard_cap"] != 280 or plan["planned_calls"] > plan["hard_cap"]:
         raise ValueError("release budget exceeded")
 
+    execution = lib.require_exact_fields(
+        plan["execution_contract"], {"cli", "lanes", "unavailable_or_substituted"},
+        "execution contract",
+    )
+    if execution["cli"] != "codex-cli 0.145.0" or execution["unavailable_or_substituted"] != "INCONCLUSIVE" or set(execution["lanes"]) != set(LANES):
+        raise ValueError("invalid execution contract")
+    expected_execution = {
+        **{lane: ("gpt-5.6-sol", "high") for lane in LANES},
+        "blind_judge_and_tiebreak": ("gpt-5.6-terra", "medium"),
+        "primary_coding": ("gpt-5.6-sol", "xhigh"),
+        "compatibility": ("gpt-5.5", "high"),
+    }
+    for lane, (model, effort) in expected_execution.items():
+        if execution["lanes"].get(lane) != {"model": model, "effort": effort}:
+            raise ValueError("invalid lane execution identity")
 
-def _record(lane: str, case_slot: str, treatment: str, description: str, *, policy_role: str, conditional: str, trial: int = 1) -> dict[str, Any]:
-    base = {"lane": lane, "case_slot": case_slot, "treatment": treatment, "description": description, "trial": trial, "model": DEFAULT_MODEL, "effort": DEFAULT_EFFORT, "cli": DEFAULT_CLI, "policy_role": policy_role, "conditional": conditional}
+    for name, expected_names in (("arm_policies", set(OUTPUT_TREATMENTS)), ("description_policies", set(ACTIVATION_DESCRIPTIONS))):
+        policies = plan[name]
+        if not isinstance(policies, dict) or set(policies) != expected_names:
+            raise ValueError(f"invalid {name}")
+        for policy in policies.values():
+            lib.require_exact_fields(policy, POLICY_CONFIG_FIELDS, "policy config")
+            source = policy["source"]
+            if not isinstance(policy["state"], str) or not policy["state"] or type(policy["offline_only"]) is not bool or (source is not None and (not isinstance(source, str) or not source)):
+                raise ValueError("invalid policy config")
+            if (source is None) != policy["offline_only"]:
+                raise ValueError("unfrozen policy must be offline-only")
+
+    comparison = lib.require_exact_fields(plan["comparison_contract"], {"judge_cap", "comparisons"}, "comparison contract")
+    if comparison["judge_cap"] != LANES["blind_judge_and_tiebreak"] or not isinstance(comparison["comparisons"], list):
+        raise ValueError("invalid comparison cap")
+    slots: list[int] = []
+    seen: set[str] = set()
+    for item in comparison["comparisons"]:
+        lib.require_exact_fields(item, COMPARISON_FIELDS, "comparison config")
+        if not isinstance(item["comparison_id"], str) or not item["comparison_id"] or item["comparison_id"] in seen or item["baseline_arm"] == item["candidate_arm"]:
+            raise ValueError("invalid comparison identity")
+        if type(item["max_pairs"]) is not int or item["max_pairs"] < 1 or type(item["max_judge_calls"]) is not int or not 0 <= item["max_judge_calls"] <= item["max_pairs"]:
+            raise ValueError("invalid comparison allocation")
+        disposition = item["judge_call_slots"]
+        if item["max_judge_calls"] == 0:
+            if disposition is not None:
+                raise ValueError("non-judged comparison has judge slots")
+        else:
+            if not isinstance(disposition, list) or len(disposition) != 2 or any(type(value) is not int for value in disposition):
+                raise ValueError("invalid judge slot range")
+            start, end = disposition
+            if end - start + 1 != item["max_judge_calls"]:
+                raise ValueError("judge slot range does not match allocation")
+            slots.extend(range(start, end + 1))
+        seen.add(item["comparison_id"])
+    if slots != list(range(1, comparison["judge_cap"] + 1)):
+        raise ValueError("judge call slots must exactly cover the cap")
+
+    lib.require_exact_fields(plan["scoring_contract"], {"quality_order", "deterministic_checks", "judge_schema", "visible_tokenizer", "tokenizer_version"}, "scoring contract")
+    lib.require_exact_fields(plan["bootstrap_contract"], {"method", "cluster_field", "confidence", "iterations"}, "bootstrap contract")
+
+
+def _record(execution: dict[str, Any], lane: str, case_slot: str, treatment: str, description: str, *, policy_role: str, conditional: str, trial: int = 1) -> dict[str, Any]:
+    identity = execution["lanes"][lane]
+    base = {"lane": lane, "case_slot": case_slot, "treatment": treatment, "description": description, "trial": trial, "model": identity["model"], "effort": identity["effort"], "cli": execution["cli"], "policy_role": policy_role, "conditional": conditional}
     return {"call_id": f"call_{hashlib.sha256(lib.canonical_json(base).encode()).hexdigest()[:24]}", **base}
 
 
-def _derived_records() -> list[dict[str, Any]]:
+def _derived_records(config: dict[str, Any]) -> list[dict[str, Any]]:
     output = lib.load_output_cases(CASES / "output-dev.jsonl")
     activation = lib.load_activation_cases(CASES / "activation-dev.jsonl")
+    execution = config["execution_contract"]
     records = []
     for case in output:
         for treatment in OUTPUT_TREATMENTS:
-            records.append(_record("dev_output", case["id"], treatment, "output", policy_role=f"dev_output_{treatment}", conditional="dev"))
+            records.append(_record(execution, "dev_output", case["id"], treatment, "output", policy_role=f"dev_output_{treatment}", conditional="dev"))
     for case in activation:
         if case["execution"] == "routed":
             for description in ACTIVATION_DESCRIPTIONS:
-                records.append(_record("dev_activation", case["id"], "activation", description, policy_role="activation_decider", conditional="dev"))
+                records.append(_record(execution, "dev_activation", case["id"], "activation", description, policy_role="activation_decider", conditional="dev"))
     for slot in range(1, 21):
         for description in ACTIVATION_DESCRIPTIONS:
-            records.append(_record("primary_activation_holdout", f"activation-holdout-slot-{slot:02}", "activation", description, policy_role="activation_decider", conditional="after_holdout_freeze"))
+            records.append(_record(execution, "primary_activation_holdout", f"activation-holdout-slot-{slot:02}", "activation", description, policy_role="activation_decider", conditional="after_holdout_freeze"))
     for slot in range(1, 16):
         for treatment in OUTPUT_TREATMENTS:
-            records.append(_record("primary_output_holdout", f"output-holdout-slot-{slot:02}", treatment, "output", policy_role=f"holdout_output_{treatment}", conditional="after_holdout_freeze"))
+            records.append(_record(execution, "primary_output_holdout", f"output-holdout-slot-{slot:02}", treatment, "output", policy_role=f"holdout_output_{treatment}", conditional="after_holdout_freeze"))
     for slot in range(1, 9):
-        records.append(_record("full_skill_parity", f"parity-slot-{slot:02}", "parity", "packaged-skill", policy_role="parity", conditional="after_holdout_freeze"))
+        records.append(_record(execution, "full_skill_parity", f"parity-slot-{slot:02}", "parity", "packaged-skill", policy_role="parity", conditional="after_holdout_freeze"))
     for slot in range(1, 29):
-        records.append(_record("blind_judge_and_tiebreak", f"blind-judge-slot-{slot:02}", "judge", "strict-json", policy_role="blind_judge", conditional="after_answers"))
+        allocation = next(item for item in config["comparison_contract"]["comparisons"] if item["judge_call_slots"] and item["judge_call_slots"][0] <= slot <= item["judge_call_slots"][1])
+        records.append(_record(execution, "blind_judge_and_tiebreak", f"{allocation['comparison_id']}-slot-{slot:02}", "judge", "strict-json", policy_role="blind_judge", conditional=allocation["condition"]))
     for slot in range(1, 10):
-        records.append(_record("primary_coding", f"coding-slot-{slot:02}", "coding", "hidden-validator", policy_role="coding", conditional="after_holdout_freeze"))
+        records.append(_record(execution, "primary_coding", f"coding-slot-{slot:02}", "coding", "hidden-validator", policy_role="coding", conditional="after_holdout_freeze"))
     for slot in range(1, 47):
-        records.append(_record("compatibility", f"compatibility-slot-{slot:02}", "compatibility", "regression", policy_role="compatibility", conditional="after_holdout_freeze"))
+        records.append(_record(execution, "compatibility", f"compatibility-slot-{slot:02}", "compatibility", "regression", policy_role="compatibility", conditional="after_holdout_freeze"))
     if len(records) != sum(LANES.values()) or len({record["call_id"] for record in records}) != len(records):
         raise ValueError("derived release plan mismatch")
     if {lane: sum(record["lane"] == lane for record in records) for lane in LANES} != LANES:
@@ -295,10 +367,55 @@ def _derived_records() -> list[dict[str, Any]]:
 
 
 def build_plan(path: Path) -> dict[str, Any]:
-    plan = _read_json(path, private=False)
-    validate_budget(plan)
-    records = _derived_records()
-    return {"planned_calls": len(records), "hard_cap": plan["hard_cap"], "lanes": plan["lanes"], "records": records}
+    config = _read_json(path, private=False)
+    validate_budget(config)
+    records = _derived_records(config)
+    return {"planned_calls": len(records), "hard_cap": config["hard_cap"], "lanes": config["lanes"], "records": records, "execution_contract": config["execution_contract"], "arm_policies": config["arm_policies"], "description_policies": config["description_policies"], "comparison_contract": config["comparison_contract"], "scoring_contract": config["scoring_contract"], "bootstrap_contract": config["bootstrap_contract"]}
+
+
+def execution_identity_status(record: dict[str, Any], *, actual_model: str | None, actual_effort: str | None, actual_cli: str | None) -> dict[str, Any]:
+    expected = {key: record.get(key) for key in ("model", "effort", "cli")}
+    actual = {"model": actual_model, "effort": actual_effort, "cli": actual_cli}
+    if actual == expected:
+        return {"status": "READY", "identity": expected}
+    return {"status": "INCONCLUSIVE", "reason": "required execution identity unavailable or substituted", "expected": expected, "actual": actual}
+
+
+def live_execution_status(
+    plan: dict[str, Any],
+    record: dict[str, Any],
+    *,
+    actual_model: str | None,
+    actual_effort: str | None,
+    actual_cli: str | None,
+    arm_policy_sha256: dict[str, str],
+    description_policy_sha256: dict[str, str],
+    evaluated_head_sha: str,
+) -> dict[str, Any]:
+    identity = execution_identity_status(
+        record,
+        actual_model=actual_model,
+        actual_effort=actual_effort,
+        actual_cli=actual_cli,
+    )
+    if identity["status"] != "READY":
+        return identity
+    for configs in (plan["arm_policies"], plan["description_policies"]):
+        if any(policy["offline_only"] or policy["source"] is None for policy in configs.values()):
+            return {"status": "INCONCLUSIVE", "reason": "live policy or description is not frozen"}
+    source_hashes = _source_hashes(plan)
+    expected_hashes = (
+        (arm_policy_sha256, _policy_hashes(plan["arm_policies"], source_hashes)),
+        (description_policy_sha256, _policy_hashes(plan["description_policies"], source_hashes)),
+    )
+    for supplied, expected in expected_hashes:
+        if supplied != expected:
+            return {"status": "INCONCLUSIVE", "reason": "live policy or description hash is unavailable"}
+    git_state = _live_git_state()
+    actual_head_sha = git_state["head_sha"]
+    if not git_state["clean"] or actual_head_sha != evaluated_head_sha or len(actual_head_sha) not in {40, 64} or any(char not in "0123456789abcdef" for char in actual_head_sha):
+        return {"status": "INCONCLUSIVE", "reason": "evaluated HEAD is dirty or changed"}
+    return {"status": "READY", "identity": identity["identity"], "evaluated_head_sha": evaluated_head_sha}
 
 
 def _require_call_id(identity: dict[str, Any]) -> None:
@@ -360,18 +477,116 @@ def _sha256_value(value: Any) -> str:
     return hashlib.sha256(lib.canonical_json(value).encode()).hexdigest()
 
 
+def _git_identity() -> dict[str, str]:
+    values = {}
+    for name, revision in (("head_sha", "HEAD"), ("tree_sha", "HEAD^{tree}")):
+        completed = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--verify", revision],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        value = completed.stdout.strip()
+        if completed.returncode != 0 or not value or any(char not in "0123456789abcdef" for char in value):
+            raise ValueError("evaluated git identity unavailable")
+        values[name] = value
+    return values
+
+
+def _live_git_state() -> dict[str, Any]:
+    identity = _git_identity()
+    completed = subprocess.run(
+        ["git", "-C", str(ROOT), "status", "--porcelain=v1", "--untracked-files=all"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if completed.returncode != 0:
+        raise ValueError("evaluated git worktree status unavailable")
+    return {**identity, "clean": not completed.stdout.strip()}
+
+
+def _manifest_relative_paths(plan: dict[str, Any] | None = None) -> list[str]:
+    root = MANIFEST_SOURCE_ROOT
+    fixed = {
+        "AGENTS.md", "AGENTS.md.snippet", "CLAUDE.md", "GEMINI.md",
+        "skills/simple-man/SKILL.md",
+        "evals/release-plan.json", "evals/schemas/holdout.schema.json",
+        "evals/cases/output-dev.jsonl", "evals/cases/activation-dev.jsonl",
+        "evals/prompts/coding_tasks.jsonl", "evals/prompts/reference_compression.jsonl",
+        "tests/test_eval_v2.py", "tests/test_eval_v2_gates.py", "tests/test_coding_gate.py",
+    }
+    if plan:
+        for configs in (plan["arm_policies"], plan["description_policies"]):
+            for policy in configs.values():
+                source = policy["source"]
+                if source is None:
+                    continue
+                relative = Path(source)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ValueError("policy source must stay inside evaluated source")
+                fixed.add(relative.as_posix())
+    fixed.update(path.relative_to(root).as_posix() for path in (root / "evals").glob("*.py"))
+    for directory in (
+        "evals/coding_workers", "evals/fixtures/skill-comparison", "evals/policies",
+        "evals/hidden_validators", "plugins/simple-man",
+    ):
+        base = root / directory
+        if base.exists():
+            fixed.update(
+                path.relative_to(root).as_posix()
+                for path in base.rglob("*")
+                if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+            )
+    return sorted(fixed)
+
+
+def _source_hashes(plan: dict[str, Any]) -> dict[str, str]:
+    hashes = {}
+    for relative in _manifest_relative_paths(plan):
+        path = MANIFEST_SOURCE_ROOT / relative
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"missing or unsafe manifest source: {relative}")
+        hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
+def _policy_hashes(config: dict[str, Any], source_hashes: dict[str, str]) -> dict[str, str]:
+    result = {}
+    for name, policy in sorted(config.items()):
+        source = policy["source"]
+        if source is None:
+            if not policy["offline_only"]:
+                raise ValueError("live policy hash is missing")
+            result[name] = _sha256_value({"offline_fake_placeholder": True, "name": name, **policy})
+        else:
+            if policy["offline_only"] or source not in source_hashes:
+                raise ValueError("policy source is not bound by manifest")
+            result[name] = source_hashes[source]
+    return result
+
+
 def _manifest_value(output_cases: list[dict[str, Any]], activation_cases: list[dict[str, Any]], plan: dict[str, Any]) -> dict[str, Any]:
     records = plan["records"]
+    source_hashes = _source_hashes(plan)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "runner": RUNNER_ID,
-        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "execution_mode": "offline_fake",
+        "fake_executor": FAKE_EXECUTOR_ID,
+        "evaluated_git": _git_identity(),
+        "source_sha256": source_hashes,
+        "arm_policy_sha256": _policy_hashes(plan["arm_policies"], source_hashes),
+        "description_policy_sha256": _policy_hashes(plan["description_policies"], source_hashes),
         "output_cases_sha256": _sha256_value(output_cases),
         "activation_cases_sha256": _sha256_value(activation_cases),
         "plan_sha256": _sha256_value(plan),
-        "model": DEFAULT_MODEL,
-        "effort": DEFAULT_EFFORT,
-        "cli": DEFAULT_CLI,
+        "execution_contract_sha256": _sha256_value(plan["execution_contract"]),
+        "comparison_contract_sha256": _sha256_value(plan["comparison_contract"]),
+        "scoring_contract_sha256": _sha256_value(plan["scoring_contract"]),
+        "bootstrap_contract_sha256": _sha256_value(plan["bootstrap_contract"]),
         "policy_roles_sha256": _sha256_value([{ "call_id": record["call_id"], "policy_role": record["policy_role"]} for record in records]),
         "limits_sha256": _sha256_value({"hard_cap": plan["hard_cap"], "lanes": plan["lanes"], "planned_calls": plan["planned_calls"]}),
     }
@@ -402,12 +617,12 @@ def _schedule(output_cases: list[dict[str, Any]], activation_cases: list[dict[st
     for row in lib.balanced_schedule(output_cases, OUTPUT_TREATMENTS, schedule_key):
         record = _plan_record(plan, "dev_output", row["case_id"], row["arm"], "output")
         case = by_output[row["case_id"]]
-        calls.append({"call_id": record["call_id"], "sequence": sequence, "kind": "output", "case_id": case["id"], "cluster_id": case["cluster_id"], "arm": row["arm"], "treatment": record["treatment"], "description": record["description"], "ordinal": row["ordinal"], "trial": record["trial"], "model": record["model"], "effort": record["effort"], "cli": record["cli"], "policy_role": record["policy_role"], "run_id": lib.opaque_id("run", schedule_key, {"call_id": record["call_id"]})})
+        calls.append({"call_id": record["call_id"], "sequence": sequence, "kind": "output", "case_id": case["id"], "cluster_id": case["cluster_id"], "arm": row["arm"], "treatment": record["treatment"], "description": record["description"], "ordinal": row["ordinal"], "trial": record["trial"], "model": record["model"], "effort": record["effort"], "cli": record["cli"], "executor": FAKE_EXECUTOR_ID, "policy_role": record["policy_role"], "run_id": lib.opaque_id("run", schedule_key, {"call_id": record["call_id"]})})
         sequence += 1
     routed = [case for case in activation_cases if case["execution"] == "routed"]
     for row in lib.balanced_schedule(routed, ACTIVATION_DESCRIPTIONS, schedule_key):
         record = _plan_record(plan, "dev_activation", row["case_id"], "activation", row["arm"])
-        calls.append({"call_id": record["call_id"], "sequence": sequence, "kind": "activation", "case_id": row["case_id"], "cluster_id": row["case_id"], "arm": row["arm"], "treatment": record["treatment"], "description": record["description"], "ordinal": row["ordinal"], "trial": record["trial"], "model": record["model"], "effort": record["effort"], "cli": record["cli"], "policy_role": record["policy_role"], "run_id": lib.opaque_id("run", schedule_key, {"call_id": record["call_id"]})})
+        calls.append({"call_id": record["call_id"], "sequence": sequence, "kind": "activation", "case_id": row["case_id"], "cluster_id": row["case_id"], "arm": row["arm"], "treatment": record["treatment"], "description": record["description"], "ordinal": row["ordinal"], "trial": record["trial"], "model": record["model"], "effort": record["effort"], "cli": record["cli"], "executor": FAKE_EXECUTOR_ID, "policy_role": record["policy_role"], "run_id": lib.opaque_id("run", schedule_key, {"call_id": record["call_id"]})})
         sequence += 1
     if len(calls) != LANES["dev_output"] + LANES["dev_activation"] or len({call["call_id"] for call in calls}) != len(calls):
         raise ValueError("invalid committed schedule")
@@ -544,9 +759,34 @@ def _assert_public_inventory(root: Path, allowed: set[str], runs: list[dict[str,
     _public_scan(root, [_read_json(public / name, private=False) for name in sorted(allowed)], runs)
 
 
-def _mapping_and_bundle(root: Path, output_cases: list[dict[str, Any]], runs: list[dict[str, Any]], schedule_key: str, mapping_key: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def _dev_comparisons(output_cases: list[dict[str, Any]], plan: dict[str, Any]) -> list[dict[str, Any]]:
+    matches = [item for item in plan["comparison_contract"]["comparisons"] if item["comparison_id"] == "dev-naturalness-b-c"]
+    if len(matches) != 1:
+        raise ValueError("missing preregistered dev comparison")
+    item = matches[0]
+    case_ids = [case["id"] for case in output_cases]
+    if item["case_set"] != "output-dev" or item["max_pairs"] != len(case_ids) or item["max_judge_calls"] != len(case_ids):
+        raise ValueError("dev comparison does not match corpus")
+    return [{
+        "comparison_id": item["comparison_id"],
+        "baseline_arm": item["baseline_arm"],
+        "candidate_arm": item["candidate_arm"],
+        "run_selectors": [
+            {
+                "case_id": case_id,
+                "trial": 1,
+                "model": plan["execution_contract"]["lanes"]["dev_output"]["model"],
+                "effort": plan["execution_contract"]["lanes"]["dev_output"]["effort"],
+                "cli": plan["execution_contract"]["cli"],
+            }
+            for case_id in case_ids
+        ],
+    }]
+
+
+def _mapping_and_bundle(root: Path, output_cases: list[dict[str, Any]], runs: list[dict[str, Any]], schedule_key: str, mapping_key: str, plan: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     output_runs = [run for run in runs if run["kind"] == "output"]
-    expected_mapping = lib.build_private_mapping(output_cases, output_runs, schedule_key)
+    expected_mapping = lib.build_private_mapping(output_cases, output_runs, schedule_key, comparisons=_dev_comparisons(output_cases, plan))
     mapping_path = root / "private/mapping.json"
     if _exists(mapping_path, private=True):
         mapping = _read_json(mapping_path, private=True)
@@ -584,7 +824,7 @@ def _load_chain(root: Path, output_cases: list[dict[str, Any]], activation_cases
         raise ValueError("schedule does not reconstruct from fixed identities")
     runs = _load_runs(root, expected_schedule)
     mapping = _read_json(root / "private/mapping.json", private=True)
-    expected_mapping = lib.build_private_mapping(output_cases, [run for run in runs if run["kind"] == "output"], schedule_key)
+    expected_mapping = lib.build_private_mapping(output_cases, [run for run in runs if run["kind"] == "output"], schedule_key, comparisons=_dev_comparisons(output_cases, plan))
     if mapping != expected_mapping:
         raise ValueError("mapping does not reconstruct from fixed identities")
     bundle = lib.build_public_bundle(output_cases, [run for run in runs if run["kind"] == "output"], mapping, commitment=lib.mapping_commitment(mapping, mapping_key), protected_roots={ROOT, CASES, root, root / "private", Path.home()})
@@ -605,21 +845,56 @@ def _judge_records(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
-def _judge_identity(pair: dict[str, Any], bundle_sha256: str, plan: dict[str, Any], pairs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    if pairs is None:
-        pairs = [pair]
-    ordered = sorted(pairs, key=lambda item: item["pair_id"])
-    matching = [index for index, item in enumerate(ordered) if item["pair_id"] == pair["pair_id"]]
-    if len(matching) != 1:
+def _comparison_config(plan: dict[str, Any], comparison_id: str) -> dict[str, Any]:
+    matches = [item for item in plan["comparison_contract"]["comparisons"] if item["comparison_id"] == comparison_id]
+    if len(matches) != 1:
+        raise ValueError("unknown comparison identity")
+    return matches[0]
+
+
+def _judge_pairs(bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
+    pairs = []
+    for pair in bundle["pairs"]:
+        private = mapping["pairs"].get(pair["pair_id"])
+        if not private:
+            raise ValueError("judge pair is not in sealed mapping")
+        if _comparison_config(plan, private["comparison_id"])["max_judge_calls"]:
+            pairs.append(pair)
+    return pairs
+
+
+def _judge_identity(pair: dict[str, Any], bundle_sha256: str, plan: dict[str, Any], pairs: list[dict[str, Any]], mapping: dict[str, Any]) -> dict[str, Any]:
+    private = mapping["pairs"].get(pair.get("pair_id"))
+    if not private:
         raise ValueError("unknown judge pair")
-    record = _judge_records(plan)[matching[0]]
-    return {"call_id": record["call_id"], "pair_id": pair["pair_id"], "bundle_sha256": bundle_sha256, "model": record["model"], "effort": record["effort"], "cli": record["cli"], "policy_role": record["policy_role"]}
+    comparison = _comparison_config(plan, private["comparison_id"])
+    disposition = comparison["judge_call_slots"]
+    if not disposition:
+        raise ValueError("comparison has no judge call allocation")
+    comparison_pairs = sorted(
+        item["pair_id"] for item in pairs
+        if mapping["pairs"].get(item.get("pair_id"), {}).get("comparison_id") == comparison["comparison_id"]
+    )
+    matching = [index for index, pair_id in enumerate(comparison_pairs) if pair_id == pair["pair_id"]]
+    if len(matching) != 1 or matching[0] >= comparison["max_judge_calls"]:
+        raise ValueError("unknown judge pair")
+    records = _judge_records(plan)
+    record_index = disposition[0] - 1 + matching[0]
+    if record_index >= len(records) or record_index >= disposition[1]:
+        raise ValueError("judge call budget exceeded")
+    record = records[record_index]
+    return {"call_id": record["call_id"], "pair_id": pair["pair_id"], "bundle_sha256": bundle_sha256, "model": record["model"], "effort": record["effort"], "cli": record["cli"], "executor": FAKE_JUDGE_ID, "policy_role": record["policy_role"]}
 
 
-def _judge_manifest_value(bundle: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+def _judge_manifest_value(bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     bundle_sha256 = _bundle_sha256(bundle)
-    identities = [_judge_identity(pair, bundle_sha256, plan, bundle["pairs"]) for pair in bundle["pairs"]]
-    return {"schema_version": 2, "judge": "strict_fake_v3", "runner": RUNNER_ID, "bundle_sha256": bundle_sha256, "model": DEFAULT_MODEL, "effort": DEFAULT_EFFORT, "cli": DEFAULT_CLI, "policy_role": "blind_judge", "call_ids": [identity["call_id"] for identity in identities]}
+    pairs = _judge_pairs(bundle, mapping, plan)
+    identities = [_judge_identity(pair, bundle_sha256, plan, bundle["pairs"], mapping) for pair in pairs]
+    records = _judge_records(plan)
+    used = [identity["call_id"] for identity in identities]
+    reserved = [record["call_id"] for record in records if record["call_id"] not in set(used)]
+    judge_identity = plan["execution_contract"]["lanes"]["blind_judge_and_tiebreak"]
+    return {"schema_version": 3, "judge": JUDGE_CONTRACT_ID, "executor": FAKE_JUDGE_ID, "runner": RUNNER_ID, "bundle_sha256": bundle_sha256, "model": judge_identity["model"], "effort": judge_identity["effort"], "cli": plan["execution_contract"]["cli"], "policy_role": "blind_judge", "used_call_ids": used, "reserved_call_ids": reserved, "comparison_contract_sha256": _sha256_value(plan["comparison_contract"])}
 
 
 def _load_judgment_attempt(path: Path, identity: dict[str, Any]) -> dict[str, Any]:
@@ -641,16 +916,17 @@ def _load_judgment_attempt(path: Path, identity: dict[str, Any]) -> dict[str, An
     return payload
 
 
-def _run_or_load_judges(root: Path, bundle: dict[str, Any], plan: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+def _run_or_load_judges(root: Path, bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     bundle_sha256 = _bundle_sha256(bundle)
-    expected = {pair["pair_id"] for pair in bundle["pairs"]}
+    pairs = _judge_pairs(bundle, mapping, plan)
+    expected = {pair["pair_id"] for pair in pairs}
     directory = root / "private/judge-attempts"
     _ensure_dir(directory, private=True)
     names = set(_directory_names(directory, private=True, directories_only=True))
     if not names.issubset(expected):
         raise ValueError("unexpected judge attempt inventory")
     manifest = root / "private/judge-manifest.json"
-    expected_manifest = _judge_manifest_value(bundle, plan)
+    expected_manifest = _judge_manifest_value(bundle, mapping, plan)
     if _exists(manifest, private=True):
         if _read_json(manifest, private=True) != expected_manifest:
             raise ValueError("judge manifest mismatch")
@@ -658,8 +934,8 @@ def _run_or_load_judges(root: Path, bundle: dict[str, Any], plan: dict[str, Any]
         _write_json(manifest, expected_manifest, private=True, exclusive=True)
     rows = []
     spent = []
-    for pair in bundle["pairs"]:
-        identity = _judge_identity(pair, bundle_sha256, plan, bundle["pairs"])
+    for pair in pairs:
+        identity = _judge_identity(pair, bundle_sha256, plan, bundle["pairs"], mapping)
         path = directory / pair["pair_id"]
         if _exists(path, private=True):
             state = _attempt_state(path, identity)
@@ -690,16 +966,17 @@ def _run_or_load_judges(root: Path, bundle: dict[str, Any], plan: dict[str, Any]
     return rows, []
 
 
-def _load_judgments(root: Path, bundle: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
-    expected = {pair["pair_id"] for pair in bundle["pairs"]}
+def _load_judgments(root: Path, bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
+    pairs = _judge_pairs(bundle, mapping, plan)
+    expected = {pair["pair_id"] for pair in pairs}
     directory = root / "private/judge-attempts"
     if set(_directory_names(directory, private=True, directories_only=True)) != expected:
         raise ValueError("judge artifact inventory mismatch")
     bundle_sha256 = _bundle_sha256(bundle)
-    rows = [_load_judgment_attempt(directory / pair["pair_id"], _judge_identity(pair, bundle_sha256, plan, bundle["pairs"])) for pair in bundle["pairs"]]
+    rows = [_load_judgment_attempt(directory / pair["pair_id"], _judge_identity(pair, bundle_sha256, plan, bundle["pairs"], mapping)) for pair in pairs]
     if _read_jsonl(root / "private/judgments.jsonl", private=True) != rows:
         raise ValueError("judgment aggregate mismatch")
-    if _read_json(root / "private/judge-manifest.json", private=True) != _judge_manifest_value(bundle, plan):
+    if _read_json(root / "private/judge-manifest.json", private=True) != _judge_manifest_value(bundle, mapping, plan):
         raise ValueError("judge manifest does not reconstruct from fixed identities")
     return rows
 
@@ -712,18 +989,18 @@ def _assert_private_inventory(root: Path, *, revealed: bool = False) -> None:
         raise ValueError("unexpected private artifact")
 
 
-def _config_sha256() -> str:
-    return _sha256_value({"schema_version": 2, "runner": RUNNER_ID, "judge": "strict_fake_v3"})
+def _config_sha256(plan: dict[str, Any]) -> str:
+    return _sha256_value({"schema_version": 3, "runner": RUNNER_ID, "judge": JUDGE_CONTRACT_ID, "execution_contract": plan["execution_contract"], "comparison_contract": plan["comparison_contract"], "scoring_contract": plan["scoring_contract"], "bootstrap_contract": plan["bootstrap_contract"]})
 
 
 def _seal(root: Path, output_cases: list[dict[str, Any]], activation_cases: list[dict[str, Any]], plan: dict[str, Any]) -> dict[str, Any]:
     _assert_private_inventory(root)
     _, runs, mapping, bundle, mapping_key, seal_key = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json"})
-    judgments = _load_judgments(root, bundle, plan)
+    judgments = _load_judgments(root, bundle, mapping, plan)
     required = {"manifest.json", "mapping-key.json", "seal-key.json", "schedule-key.json", "schedule.json", "mapping.json", "attempts", "judge-attempts", "judgments.jsonl", "judge-manifest.json"}
     if set(_directory_names(root / "private", private=True)) != required:
         raise ValueError("incomplete private artifact inventory")
-    payload = {"config_sha256": _config_sha256(), "manifest_sha256": _sha(root / "private/manifest.json", private=True), "schedule_sha256": _sha(root / "private/schedule.json", private=True), "bundle_sha256": _sha(root / "public/bundle.json", private=False), "mapping_commitment": lib.mapping_commitment(mapping, mapping_key), "judgments_sha256": _sha(root / "private/judgments.jsonl", private=True), "judge_manifest_sha256": _sha(root / "private/judge-manifest.json", private=True)}
+    payload = {"config_sha256": _config_sha256(plan), "manifest_sha256": _sha(root / "private/manifest.json", private=True), "schedule_sha256": _sha(root / "private/schedule.json", private=True), "bundle_sha256": _sha(root / "public/bundle.json", private=False), "mapping_commitment": lib.mapping_commitment(mapping, mapping_key), "judgments_sha256": _sha(root / "private/judgments.jsonl", private=True), "judge_manifest_sha256": _sha(root / "private/judge-manifest.json", private=True)}
     _write_json(root / "public/seal.json", lib.build_seal(payload, seal_key), private=False, exclusive=True)
     _assert_public_inventory(root, {"bundle.json", "seal.json"}, runs)
     return {"status": "sealed", "judgments": len(judgments)}
@@ -732,9 +1009,9 @@ def _seal(root: Path, output_cases: list[dict[str, Any]], activation_cases: list
 def _reveal(root: Path, output_cases: list[dict[str, Any]], activation_cases: list[dict[str, Any]], plan: dict[str, Any]) -> dict[str, Any]:
     _assert_private_inventory(root, revealed=True)
     _, runs, mapping, bundle, mapping_key, seal_key = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json", "seal.json"})
-    judgments = _load_judgments(root, bundle, plan)
+    judgments = _load_judgments(root, bundle, mapping, plan)
     seal = _read_json(root / "public/seal.json", private=False)
-    result = lib.reveal(mapping, seal, mapping_key=mapping_key, seal_key=seal_key, config_sha256=_config_sha256(), manifest_sha256=_sha(root / "private/manifest.json", private=True), schedule_sha256=_sha(root / "private/schedule.json", private=True), bundle_sha256=_sha(root / "public/bundle.json", private=False), judgments_sha256=_sha(root / "private/judgments.jsonl", private=True), judge_manifest_sha256=_sha(root / "private/judge-manifest.json", private=True), judgments=judgments)
+    result = lib.reveal(mapping, seal, mapping_key=mapping_key, seal_key=seal_key, config_sha256=_config_sha256(plan), manifest_sha256=_sha(root / "private/manifest.json", private=True), schedule_sha256=_sha(root / "private/schedule.json", private=True), bundle_sha256=_sha(root / "public/bundle.json", private=False), judgments_sha256=_sha(root / "private/judgments.jsonl", private=True), judge_manifest_sha256=_sha(root / "private/judge-manifest.json", private=True), judgments=judgments)
     path = root / "private/revealed.json"
     if _exists(path, private=True):
         if _read_json(path, private=True) != result:
@@ -781,19 +1058,19 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             if _exists(root / "private/mapping.json", private=True) or _exists(root / "public/bundle.json", private=False):
                 raise ValueError("incomplete answer chain has frozen artifacts")
             return {"status": "incomplete", "unsealable": True, "runs": len(runs), "spent_call_ids": spent}
-        _mapping_and_bundle(root, output_cases, runs, schedule_key, mapping_key)
+        _mapping_and_bundle(root, output_cases, runs, schedule_key, mapping_key, plan)
         return {"status": "answered", "runs": len(runs)}
     if args.command == "reveal" and not _exists(root / "public/seal.json", private=False):
         raise ValueError("reveal requires seal")
     _assert_private_inventory(root, revealed=args.command == "reveal")
-    _, runs, _, bundle, _, _ = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json", "seal.json"} if args.command == "reveal" else {"bundle.json"})
+    _, runs, mapping, bundle, _, _ = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json", "seal.json"} if args.command == "reveal" else {"bundle.json"})
     if args.command == "judge":
         if not args.fake:
             raise ValueError("live calls are disabled in Phase A")
-        _, spent = _run_or_load_judges(root, bundle, plan)
+        _, spent = _run_or_load_judges(root, bundle, mapping, plan)
         if spent:
             return {"status": "incomplete", "unsealable": True, "spent_call_ids": spent}
-        return {"status": "judged", "judgments": len(bundle["pairs"])}
+        return {"status": "judged", "judgments": len(_judge_pairs(bundle, mapping, plan))}
     if args.command == "seal":
         return _seal(root, output_cases, activation_cases, plan)
     return _reveal(root, output_cases, activation_cases, plan)

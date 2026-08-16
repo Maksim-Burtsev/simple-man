@@ -236,34 +236,90 @@ def balanced_sides(cases: list[dict[str, Any]], secret: bytes | str) -> dict[str
     return {case["id"]: index % 2 == 0 for index, case in enumerate(ordered)}
 
 
-def build_private_mapping(cases: list[dict[str, Any]], runs: list[dict[str, Any]], secret: bytes | str) -> dict[str, Any]:
-    by_case: dict[str, dict[str, dict[str, Any]]] = {}
+def build_private_mapping(
+    cases: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+    secret: bytes | str,
+    *,
+    comparisons: list[dict[str, Any]],
+) -> dict[str, Any]:
+    case_ids = {case.get("id") for case in cases}
+    if len(case_ids) != len(cases) or not all(isinstance(case_id, str) and case_id for case_id in case_ids):
+        raise ValueError("comparison cases must have unique ids")
+    comparison_fields = {"comparison_id", "baseline_arm", "candidate_arm", "run_selectors"}
+    selector_fields = {"case_id", "trial", "model", "effort", "cli"}
+    seen_comparisons: set[str] = set()
+    slots: list[tuple[str, dict[str, Any], str, str]] = []
+    for comparison in comparisons:
+        require_exact_fields(comparison, comparison_fields, "comparison")
+        comparison_id = _string(comparison["comparison_id"], "comparison_id")
+        baseline_arm = _string(comparison["baseline_arm"], "baseline_arm")
+        candidate_arm = _string(comparison["candidate_arm"], "candidate_arm")
+        selected = comparison["run_selectors"]
+        if comparison_id in seen_comparisons or baseline_arm == candidate_arm:
+            raise ValueError("invalid comparison identity")
+        if not isinstance(selected, list) or not selected:
+            raise ValueError("invalid comparison cases")
+        identities = set()
+        for selector in selected:
+            require_exact_fields(selector, selector_fields, "run selector")
+            if selector["case_id"] not in case_ids or type(selector["trial"]) is not int or selector["trial"] < 1:
+                raise ValueError("invalid run selector")
+            for field in ("model", "effort", "cli"):
+                _string(selector[field], field)
+            identity = canonical_json(selector)
+            if identity in identities:
+                raise ValueError("duplicate run selector")
+            identities.add(identity)
+        seen_comparisons.add(comparison_id)
+        slots.extend((comparison_id, selector, baseline_arm, candidate_arm) for selector in selected)
+    if not slots:
+        raise ValueError("comparisons required")
+
+    by_identity: dict[tuple[str, int, str, str, str], dict[str, dict[str, Any]]] = {}
+    run_ids: set[str] = set()
     for run in runs:
         if run.get("arm") not in {"A", "B", "C", "generic"} or not isinstance(run.get("run_id"), str):
             raise ValueError("private runs must have known arm and run id")
-        arms = by_case.setdefault(run.get("case_id"), {})
+        identity = (run.get("case_id"), run.get("trial"), run.get("model"), run.get("effort"), run.get("cli"))
+        if identity[0] not in case_ids or type(identity[1]) is not int or not all(isinstance(value, str) and value for value in identity[2:]) or run["run_id"] in run_ids:
+            raise ValueError("invalid private run identity")
+        run_ids.add(run["run_id"])
+        arms = by_identity.setdefault(identity, {})
         if run["arm"] in arms:
             raise ValueError("duplicate private arm run")
         arms[run["arm"]] = run
-    sides = balanced_sides(cases, secret)
+    side_keys = [{"id": f"{comparison_id}\0{canonical_json(selector)}"} for comparison_id, selector, _, _ in slots]
+    sides = balanced_sides(side_keys, secret)
     pairs: dict[str, Any] = {}
-    for case in cases:
-        arms = by_case.get(case["id"], {})
-        if not {"A", "B"}.issubset(arms):
+    for comparison_id, selector, baseline_arm, candidate_arm in slots:
+        identity = (selector["case_id"], selector["trial"], selector["model"], selector["effort"], selector["cli"])
+        arms = by_identity.get(identity, {})
+        if not {baseline_arm, candidate_arm}.issubset(arms):
             raise ValueError("missing private pair counterpart")
-        pair_id = opaque_id("pair", secret, {"case": case["id"]})
-        left, right = ("A", "B") if sides[case["id"]] else ("B", "A")
+        side_key = f"{comparison_id}\0{canonical_json(selector)}"
+        pair_id = opaque_id("pair", secret, {"comparison": comparison_id, "run_selector": selector})
+        left, right = ((baseline_arm, candidate_arm) if sides[side_key]
+                       else (candidate_arm, baseline_arm))
         pairs[pair_id] = {
+            "comparison_id": comparison_id,
+            "run_selector": selector,
             "left": {"arm": left, "run_id": arms[left]["run_id"]},
             "right": {"arm": right, "run_id": arms[right]["run_id"]},
         }
     nonce = hashlib.sha256((secret.encode() if isinstance(secret, str) else secret) + b":commitment").hexdigest()
-    return {"schema_version": 1, "eval_id": opaque_id("eval", secret, "eval"), "commitment_nonce": nonce, "pairs": pairs}
+    return {
+        "schema_version": 2,
+        "eval_id": opaque_id("eval", secret, "eval"),
+        "commitment_nonce": nonce,
+        "comparison_spec_sha256": hashlib.sha256(canonical_json(comparisons).encode()).hexdigest(),
+        "pairs": pairs,
+    }
 
 
 def mapping_commitment(mapping: dict[str, Any], key: bytes | str | None = None) -> str:
-    require_exact_fields(mapping, {"schema_version", "eval_id", "commitment_nonce", "pairs"}, "mapping")
-    if mapping["schema_version"] != 1 or not re.fullmatch(r"[0-9a-f]{64}", mapping["commitment_nonce"]):
+    require_exact_fields(mapping, {"schema_version", "eval_id", "commitment_nonce", "comparison_spec_sha256", "pairs"}, "mapping")
+    if mapping["schema_version"] != 2 or not re.fullmatch(r"[0-9a-f]{64}", mapping["commitment_nonce"]) or not re.fullmatch(r"[0-9a-f]{64}", mapping["comparison_spec_sha256"]):
         raise ValueError("invalid mapping")
     return hmac_digest(key, mapping) if key is not None else hashlib.sha256(canonical_json(mapping).encode()).hexdigest()
 
@@ -311,18 +367,22 @@ def build_public_bundle(cases: list[dict[str, Any]], runs: list[dict[str, Any]],
     case_by_id = {case["id"]: case for case in cases}
     pairs: list[dict[str, Any]] = []
     for pair_id, pair in sorted(mapping["pairs"].items()):
-        require_exact_fields(pair, {"left", "right"}, "mapping pair")
+        require_exact_fields(pair, {"comparison_id", "run_selector", "left", "right"}, "mapping pair")
+        require_exact_fields(pair["run_selector"], {"case_id", "trial", "model", "effort", "cli"}, "mapping run selector")
         require_exact_fields(pair["left"], {"arm", "run_id"}, "mapping side")
         require_exact_fields(pair["right"], {"arm", "run_id"}, "mapping side")
         left, right = run_by_id.get(pair["left"]["run_id"]), run_by_id.get(pair["right"]["run_id"])
-        if not left or not right or left["case_id"] != right["case_id"] or left.get("arm") != pair["left"]["arm"] or right.get("arm") != pair["right"]["arm"] or left["arm"] == right["arm"]:
+        selector = pair["run_selector"]
+        selector_matches = lambda run: all(run.get(field) == selector[field] for field in ("case_id", "trial", "model", "effort", "cli"))
+        if not left or not right or not selector_matches(left) or not selector_matches(right) or left.get("arm") != pair["left"]["arm"] or right.get("arm") != pair["right"]["arm"] or left["arm"] == right["arm"]:
             raise ValueError("invalid mapping run reference")
-        case = case_by_id.get(left["case_id"])
+        case = case_by_id.get(selector["case_id"])
         if not case:
             raise ValueError("unknown mapping case")
         pairs.append({"pair_id": pair_id, "case_id": case["id"], "language": case["language"], "prompt": case["prompt"], "verified_context": case["verified_context"], "left": {"commentary": left["commentary"], "final": left["final"]}, "right": {"commentary": right["commentary"], "final": right["final"]}})
     bundle = {"schema_version": 1, "mapping_commitment": commitment or mapping_commitment(mapping), "pairs": pairs}
-    assert_public_safe(bundle, arm_aliases={"A", "B"}, private_ids={str(run["run_id"]) for run in runs}, protected_roots=protected_roots)
+    mapped_arms = {side["arm"] for pair in mapping["pairs"].values() for side in (pair["left"], pair["right"])}
+    assert_public_safe(bundle, arm_aliases=mapped_arms, private_ids={str(run["run_id"]) for run in runs}, protected_roots=protected_roots)
     return bundle
 
 
@@ -426,11 +486,20 @@ def _metrics(run: dict[str, Any]) -> dict[str, float]:
     return result
 
 
-def pair_measurements(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, int, str, str], dict[str, Any]] = {}
+def pair_measurements(
+    runs: list[dict[str, Any]],
+    *,
+    baseline_arm: str = "A",
+    candidate_arm: str = "B",
+) -> list[dict[str, Any]]:
+    if baseline_arm == candidate_arm or baseline_arm not in {"A", "B", "C", "generic"} or candidate_arm not in {"A", "B", "C", "generic"}:
+        raise ValueError("invalid comparison arms")
+    grouped: dict[tuple[str, int, str, str, str], dict[str, Any]] = {}
     for run in runs:
-        key = (run.get("case_id"), run.get("trial"), run.get("model"), run.get("effort"))
-        if not isinstance(key[0], str) or type(key[1]) is not int or not isinstance(key[2], str) or not isinstance(key[3], str) or run.get("arm") not in {"A", "B"}:
+        if run.get("arm") not in {baseline_arm, candidate_arm}:
+            continue
+        key = (run.get("case_id"), run.get("trial"), run.get("model"), run.get("effort"), run.get("cli"))
+        if not isinstance(key[0], str) or type(key[1]) is not int or any(not isinstance(value, str) or not value for value in key[2:]):
             raise ValueError("invalid pairing identity")
         cluster_id = run.get("cluster_id", key[0])
         _string(cluster_id, "cluster_id")
@@ -442,18 +511,22 @@ def pair_measurements(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     paired = []
     for key, bucket in sorted(grouped.items()):
         sides = bucket["sides"]
-        if set(sides) != {"A", "B"}: raise ValueError("missing pair counterpart")
-        paired.append({"case_id": key[0], "cluster_id": bucket["cluster_id"], "trial": key[1], "model": key[2], "effort": key[3], "A": sides["A"], "B": sides["B"]})
+        if set(sides) != {baseline_arm, candidate_arm}: raise ValueError("missing pair counterpart")
+        paired.append({"case_id": key[0], "cluster_id": bucket["cluster_id"], "trial": key[1], "model": key[2], "effort": key[3], "cli": key[4], "baseline_arm": baseline_arm, "candidate_arm": candidate_arm, baseline_arm: sides[baseline_arm], candidate_arm: sides[candidate_arm]})
     return paired
 
 
 def paired_summary(pairs: list[dict[str, Any]]) -> dict[str, Any]:
     if not pairs: raise ValueError("pairs required")
-    metrics = sorted(pairs[0]["A"])
+    baseline_arm = pairs[0].get("baseline_arm", "A")
+    candidate_arm = pairs[0].get("candidate_arm", "B")
+    if any(pair.get("baseline_arm", "A") != baseline_arm or pair.get("candidate_arm", "B") != candidate_arm for pair in pairs):
+        raise ValueError("mixed comparison arms")
+    metrics = sorted(pairs[0][baseline_arm])
     summary = {}
     for metric in metrics:
-        deltas = [pair["B"][metric] - pair["A"][metric] for pair in pairs]
-        reductions = [(pair["A"][metric] - pair["B"][metric]) / pair["A"][metric] for pair in pairs if pair["A"][metric] != 0]
+        deltas = [pair[candidate_arm][metric] - pair[baseline_arm][metric] for pair in pairs]
+        reductions = [(pair[baseline_arm][metric] - pair[candidate_arm][metric]) / pair[baseline_arm][metric] for pair in pairs if pair[baseline_arm][metric] != 0]
         summary[metric] = {"delta": statistics.median(deltas), "relative_reduction": statistics.median(reductions) if reductions else None}
     summary["estimate"] = {"estimated_session_net": {"value": None, "assumptions": "estimate only; not billing or cost savings"}}
     return summary
@@ -461,6 +534,10 @@ def paired_summary(pairs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def clustered_bootstrap_ci(pairs: list[dict[str, Any]], metric: str, *, seed: int, iterations: int) -> tuple[float, float]:
     if iterations <= 0 or not pairs: raise ValueError("bootstrap requires pairs and iterations")
+    baseline_arm = pairs[0].get("baseline_arm", "A")
+    candidate_arm = pairs[0].get("candidate_arm", "B")
+    if any(pair.get("baseline_arm", "A") != baseline_arm or pair.get("candidate_arm", "B") != candidate_arm for pair in pairs):
+        raise ValueError("mixed comparison arms")
     clusters: dict[str, list[dict[str, Any]]] = {}
     for pair in pairs: clusters.setdefault(pair["cluster_id"], []).append(pair)
     ids = sorted(clusters)
@@ -468,7 +545,7 @@ def clustered_bootstrap_ci(pairs: list[dict[str, Any]], metric: str, *, seed: in
     values = []
     for _ in range(iterations):
         sampled = [pair for cluster in (rng.choice(ids) for _ in ids) for pair in clusters[cluster]]
-        reductions = [(pair["A"][metric] - pair["B"][metric]) / pair["A"][metric] for pair in sampled if pair["A"][metric] != 0]
+        reductions = [(pair[baseline_arm][metric] - pair[candidate_arm][metric]) / pair[baseline_arm][metric] for pair in sampled if pair[baseline_arm][metric] != 0]
         if not reductions:
             raise ValueError("zero baseline metric")
         values.append(statistics.median(reductions))

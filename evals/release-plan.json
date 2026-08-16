@@ -1,1 +1,61 @@
-{"schema_version":1,"hard_cap":280,"lanes":{"dev_output":48,"dev_activation":36,"primary_activation_holdout":40,"primary_output_holdout":60,"full_skill_parity":8,"blind_judge_and_tiebreak":28,"primary_coding":9,"compatibility":46},"planned_calls":275}
+{
+  "schema_version": 2,
+  "hard_cap": 280,
+  "lanes": {
+    "dev_output": 48,
+    "dev_activation": 36,
+    "primary_activation_holdout": 40,
+    "primary_output_holdout": 60,
+    "full_skill_parity": 8,
+    "blind_judge_and_tiebreak": 28,
+    "primary_coding": 9,
+    "compatibility": 46
+  },
+  "planned_calls": 275,
+  "execution_contract": {
+    "cli": "codex-cli 0.145.0",
+    "lanes": {
+      "dev_output": {"model": "gpt-5.6-sol", "effort": "high"},
+      "dev_activation": {"model": "gpt-5.6-sol", "effort": "high"},
+      "primary_activation_holdout": {"model": "gpt-5.6-sol", "effort": "high"},
+      "primary_output_holdout": {"model": "gpt-5.6-sol", "effort": "high"},
+      "full_skill_parity": {"model": "gpt-5.6-sol", "effort": "high"},
+      "blind_judge_and_tiebreak": {"model": "gpt-5.6-terra", "effort": "medium"},
+      "primary_coding": {"model": "gpt-5.6-sol", "effort": "xhigh"},
+      "compatibility": {"model": "gpt-5.5", "effort": "high"}
+    },
+    "unavailable_or_substituted": "INCONCLUSIVE"
+  },
+  "arm_policies": {
+    "A": {"state": "frozen", "source": "skills/simple-man/SKILL.md", "offline_only": false},
+    "B": {"state": "create_after_baseline", "source": null, "offline_only": true},
+    "C": {"state": "create_after_baseline", "source": null, "offline_only": true},
+    "generic": {"state": "freeze_before_scout", "source": null, "offline_only": true}
+  },
+  "description_policies": {
+    "D0": {"state": "frozen", "source": "skills/simple-man/SKILL.md", "offline_only": false},
+    "D1": {"state": "create_in_pr4", "source": null, "offline_only": true}
+  },
+  "comparison_contract": {
+    "judge_cap": 28,
+    "comparisons": [
+      {"comparison_id": "dev-naturalness-b-c", "baseline_arm": "B", "candidate_arm": "C", "case_set": "output-dev", "max_pairs": 12, "max_judge_calls": 12, "judge_call_slots": [1, 12], "condition": "dev_scout"},
+      {"comparison_id": "primary-winner-a", "baseline_arm": "A", "candidate_arm": "winner", "case_set": "primary-output-holdout", "max_pairs": 15, "max_judge_calls": 15, "judge_call_slots": [13, 27], "condition": "winner_selected"},
+      {"comparison_id": "primary-winner-generic", "baseline_arm": "generic", "candidate_arm": "winner", "case_set": "primary-output-holdout", "max_pairs": 15, "max_judge_calls": 0, "judge_call_slots": null, "condition": "deterministic_metrics_only"},
+      {"comparison_id": "conditional-tiebreak", "baseline_arm": "runner_up", "candidate_arm": "winner", "case_set": "registered-tiebreak", "max_pairs": 1, "max_judge_calls": 1, "judge_call_slots": [28, 28], "condition": "full_tie_after_policy_tokens"}
+    ]
+  },
+  "scoring_contract": {
+    "quality_order": ["hard_quality_safety", "material_fact_retention", "blind_naturalness", "policy_input_tokens"],
+    "deterministic_checks": ["critical_facts", "forbidden_claims", "requested_shape"],
+    "judge_schema": "strict-json-v1",
+    "visible_tokenizer": "tiktoken:o200k_base",
+    "tokenizer_version": "0.13.0"
+  },
+  "bootstrap_contract": {
+    "method": "clustered_percentile",
+    "cluster_field": "cluster_id",
+    "confidence": 0.95,
+    "iterations": 10000
+  }
+}
