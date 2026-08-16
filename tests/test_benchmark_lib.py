@@ -395,7 +395,7 @@ class BenchmarkLibTests(unittest.TestCase):
 
             self.assertTrue(skill.exists())
             self.assertTrue(metadata.exists())
-            self.assertTrue((home / "skills" / "simple-man.backup").exists())
+            self.assertFalse((home / "skills" / "simple-man.backup").exists())
             self.assertIn("Simple Man is always-on after install", result.stdout)
             self.assertEqual(agents.count("simple-man-always-on-begin"), 1)
             self.assertEqual(agents.count("simple-man-always-on-end"), 1)

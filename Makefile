@@ -21,8 +21,7 @@ test: package-check
 
 package-check:
 	bash -n install.sh
-	cmp skills/simple-man/SKILL.md plugins/simple-man/skills/simple-man/SKILL.md
-	cmp skills/simple-man/agents/openai.yaml plugins/simple-man/skills/simple-man/agents/openai.yaml
+	$(PYTHON) scripts/sync_surfaces.py --check
 	$(PYTHON) -m json.tool .agents/plugins/marketplace.json >/dev/null
 	$(PYTHON) -m json.tool plugins/simple-man/.codex-plugin/plugin.json >/dev/null
 

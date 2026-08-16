@@ -12,32 +12,36 @@ Simple Man is not a persona. It is a communication policy:
 
 It is designed for users who work with agents for many hours and want lower cognitive load without making the agent passive, less careful, or less proactive.
 
-## Quick start
+## Portable Agent Skill
 
-Install the portable Agent Skill for Codex:
+Install the portable skill:
 
 ```bash
 npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
 ```
 
-This installs the skill without changing your global communication policy. Invoke it explicitly with `$simple-man`, or let the agent activate it from the request.
+This makes Simple Man available without changing global instructions or enabling an always-on policy. Invoke it explicitly with `$simple-man`, or let the agent activate it from the request.
 
-For always-on Codex behavior, use the release-pinned installer instead:
+## Codex Plugin
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
-```
-
-The installer adds the skill and manages a compact Simple Man block in `~/.codex/AGENTS.md`. Rerunning it updates that block without duplicating it.
-
-Codex plugin package:
+Install the Codex plugin package:
 
 ```bash
 codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
 codex plugin add simple-man@simple-man
 ```
 
-Plugin installation makes the skill available; it does not enable the always-on policy. See [INSTALL.md](./INSTALL.md) for other agents and project-level setup.
+Plugin installation makes the skill available; it does not enable the always-on policy.
+
+## Always-on Codex policy
+
+Use the release-pinned installer when every Codex response should use the compact runtime policy:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
+```
+
+The installer manages the always-on block in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`. With no overrides, a new skill install goes to `$HOME/.agents/skills/simple-man`; an existing legacy `$HOME/.codex/skills/simple-man` is updated in place instead of creating a duplicate. See [INSTALL.md](./INSTALL.md) for overrides and project-level setup.
 
 ## What it changes
 
@@ -72,7 +76,7 @@ The old captured comparison report is historical evidence, not current release e
 
 ## Agent support
 
-This repo ships two activation surfaces:
+This repo ships two activation surfaces. `AGENTS.md.snippet` is the canonical runtime policy; `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` are generated from it:
 
 - full skill: `skills/simple-man/SKILL.md`
 - compact always-on runtime policy: `AGENTS.md`, `AGENTS.md.snippet`, `CLAUDE.md`, `GEMINI.md`
