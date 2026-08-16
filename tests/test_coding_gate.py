@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -331,6 +333,43 @@ class CodingGateTests(unittest.TestCase):
             with self.assertRaises(gate.IntegrityError):
                 gate.collect_patch(fixture, workspace, baseline)
 
+    def test_collect_patch_never_executes_model_owned_git_textconv(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            marker = root / "textconv-escaped"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            textconv = workspace / ".git/evil-textconv.py"
+            textconv.write_text(
+                "#!/usr/bin/env python3\n"
+                "from pathlib import Path\n"
+                "import sys\n"
+                f"Path({str(marker)!r}).write_text('escaped')\n"
+                "sys.stdout.write(Path(sys.argv[1]).read_text())\n"
+            )
+            textconv.chmod(0o700)
+            (workspace / ".git/info/attributes").write_text("*.js diff=evil\n")
+            subprocess.run(
+                ("git", "config", "diff.evil.textconv", str(textconv)),
+                cwd=workspace,
+                check=True,
+            )
+            middleware = workspace / "src/middleware.js"
+            middleware.write_text(
+                middleware.read_text().replace(
+                    "  return {\n    status: 200,",
+                    "  if (session.expiresAt <= store.now()) return { status: 401, body: \"expired session\" };\n\n"
+                    "  return {\n    status: 200,",
+                )
+            )
+
+            patch = gate.collect_patch(fixture, workspace, baseline)
+
+            self.assertFalse(marker.exists())
+
+        self.assertTrue(patch.production.strip())
+
     def test_worker_protocol_fails_closed(self):
         case = gate.HiddenCase("case", {}, {"ok": True})
         bad = (
@@ -386,7 +425,8 @@ class CodingGateTests(unittest.TestCase):
                 with self.assertRaises(gate.IntegrityError):
                     gate.run_hidden_cases(
                         fixture,
-                        validation,
+                        patch.production,
+                        root / "untrusted-hidden",
                         env=gate.validation_environment(Path(environment)),
                     )
 
@@ -426,10 +466,43 @@ class CodingGateTests(unittest.TestCase):
                 with self.assertRaises(gate.IntegrityError):
                     gate.run_hidden_cases(
                         invalid,
-                        validation,
+                        patch.production,
+                        root / "invalid-hidden",
                         env=gate.validation_environment(Path(environment)),
                         trusted_offline=True,
                     )
+
+    def test_self_modifying_auth_patch_is_rejected_before_hidden_validation(self):
+        def self_modifying_strict_boundary(source):
+            source = source.replace(
+                "  return {\n    status: 200,",
+                "  if (session.expiresAt < store.now()) return { status: 401, body: \"expired session\" };\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+            return source.replace(
+                "module.exports = { authenticate };",
+                "/* SELF_MOD_START */\n"
+                "const fs = require(\"node:fs\");\n"
+                "const fixed = fs\n"
+                "  .readFileSync(__filename, \"utf8\")\n"
+                "  .replace(\n"
+                "    \"session.expiresAt < store.now()\",\n"
+                "    \"session.expiresAt <= store.now()\",\n"
+                "  )\n"
+                "  .replace(/\\/\\* SELF_MOD_START \\*\\/[\\s\\S]*?\\/\\* SELF_MOD_END \\*\\/\\n\\n/, \"\");\n"
+                "fs.writeFileSync(__filename, fixed);\n"
+                "/* SELF_MOD_END */\n\n"
+                "module.exports = { authenticate };",
+                1,
+            )
+
+        with self.assertRaises(gate.IntegrityError):
+            self.validate_source(
+                gate.FIXTURES["node-auth-api"],
+                "src/middleware.js",
+                self_modifying_strict_boundary,
+            )
 
     def test_credential_free_self_check(self):
         with mock.patch.dict("os.environ", {}, clear=True):
@@ -473,6 +546,126 @@ class CodingGateTests(unittest.TestCase):
             time.sleep(0.3)
 
             self.assertFalse((root / "late-child").exists())
+
+    def test_bounded_runner_reaps_detached_descendant_and_inherits_cpu_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "detached-proof"
+            child = (
+                "import time; from pathlib import Path; "
+                f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped')"
+            )
+            parent = (
+                "import subprocess, sys; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}], start_new_session=True)"
+            )
+            cpu_probe = (
+                "import resource, subprocess, sys; "
+                "print(subprocess.check_output([sys.executable, '-c', "
+                "'import resource; print(resource.getrlimit(resource.RLIMIT_CPU)[0])'"
+                "]).decode().strip())"
+            )
+            with tempfile.TemporaryDirectory() as environment:
+                env = gate.validation_environment(Path(environment))
+                gate.run_bounded(
+                    (sys.executable, "-c", parent),
+                    cwd=root,
+                    env=env,
+                    monitor_workspace=root,
+                    trusted_offline=True,
+                    timeout_seconds=1,
+                )
+                cpu = gate.run_bounded(
+                    (sys.executable, "-c", cpu_probe),
+                    cwd=root,
+                    env=env,
+                    trusted_offline=True,
+                    timeout_seconds=1,
+                )
+            time.sleep(0.3)
+
+            self.assertFalse(marker.exists())
+            self.assertLessEqual(int(cpu.stdout.strip()), 2)
+
+    @unittest.skipUnless(
+        gate.platform.system() == "Darwin" and shutil.which("codex"),
+        "real offline Codex sandbox probe requires macOS",
+    )
+    def test_model_answer_profile_real_macos_probe_is_fail_closed(self):
+        with tempfile.TemporaryDirectory(prefix="coding-gate-model-profile-") as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            validation = root / "validation"
+            output = root / "output"
+            other = root / "other-workspace"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            for path in (workspace, validation, output, other, tool_home, tool_tmp):
+                path.mkdir()
+            for path in (validation, output, other):
+                (path / "sentinel").write_text(path.name)
+
+            common = subprocess.run(
+                ("git", "rev-parse", "--git-common-dir"),
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            common_git = Path(common)
+            if not common_git.is_absolute():
+                common_git = ROOT / common_git
+            common_git = common_git.resolve()
+            codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+            auth = codex_home / "auth.json"
+            if not auth.is_file():
+                self.skipTest("Codex auth path is absent")
+            codex_probe = next(
+                (path for path in codex_home.iterdir() if path.is_file() and path != auth),
+                auth,
+            )
+            with tempfile.TemporaryDirectory(
+                dir=Path.home(), prefix=".coding-gate-home-probe-"
+            ) as home_tmp:
+                home_probe = Path(home_tmp) / "sentinel"
+                home_probe.write_text("home")
+                contract = gate.build_model_source_isolation(
+                    sandbox_executable=shutil.which("codex"),
+                    workspace=workspace,
+                    source_root=ROOT,
+                    common_git_root=common_git,
+                    real_home=Path.home(),
+                    auth_file=auth,
+                    codex_home=codex_home,
+                    workers_root=gate.WORKER_ROOT,
+                    validation_roots=(validation,),
+                    output_roots=(output,),
+                    other_workspaces=(other,),
+                    tool_home=tool_home,
+                    tool_tmp=tool_tmp,
+                )
+                denied = {
+                    "source": ROOT / "README.md",
+                    "common_git": common_git / "HEAD",
+                    "home": home_probe,
+                    "auth": auth,
+                    "codex_home": codex_probe,
+                    "workers": gate.WORKERS[0],
+                    "validation": validation / "sentinel",
+                    "output": output / "sentinel",
+                    "other_workspace": other / "sentinel",
+                }
+                probe = gate.probe_model_source_isolation(
+                    contract,
+                    denied_targets=denied,
+                )
+
+        self.assertTrue(probe.filesystem_passed, probe)
+        self.assertTrue(probe.network_passed, probe)
+        self.assertEqual(probe.denied_categories, frozenset(denied))
+        self.assertEqual(probe.status, "INCONCLUSIVE")
+        with self.assertRaises(gate.InfrastructureError):
+            gate.require_live_model_isolation(probe)
 
     def test_bounded_runner_reports_timeout_output_and_tree_caps(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as environment:

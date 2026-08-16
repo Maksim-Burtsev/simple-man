@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import platform
 import re
 import secrets
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -143,6 +145,7 @@ class ValidationResult:
 class SourceIsolation:
     sandbox_executable: str
     protected_roots: tuple[Path, ...]
+    process_boundary_proven: bool = False
 
     @classmethod
     def live(
@@ -183,6 +186,10 @@ class SourceIsolation:
             for item in required
         ):
             raise IntegrityError("live source isolation contract is incomplete")
+        if not self.process_boundary_proven:
+            raise InfrastructureError(
+                "live coding isolation is INCONCLUSIVE without a proven process boundary"
+            )
         resolved_workspace = workspace.resolve()
         if any(
             resolved_workspace == root or resolved_workspace.is_relative_to(root)
@@ -210,6 +217,257 @@ class SourceIsolation:
             "--",
             *command,
         )
+
+
+@dataclass(frozen=True)
+class ModelSourceIsolation:
+    sandbox_executable: str
+    workspace: Path
+    categories: tuple[tuple[str, tuple[Path, ...]], ...]
+    tool_home: Path
+    tool_tmp: Path
+    process_boundary_proven: bool = False
+
+    @property
+    def protected_roots(self) -> tuple[Path, ...]:
+        return tuple(
+            dict.fromkeys(
+                path for _, roots in self.categories for path in roots
+            )
+        )
+
+    @property
+    def profile_arguments(self) -> tuple[str, ...]:
+        filesystem = ",".join(
+            f"{json.dumps(str(path))}=\"deny\"" for path in self.protected_roots
+        )
+        profile = (
+            "{extends=\":workspace\",filesystem={"
+            + filesystem
+            + "},network={enabled=false}}"
+        )
+        tool_environment = {
+            "HOME": str(self.tool_home),
+            "PATH": SAFE_PATH,
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONNOUSERSITE": "1",
+            "TEMP": str(self.tool_tmp),
+            "TMP": str(self.tool_tmp),
+            "TMPDIR": str(self.tool_tmp),
+        }
+        inline_environment = "{" + ",".join(
+            f"{json.dumps(key)}={json.dumps(value)}"
+            for key, value in tool_environment.items()
+        ) + "}"
+        return (
+            "--config",
+            'default_permissions="coding_model"',
+            "--config",
+            f"permissions.coding_model={profile}",
+            "--config",
+            'shell_environment_policy.inherit="none"',
+            "--config",
+            f"shell_environment_policy.set={inline_environment}",
+            "--config",
+            "allow_login_shell=false",
+        )
+
+    def sandbox_command(self, command: Sequence[str]) -> tuple[str, ...]:
+        return (
+            self.sandbox_executable,
+            *self.profile_arguments,
+            "sandbox",
+            "-P",
+            "coding_model",
+            "--sandbox-state-disable-network",
+            "-C",
+            str(self.workspace),
+            "--",
+            *command,
+        )
+
+    def category_roots(self, category: str) -> tuple[Path, ...]:
+        return dict(self.categories).get(category, ())
+
+
+@dataclass(frozen=True)
+class IsolationProbe:
+    status: str
+    filesystem_passed: bool
+    network_passed: bool
+    denied_categories: frozenset[str]
+    cli_version: str
+    reason: str
+
+
+def build_model_source_isolation(
+    *,
+    sandbox_executable: str | None,
+    workspace: Path,
+    source_root: Path,
+    common_git_root: Path,
+    real_home: Path,
+    auth_file: Path,
+    codex_home: Path,
+    workers_root: Path,
+    validation_roots: Sequence[Path],
+    output_roots: Sequence[Path],
+    other_workspaces: Sequence[Path],
+    tool_home: Path,
+    tool_tmp: Path,
+) -> ModelSourceIsolation:
+    if platform.system() != "Darwin":
+        raise UnsupportedPlatformError(
+            "model source isolation requires the pinned macOS sandbox contract"
+        )
+    executable = shutil.which(sandbox_executable) if sandbox_executable else None
+    if executable is None:
+        raise InfrastructureError("model source isolation sandbox is unavailable")
+    if real_home.expanduser().resolve() != Path.home().resolve():
+        raise IntegrityError("model isolation must protect the real home")
+    resolved_workspace = workspace.resolve()
+    if workspace.is_symlink() or not resolved_workspace.is_dir():
+        raise IntegrityError("model workspace must be an existing regular directory")
+    categories = (
+        ("source", (source_root.resolve(),)),
+        ("common_git", (common_git_root.resolve(),)),
+        ("home", (real_home.expanduser().resolve(),)),
+        ("auth", (auth_file.expanduser().resolve(),)),
+        ("codex_home", (codex_home.expanduser().resolve(),)),
+        ("workers", (workers_root.resolve(),)),
+        ("validation", tuple(path.resolve() for path in validation_roots)),
+        ("output", tuple(path.resolve() for path in output_roots)),
+        ("other_workspace", tuple(path.resolve() for path in other_workspaces)),
+    )
+    if any(not roots for _, roots in categories):
+        raise IntegrityError("model isolation requires every protected path category")
+    protected = tuple(path for _, roots in categories for path in roots)
+    if any(
+        resolved_workspace == path
+        or resolved_workspace.is_relative_to(path)
+        or path.is_relative_to(resolved_workspace)
+        for path in protected
+    ):
+        raise IntegrityError("model workspace overlaps a protected path")
+    for path in (tool_home, tool_tmp):
+        if path.is_symlink() or not path.resolve().is_dir():
+            raise IntegrityError("model tool HOME/TMP must be existing regular directories")
+    return ModelSourceIsolation(
+        sandbox_executable=str(Path(executable).resolve()),
+        workspace=resolved_workspace,
+        categories=categories,
+        tool_home=tool_home.resolve(),
+        tool_tmp=tool_tmp.resolve(),
+    )
+
+
+def _sandbox_denied(process: subprocess.CompletedProcess[str]) -> bool:
+    output = process.stdout + process.stderr
+    return process.returncode != 0 and "Operation not permitted" in output
+
+
+def probe_model_source_isolation(
+    contract: ModelSourceIsolation,
+    *,
+    denied_targets: Mapping[str, Path],
+) -> IsolationProbe:
+    if platform.system() != "Darwin":
+        return IsolationProbe(
+            "INCONCLUSIVE",
+            False,
+            False,
+            frozenset(),
+            "unsupported platform",
+            "model source isolation probe requires macOS",
+        )
+    expected_categories = {category for category, _ in contract.categories}
+    if set(denied_targets) != expected_categories:
+        raise IntegrityError("probe targets must cover every protected category")
+    for category, target in denied_targets.items():
+        resolved = target.resolve()
+        if not any(
+            resolved == root or resolved.is_relative_to(root)
+            for root in contract.category_roots(category)
+        ):
+            raise IntegrityError("probe target is outside its protected category")
+    with tempfile.TemporaryDirectory(prefix="coding-gate-profile-probe-") as temporary:
+        env = validation_environment(Path(temporary))
+        version = subprocess.run(
+            (contract.sandbox_executable, "--version"),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        cli_version = (version.stdout or version.stderr).strip()
+        marker = contract.workspace / f".profile-probe-{secrets.token_hex(8)}"
+        allowed = subprocess.run(
+            contract.sandbox_command(("/usr/bin/touch", str(marker))),
+            cwd=contract.workspace,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        workspace_passed = allowed.returncode == 0 and marker.is_file()
+        marker.unlink(missing_ok=True)
+        denied: set[str] = set()
+        for category, target in denied_targets.items():
+            process = subprocess.run(
+                contract.sandbox_command(
+                    ("/usr/bin/head", "-c", "1", str(target.resolve()))
+                ),
+                cwd=contract.workspace,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if _sandbox_denied(process):
+                denied.add(category)
+        server = socket.socket()
+        try:
+            server.bind(("127.0.0.1", 0))
+            server.listen(1)
+            port = server.getsockname()[1]
+            network = subprocess.run(
+                contract.sandbox_command(
+                    (
+                        "/usr/bin/python3",
+                        "-c",
+                        "import socket,sys; socket.create_connection(('127.0.0.1', int(sys.argv[1])), 1)",
+                        str(port),
+                    )
+                ),
+                cwd=contract.workspace,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            network_passed = _sandbox_denied(network)
+        finally:
+            server.close()
+    filesystem_passed = workspace_passed and denied == expected_categories
+    ready = filesystem_passed and network_passed and contract.process_boundary_proven
+    reason = (
+        "source, secret, workspace, and network probes passed; detached descendant boundary is unproven"
+        if filesystem_passed and network_passed
+        else "model source isolation profile probe failed"
+    )
+    return IsolationProbe(
+        "READY" if ready else "INCONCLUSIVE",
+        filesystem_passed,
+        network_passed,
+        frozenset(denied),
+        cli_version,
+        reason,
+    )
+
+
+def require_live_model_isolation(probe: IsolationProbe) -> None:
+    if probe.status != "READY":
+        raise InfrastructureError(f"live coding lane is {probe.status}: {probe.reason}")
 
 
 FIXTURES = {
@@ -340,6 +598,10 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
+def _manifest_sha256(manifest: Mapping[str, str]) -> str:
+    return sha256_bytes(canonical_json(manifest).encode("utf-8"))
+
+
 def _tree(root: Path) -> dict[str, str]:
     if not root.is_dir() or root.is_symlink():
         raise IntegrityError(f"invalid tree root: {root}")
@@ -373,6 +635,14 @@ def _tree(root: Path) -> dict[str, str]:
     return dict(sorted(files.items()))
 
 
+def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
+    return {
+        path: digest
+        for path, digest in _tree(workspace).items()
+        if path != ".git" and not path.startswith(".git/")
+    }
+
+
 def validation_environment(root: Path) -> dict[str, str]:
     home = root / "home"
     scratch = root / "tmp"
@@ -391,13 +661,23 @@ def validation_environment(root: Path) -> dict[str, str]:
         "TMP": str(scratch),
         "TMPDIR": str(scratch),
         "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_ATTR_NOSYSTEM": "1",
+        "GIT_EXTERNAL_DIFF": "",
         "GIT_TERMINAL_PROMPT": "0",
     }
 
 
-def _child_limits() -> None:
+def _child_limits(cpu_seconds: int) -> None:
     if resource is None:
         return
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    _, cpu_hard = resource.getrlimit(resource.RLIMIT_CPU)
+    cpu_limit = min(
+        cpu_seconds,
+        cpu_hard if cpu_hard != resource.RLIM_INFINITY else cpu_seconds,
+    )
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, cpu_limit))
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_BYTES, MAX_FILE_BYTES))
     _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     limit = min(128, hard if hard != resource.RLIM_INFINITY else 128)
@@ -410,6 +690,56 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
     except ProcessLookupError:
         pass
     process.wait()
+
+
+def _run_token_pids(token: str) -> set[int]:
+    needle = f"CODEX_CODING_GATE_RUN_TOKEN={token}"
+    if platform.system() == "Linux" and Path("/proc").is_dir():
+        encoded = needle.encode("utf-8")
+        pids: set[int] = set()
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                environment = (entry / "environ").read_bytes().split(b"\0")
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
+                continue
+            if encoded in environment:
+                pids.add(int(entry.name))
+        return pids
+    if platform.system() == "Darwin":
+        process = subprocess.run(
+            ("/bin/ps", "eww", "-axo", "pid=,command="),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if process.returncode != 0:
+            raise InfrastructureError("cannot inspect bounded descendants")
+        return {
+            int(line.lstrip().split(None, 1)[0])
+            for line in process.stdout.splitlines()
+            if needle in line and line.lstrip().split(None, 1)[0].isdigit()
+        }
+    raise UnsupportedPlatformError("bounded descendant cleanup is unsupported")
+
+
+def _kill_token_processes(token: str) -> None:
+    deadline = time.monotonic() + 1
+    while True:
+        pids = _run_token_pids(token) - {os.getpid()}
+        if not pids:
+            return
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError as exc:
+                raise InfrastructureError("cannot kill detached bounded descendant") from exc
+        if time.monotonic() >= deadline:
+            raise InfrastructureError("detached bounded descendants survived cleanup")
+        time.sleep(0.01)
 
 
 def run_bounded(
@@ -434,18 +764,25 @@ def run_bounded(
     started = time.monotonic()
     timed_out = output_limited = tree_limited = False
     process: subprocess.Popen[bytes] | None = None
+    run_token = secrets.token_hex(16)
+    process_env = dict(env)
+    process_env["CODEX_CODING_GATE_RUN_TOKEN"] = run_token
     try:
         with os.fdopen(stdout_fd, "wb") as stdout, os.fdopen(stderr_fd, "wb") as stderr:
             try:
                 process = subprocess.Popen(
                     actual,
                     cwd=cwd,
-                    env=dict(env),
+                    env=process_env,
                     stdin=subprocess.PIPE,
                     stdout=stdout,
                     stderr=stderr,
                     start_new_session=True,
-                    preexec_fn=_child_limits if os.name == "posix" else None,
+                    preexec_fn=(
+                        lambda: _child_limits(max(1, math.ceil(timeout_seconds) + 1))
+                        if os.name == "posix"
+                        else None
+                    ),
                 )
             except OSError as exc:
                 raise InfrastructureError(f"cannot start command: {actual[0]}") from exc
@@ -479,6 +816,7 @@ def run_bounded(
             else:
                 process.wait()
                 _kill_group(process)
+            _kill_token_processes(run_token)
             stdout.flush()
             stderr.flush()
         stdout_bytes = stdout_path.read_bytes()
@@ -500,6 +838,8 @@ def run_bounded(
             tree_limited=tree_limited,
         )
     finally:
+        if process is not None:
+            _kill_token_processes(run_token)
         stdout_path.unlink(missing_ok=True)
         stderr_path.unlink(missing_ok=True)
 
@@ -554,7 +894,7 @@ def _canonical_passed(spec: FixtureSpec, result: CommandResult) -> bool:
 
 
 def prepare_model_workspace(spec: FixtureSpec, destination: Path) -> str:
-    _copy_fixture(spec, destination)
+    source_manifest = _copy_fixture(spec, destination)
     with tempfile.TemporaryDirectory(prefix="coding-gate-seed-") as temporary:
         result = run_bounded(
             spec.command,
@@ -589,45 +929,75 @@ def prepare_model_workspace(spec: FixtureSpec, destination: Path) -> str:
             cwd=destination,
             env=env,
         )
-        return _git(("rev-parse", "HEAD"), cwd=destination, env=env).stdout.strip()
+        _git(("rev-parse", "HEAD"), cwd=destination, env=env)
+    return _manifest_sha256(source_manifest)
 
 
 def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
-    _tree(workspace)
-    with tempfile.TemporaryDirectory(prefix="coding-gate-collect-") as temporary:
-        env = validation_environment(Path(temporary))
-        resolved = _git(("rev-parse", f"{baseline}^{{commit}}"), cwd=workspace, env=env).stdout.strip()
-        if resolved != baseline:
-            raise IntegrityError("baseline commit mismatch")
-        untracked = _git(
-            ("ls-files", "--others", "--exclude-standard", "-z"),
-            cwd=workspace,
-            env=env,
-        ).stdout.split("\0")
-        untracked = [path for path in untracked if path]
-        if untracked:
-            _git(("add", "--intent-to-add", "--", *untracked), cwd=workspace, env=env)
-        changed = tuple(
-            sorted(
-                path
-                for path in _git(
-                    ("diff", "--name-only", "-z", baseline, "--"),
-                    cwd=workspace,
-                    env=env,
-                ).stdout.split("\0")
-                if path
-            )
+    source_manifest = _tree(spec.root)
+    if baseline != _manifest_sha256(source_manifest):
+        raise IntegrityError("controller baseline manifest mismatch")
+    workspace_manifest = _model_fixture_manifest(workspace)
+    changed = tuple(
+        sorted(
+            path
+            for path in source_manifest.keys() | workspace_manifest.keys()
+            if source_manifest.get(path) != workspace_manifest.get(path)
         )
-        if not changed:
-            raise IntegrityError("production patch is empty")
-        changed_set = set(changed)
-        if not changed_set.isdisjoint(spec.immutable_tests):
-            raise IntegrityError("baseline tests are immutable")
-        if not changed_set.issubset(spec.production_paths):
-            raise IntegrityError("patch changes non-production fixture paths")
+    )
+    if not changed:
+        raise IntegrityError("production patch is empty")
+    changed_set = set(changed)
+    if not changed_set.isdisjoint(spec.immutable_tests):
+        raise IntegrityError("baseline tests are immutable")
+    if not changed_set.issubset(spec.production_paths):
+        raise IntegrityError("patch changes non-production fixture paths")
+    with tempfile.TemporaryDirectory(prefix="coding-gate-collect-") as temporary:
+        control = Path(temporary)
+        repository = control / "repository"
+        _copy_fixture(spec, repository)
+        env = validation_environment(control / "environment")
+        _git(("init", "-q"), cwd=repository, env=env)
+        _git(("add", "-A"), cwd=repository, env=env)
+        _git(
+            (
+                "-c",
+                "user.name=Coding Gate",
+                "-c",
+                "user.email=coding-gate.invalid",
+                "commit",
+                "-qm",
+                "controller baseline",
+            ),
+            cwd=repository,
+            env=env,
+        )
+        controller_baseline = _git(
+            ("rev-parse", "HEAD"), cwd=repository, env=env
+        ).stdout.strip()
+        for relative in spec.production_paths:
+            source = workspace / relative
+            destination = repository / relative
+            if source.exists():
+                if not source.is_file() or source.is_symlink():
+                    raise IntegrityError("production path is not a regular file")
+                shutil.copyfile(source, destination)
+                shutil.copymode(source, destination)
+            else:
+                destination.unlink(missing_ok=True)
         diff_check = subprocess.run(
-            ("git", "diff", "--check", baseline, "--"),
-            cwd=workspace,
+            (
+                "git",
+                "--no-pager",
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--check",
+                controller_baseline,
+                "--",
+                *spec.production_paths,
+            ),
+            cwd=repository,
             env=env,
             capture_output=True,
             text=True,
@@ -636,8 +1006,17 @@ def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
         if diff_check.returncode != 0:
             raise IntegrityError("git diff --check rejected the patch")
         production = _git(
-            ("diff", "--binary", "--no-ext-diff", baseline, "--", *spec.production_paths),
-            cwd=workspace,
+            (
+                "--no-pager",
+                "diff",
+                "--binary",
+                "--no-ext-diff",
+                "--no-textconv",
+                controller_baseline,
+                "--",
+                *spec.production_paths,
+            ),
+            cwd=repository,
             env=env,
         ).stdout
     encoded = production.encode("utf-8")
@@ -694,9 +1073,40 @@ def _inject_worker(source: Path, destination: Path) -> None:
         raise
 
 
+def _replay_production_patch(
+    spec: FixtureSpec,
+    production_patch: str,
+    destination: Path,
+    *,
+    env: Mapping[str, str],
+) -> dict[str, str]:
+    source_manifest = _copy_fixture(spec, destination)
+    apply = subprocess.run(
+        ("git", "apply", "--whitespace=nowarn", "-"),
+        cwd=destination,
+        env=dict(env),
+        input=production_patch,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if apply.returncode != 0:
+        raise IntegrityError(f"production patch replay failed: {apply.stderr.strip()}")
+    patched_manifest = _tree(destination)
+    changed = {
+        path
+        for path in source_manifest.keys() | patched_manifest.keys()
+        if source_manifest.get(path) != patched_manifest.get(path)
+    }
+    if not changed or not changed.issubset(spec.production_paths):
+        raise IntegrityError("replayed patch is not production-only")
+    return patched_manifest
+
+
 def run_hidden_cases(
     spec: FixtureSpec,
-    workspace: Path,
+    production_patch: str,
+    validation_root: Path,
     *,
     env: Mapping[str, str],
     isolation: SourceIsolation | None = None,
@@ -713,12 +1123,21 @@ def run_hidden_cases(
         or spec.worker.is_symlink()
     ):
         raise IntegrityError("hidden validator must live outside the fixture root")
-    pristine = _tree(workspace)
+    if validation_root.exists() or validation_root.is_symlink():
+        raise IntegrityError("hidden validation root must be fresh")
+    validation_root.mkdir(parents=True)
     worker_hash = sha256_file(spec.worker)
     results: list[HiddenResult] = []
-    for case in spec.hidden_cases:
+    for index, case in enumerate(spec.hidden_cases, 1):
         if {"schema_version", "case_id"}.intersection(case.request):
             raise IntegrityError("hidden request contains reserved fields")
+        workspace = validation_root / f"case-{index:02d}"
+        pristine = _replay_production_patch(
+            spec,
+            production_patch,
+            workspace,
+            env=env,
+        )
         suffix = spec.worker.suffix
         destination = workspace / f"._validator_{secrets.token_hex(16)}{suffix}"
         _inject_worker(spec.worker, destination)
@@ -783,32 +1202,23 @@ def validate_patch(
     encoded = production_patch.encode("utf-8")
     if not production_patch.strip() or len(encoded) > MAX_PATCH_BYTES:
         raise IntegrityError("invalid production patch size")
-    source_manifest = _copy_fixture(spec, validation_root)
-    apply = subprocess.run(
-        ("git", "apply", "--whitespace=nowarn", "-"),
-        cwd=validation_root,
-        input=production_patch,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if apply.returncode != 0:
-        raise IntegrityError(f"production patch replay failed: {apply.stderr.strip()}")
-    patched_manifest = _tree(validation_root)
-    changed = {
-        path
-        for path in source_manifest.keys() | patched_manifest.keys()
-        if source_manifest.get(path) != patched_manifest.get(path)
-    }
-    if not changed or not changed.issubset(spec.production_paths):
-        raise IntegrityError("replayed patch is not production-only")
+    if validation_root.exists() or validation_root.is_symlink():
+        raise IntegrityError("validation root must be fresh")
+    validation_root.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="coding-gate-validation-") as temporary:
         env = validation_environment(Path(temporary))
+        canonical_root = validation_root / "canonical"
+        canonical_manifest = _replay_production_patch(
+            spec,
+            production_patch,
+            canonical_root,
+            env=env,
+        )
         execution = run_bounded(
             spec.command,
-            cwd=validation_root,
+            cwd=canonical_root,
             env=env,
-            monitor_workspace=validation_root,
+            monitor_workspace=canonical_root,
             isolation=isolation,
             trusted_offline=trusted_offline,
         )
@@ -821,10 +1231,13 @@ def validate_patch(
             output_limited=execution.output_limited,
             tree_limited=execution.tree_limited,
         )
+        if _tree(canonical_root) != canonical_manifest:
+            raise IntegrityError("canonical execution mutated the patched fixture")
         hidden = (
             run_hidden_cases(
                 spec,
-                validation_root,
+                production_patch,
+                validation_root / "hidden",
                 env=env,
                 isolation=isolation,
                 trusted_offline=trusted_offline,
