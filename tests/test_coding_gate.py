@@ -451,11 +451,72 @@ class CodingGateTests(unittest.TestCase):
                 gate.SourceIsolation.live(
                     sandbox_executable="codex",
                     protected_roots=(ROOT,),
+                    readiness=None,
                 )
             with self.assertRaises(gate.UnsupportedPlatformError):
                 gate.SourceIsolation("/bin/false", (ROOT,)).wrap(
                     ("python3", "-V"), Path("/tmp/coding-gate")
                 )
+
+    def test_process_readiness_cannot_be_forged_with_a_boolean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            for path in (workspace, tool_home, tool_tmp):
+                path.mkdir()
+            model = gate.ModelSourceIsolation(
+                sandbox_executable="/bin/false",
+                workspace=workspace,
+                categories=(),
+                tool_home=tool_home,
+                tool_tmp=tool_tmp,
+            )
+
+            with self.assertRaises(TypeError):
+                replace(model, process_boundary_proven=True)
+            with self.assertRaises(TypeError):
+                replace(
+                    gate.SourceIsolation("/bin/false", (ROOT,)),
+                    process_boundary_proven=True,
+                )
+
+    def test_unready_model_contract_cannot_start_answer_subprocess(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            for path in (workspace, tool_home, tool_tmp):
+                path.mkdir()
+            contract = gate.ModelSourceIsolation(
+                sandbox_executable="/bin/false",
+                workspace=workspace,
+                categories=(),
+                tool_home=tool_home,
+                tool_tmp=tool_tmp,
+            )
+
+            with mock.patch.object(gate.subprocess, "Popen") as popen:
+                with self.assertRaises(gate.InfrastructureError):
+                    gate.run_model_answer(
+                        contract,
+                        ("--model", "gpt-5.6-sol", "-"),
+                        env=gate.validation_environment(root / "environment"),
+                        input_text="test prompt",
+                    )
+                popen.assert_not_called()
+
+    @unittest.skipUnless(
+        gate.platform.system() == "Linux",
+        "credential-free process attestation is exercised by Linux CI",
+    )
+    def test_linux_process_boundary_probe_is_credential_free_and_promotable(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            attestation = gate._attest_process_boundary()
+
+        self.assertTrue(gate._verify_process_attestation(attestation))
 
     def test_model_generated_validation_requires_explicit_isolation_or_trust(self):
         fixture = gate.FIXTURES["node-auth-api"]
@@ -682,7 +743,7 @@ class CodingGateTests(unittest.TestCase):
         gate.platform.system() == "Darwin" and shutil.which("codex"),
         "real offline Codex sandbox probe requires macOS",
     )
-    def test_model_answer_profile_real_macos_probe_is_fail_closed(self):
+    def test_model_answer_profile_real_macos_probe_is_fail_closed_or_ready(self):
         with tempfile.TemporaryDirectory(prefix="coding-gate-model-profile-") as tmp:
             root = Path(tmp)
             workspace = root / "workspace"
@@ -751,12 +812,23 @@ class CodingGateTests(unittest.TestCase):
                     denied_targets=denied,
                 )
 
-        self.assertTrue(probe.filesystem_passed, probe)
-        self.assertTrue(probe.network_passed, probe)
-        self.assertEqual(probe.denied_categories, frozenset(denied))
-        self.assertEqual(probe.status, "INCONCLUSIVE")
-        with self.assertRaises(gate.InfrastructureError):
-            gate.require_live_model_isolation(probe)
+        if probe.descendant_passed:
+            self.assertTrue(probe.filesystem_passed, probe)
+            self.assertTrue(probe.network_passed, probe)
+            self.assertEqual(probe.denied_categories, frozenset(denied))
+            self.assertEqual(probe.status, "READY")
+            ready = gate.require_live_model_isolation(probe)
+            self.assertTrue(ready.ready)
+            validation = gate.SourceIsolation.live(
+                sandbox_executable=shutil.which("codex"),
+                protected_roots=(ROOT, gate.WORKER_ROOT, Path.home()),
+                readiness=probe,
+            )
+            self.assertTrue(validation.process_boundary_proven)
+        else:
+            self.assertEqual(probe.status, "INCONCLUSIVE")
+            with self.assertRaises(gate.InfrastructureError):
+                gate.require_live_model_isolation(probe)
 
     def test_bounded_runner_reports_timeout_output_and_tree_caps(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as environment:

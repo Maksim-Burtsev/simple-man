@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -16,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -67,6 +68,47 @@ class IntegrityError(RuntimeError):
 
 class UnsupportedPlatformError(InfrastructureError):
     pass
+
+
+_ATTESTATION_KEY = secrets.token_bytes(32)
+_SUPERVISOR_GENERATION = "kernel-descendants-v1"
+
+
+@dataclass(frozen=True)
+class _ProcessAttestation:
+    system: str
+    nonce: str
+    signature: str
+
+
+@dataclass(frozen=True)
+class _ReadinessAttestation:
+    contract_sha256: str
+    process_signature: str
+    signature: str
+
+
+def _attestation_signature(kind: str, payload: Mapping[str, str]) -> str:
+    encoded = json.dumps(
+        {"kind": kind, **payload}, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hmac.new(_ATTESTATION_KEY, encoded, hashlib.sha256).hexdigest()
+
+
+def _verify_process_attestation(attestation: object) -> bool:
+    if not isinstance(attestation, _ProcessAttestation):
+        return False
+    expected = _attestation_signature(
+        "process",
+        {
+            "system": attestation.system,
+            "nonce": attestation.nonce,
+            "supervisor": _SUPERVISOR_GENERATION,
+        },
+    )
+    return attestation.system == platform.system() and hmac.compare_digest(
+        attestation.signature, expected
+    )
 
 
 @dataclass(frozen=True)
@@ -146,7 +188,13 @@ class ValidationResult:
 class SourceIsolation:
     sandbox_executable: str
     protected_roots: tuple[Path, ...]
-    process_boundary_proven: bool = False
+    _process_attestation: _ProcessAttestation | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    @property
+    def process_boundary_proven(self) -> bool:
+        return _verify_process_attestation(self._process_attestation)
 
     @classmethod
     def live(
@@ -154,6 +202,7 @@ class SourceIsolation:
         *,
         sandbox_executable: str,
         protected_roots: Sequence[Path],
+        readiness: IsolationProbe | None,
     ) -> SourceIsolation:
         if platform.system() != "Darwin":
             raise UnsupportedPlatformError(
@@ -162,11 +211,15 @@ class SourceIsolation:
         executable = shutil.which(sandbox_executable)
         if executable is None:
             raise InfrastructureError("live coding validation sandbox is unavailable")
+        ready = require_live_model_isolation(readiness)
+        resolved_executable = str(Path(executable).resolve())
+        if resolved_executable != ready.sandbox_executable:
+            raise IntegrityError("model and validation must use the same sandbox executable")
         roots = tuple(dict.fromkeys(path.expanduser().resolve() for path in protected_roots))
         required = (ROOT.resolve(), WORKER_ROOT.resolve(), Path.home().resolve())
         if any(not any(item == root or item.is_relative_to(root) for root in roots) for item in required):
             raise IntegrityError("live source isolation must protect source, workers, and real home")
-        return cls(str(Path(executable).resolve()), roots)
+        return cls(resolved_executable, roots, ready._process_attestation)
 
     def wrap(self, command: Sequence[str], workspace: Path) -> tuple[str, ...]:
         if platform.system() != "Darwin":
@@ -227,7 +280,20 @@ class ModelSourceIsolation:
     categories: tuple[tuple[str, tuple[Path, ...]], ...]
     tool_home: Path
     tool_tmp: Path
-    process_boundary_proven: bool = False
+    _process_attestation: _ProcessAttestation | None = field(
+        default=None, repr=False, compare=False
+    )
+    _readiness_attestation: _ReadinessAttestation | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    @property
+    def process_boundary_proven(self) -> bool:
+        return _verify_process_attestation(self._process_attestation)
+
+    @property
+    def ready(self) -> bool:
+        return _verify_model_readiness(self)
 
     @property
     def protected_roots(self) -> tuple[Path, ...]:
@@ -287,6 +353,14 @@ class ModelSourceIsolation:
             *command,
         )
 
+    def answer_command(self, arguments: Sequence[str]) -> tuple[str, ...]:
+        return (
+            self.sandbox_executable,
+            *self.profile_arguments,
+            "exec",
+            *arguments,
+        )
+
     def category_roots(self, category: str) -> tuple[Path, ...]:
         return dict(self.categories).get(category, ())
 
@@ -296,9 +370,65 @@ class IsolationProbe:
     status: str
     filesystem_passed: bool
     network_passed: bool
+    descendant_passed: bool
     denied_categories: frozenset[str]
     cli_version: str
     reason: str
+    _ready_contract: ModelSourceIsolation | None = field(
+        default=None, repr=False, compare=False
+    )
+
+
+def _model_contract_digest(contract: ModelSourceIsolation) -> str:
+    try:
+        executable = Path(contract.sandbox_executable)
+        identity = executable.stat()
+    except OSError:
+        return ""
+    payload = {
+        "sandbox_executable": str(executable),
+        "sandbox_identity": [
+            identity.st_dev,
+            identity.st_ino,
+            identity.st_size,
+            identity.st_mtime_ns,
+        ],
+        "workspace": str(contract.workspace),
+        "categories": [
+            [category, [str(path) for path in roots]]
+            for category, roots in contract.categories
+        ],
+        "tool_home": str(contract.tool_home),
+        "tool_tmp": str(contract.tool_tmp),
+        "profile_arguments": list(contract.profile_arguments),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _verify_model_readiness(contract: ModelSourceIsolation) -> bool:
+    readiness = contract._readiness_attestation
+    process = contract._process_attestation
+    if (
+        not isinstance(readiness, _ReadinessAttestation)
+        or not _verify_process_attestation(process)
+    ):
+        return False
+    contract_sha256 = _model_contract_digest(contract)
+    expected = _attestation_signature(
+        "readiness",
+        {
+            "contract_sha256": contract_sha256,
+            "process_signature": process.signature,
+        },
+    )
+    return (
+        bool(contract_sha256)
+        and readiness.contract_sha256 == contract_sha256
+        and readiness.process_signature == process.signature
+        and hmac.compare_digest(readiness.signature, expected)
+    )
 
 
 def build_model_source_isolation(
@@ -362,9 +492,54 @@ def build_model_source_isolation(
     )
 
 
-def _sandbox_denied(process: subprocess.CompletedProcess[str]) -> bool:
+def _sandbox_denied(process: CommandResult) -> bool:
     output = process.stdout + process.stderr
     return process.returncode != 0 and "Operation not permitted" in output
+
+
+def _run_model_execution(
+    contract: ModelSourceIsolation,
+    command: Sequence[str],
+    *,
+    env: Mapping[str, str],
+    input_text: str | None = None,
+    timeout_seconds: int = TIMEOUT_SECONDS,
+    monitor_workspace: bool = True,
+) -> CommandResult:
+    if not contract.process_boundary_proven:
+        raise InfrastructureError(
+            "model execution is INCONCLUSIVE without process attestation"
+        )
+    return run_bounded(
+        command,
+        cwd=contract.workspace,
+        env=env,
+        input_text=input_text,
+        monitor_workspace=contract.workspace if monitor_workspace else None,
+        _process_attestation=contract._process_attestation,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def run_model_answer(
+    contract: ModelSourceIsolation,
+    arguments: Sequence[str],
+    *,
+    env: Mapping[str, str],
+    input_text: str | None = None,
+    timeout_seconds: int = TIMEOUT_SECONDS,
+) -> CommandResult:
+    if not contract.ready:
+        raise InfrastructureError(
+            "live coding answer is INCONCLUSIVE without full isolation readiness"
+        )
+    return _run_model_execution(
+        contract,
+        contract.answer_command(arguments),
+        env=env,
+        input_text=input_text,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def probe_model_source_isolation(
@@ -375,6 +550,7 @@ def probe_model_source_isolation(
     if platform.system() != "Darwin":
         return IsolationProbe(
             "INCONCLUSIVE",
+            False,
             False,
             False,
             frozenset(),
@@ -391,38 +567,47 @@ def probe_model_source_isolation(
             for root in contract.category_roots(category)
         ):
             raise IntegrityError("probe target is outside its protected category")
+    try:
+        process_attestation = _attest_process_boundary()
+    except (InfrastructureError, UnsupportedPlatformError) as exc:
+        return IsolationProbe(
+            "INCONCLUSIVE",
+            False,
+            False,
+            False,
+            frozenset(),
+            "unprobed",
+            str(exc),
+        )
+    attested = replace(contract, _process_attestation=process_attestation)
     with tempfile.TemporaryDirectory(prefix="coding-gate-profile-probe-") as temporary:
         env = validation_environment(Path(temporary))
-        version = subprocess.run(
-            (contract.sandbox_executable, "--version"),
+        version = _run_model_execution(
+            attested,
+            (attested.sandbox_executable, "--version"),
             env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            timeout_seconds=10,
+            monitor_workspace=False,
         )
         cli_version = (version.stdout or version.stderr).strip()
-        marker = contract.workspace / f".profile-probe-{secrets.token_hex(8)}"
-        allowed = subprocess.run(
-            contract.sandbox_command(("/usr/bin/touch", str(marker))),
-            cwd=contract.workspace,
+        marker = attested.workspace / f".profile-probe-{secrets.token_hex(8)}"
+        allowed = _run_model_execution(
+            attested,
+            attested.sandbox_command(("/usr/bin/touch", str(marker))),
             env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            timeout_seconds=10,
         )
         workspace_passed = allowed.returncode == 0 and marker.is_file()
         marker.unlink(missing_ok=True)
         denied: set[str] = set()
         for category, target in denied_targets.items():
-            process = subprocess.run(
-                contract.sandbox_command(
+            process = _run_model_execution(
+                attested,
+                attested.sandbox_command(
                     ("/usr/bin/head", "-c", "1", str(target.resolve()))
                 ),
-                cwd=contract.workspace,
                 env=env,
-                capture_output=True,
-                text=True,
-                timeout=10,
+                timeout_seconds=10,
             )
             if _sandbox_denied(process):
                 denied.add(category)
@@ -431,8 +616,9 @@ def probe_model_source_isolation(
             server.bind(("127.0.0.1", 0))
             server.listen(1)
             port = server.getsockname()[1]
-            network = subprocess.run(
-                contract.sandbox_command(
+            network = _run_model_execution(
+                attested,
+                attested.sandbox_command(
                     (
                         "/usr/bin/python3",
                         "-c",
@@ -440,35 +626,60 @@ def probe_model_source_isolation(
                         str(port),
                     )
                 ),
-                cwd=contract.workspace,
                 env=env,
-                capture_output=True,
-                text=True,
-                timeout=10,
+                timeout_seconds=10,
             )
             network_passed = _sandbox_denied(network)
         finally:
             server.close()
     filesystem_passed = workspace_passed and denied == expected_categories
-    ready = filesystem_passed and network_passed and contract.process_boundary_proven
+    ready = filesystem_passed and network_passed
+    ready_contract = None
+    if ready:
+        contract_sha256 = _model_contract_digest(attested)
+        if not contract_sha256:
+            raise InfrastructureError(
+                "model sandbox executable changed during readiness probe"
+            )
+        process_signature = process_attestation.signature
+        signature = _attestation_signature(
+            "readiness",
+            {
+                "contract_sha256": contract_sha256,
+                "process_signature": process_signature,
+            },
+        )
+        readiness = _ReadinessAttestation(
+            contract_sha256, process_signature, signature
+        )
+        ready_contract = replace(attested, _readiness_attestation=readiness)
     reason = (
-        "source, secret, workspace, and network probes passed; detached descendant boundary is unproven"
-        if filesystem_passed and network_passed
+        "source, secret, workspace, network, and detached descendant probes passed"
+        if ready
         else "model source isolation profile probe failed"
     )
     return IsolationProbe(
         "READY" if ready else "INCONCLUSIVE",
         filesystem_passed,
         network_passed,
+        True,
         frozenset(denied),
         cli_version,
         reason,
+        ready_contract,
     )
 
 
-def require_live_model_isolation(probe: IsolationProbe) -> None:
-    if probe.status != "READY":
-        raise InfrastructureError(f"live coding lane is {probe.status}: {probe.reason}")
+def require_live_model_isolation(
+    probe: IsolationProbe | None,
+) -> ModelSourceIsolation:
+    if probe is None or probe.status != "READY" or probe._ready_contract is None:
+        status = probe.status if probe is not None else "INCONCLUSIVE"
+        reason = probe.reason if probe is not None else "readiness probe is absent"
+        raise InfrastructureError(f"live coding lane is {status}: {reason}")
+    if not probe._ready_contract.ready:
+        raise InfrastructureError("live coding lane readiness attestation is invalid")
+    return probe._ready_contract
 
 
 FIXTURES = {
@@ -1055,15 +1266,23 @@ def run_bounded(
     isolation: SourceIsolation | None = None,
     trusted_offline: bool = False,
     require_process_supervision: bool = False,
+    _process_attestation: _ProcessAttestation | None = None,
     timeout_seconds: int = TIMEOUT_SECONDS,
     max_output_bytes: int = MAX_OUTPUT_BYTES,
 ) -> CommandResult:
-    if isolation is None and not trusted_offline:
+    if isolation is not None and _process_attestation is not None:
+        raise IntegrityError("process attestation must come from the isolation contract")
+    attestation = isolation._process_attestation if isolation else _process_attestation
+    if attestation is not None and not _verify_process_attestation(attestation):
+        raise InfrastructureError("process supervision attestation is invalid")
+    if isolation is None and not trusted_offline and attestation is None:
         raise IntegrityError("unisolated command execution is allowed only for offline self-checks")
     actual = isolation.wrap(command, cwd) if isolation else tuple(command)
     supervisor = (
         _process_supervisor()
-        if isolation is not None or require_process_supervision
+        if isolation is not None
+        or require_process_supervision
+        or _verify_process_attestation(attestation)
         else None
     )
     inherited_fds: tuple[int, ...] = ()
@@ -1183,6 +1402,73 @@ def run_bounded(
                 supervisor.close()
         stdout_path.unlink(missing_ok=True)
         stderr_path.unlink(missing_ok=True)
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _attest_process_boundary() -> _ProcessAttestation:
+    with tempfile.TemporaryDirectory(prefix="coding-gate-boundary-probe-") as temporary:
+        root = Path(temporary)
+        marker = root / "escaped"
+        pid_file = root / "descendant-pid"
+        child = (
+            "import time; from pathlib import Path; "
+            f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped'); time.sleep(5)"
+        )
+        parent = (
+            "import subprocess,sys; from pathlib import Path; "
+            f"child=subprocess.Popen([sys.executable,'-c',{child!r}],start_new_session=True); "
+            f"Path({str(pid_file)!r}).write_text(str(child.pid))"
+        )
+        env = validation_environment(root / "environment")
+        descendant_pid: int | None = None
+        try:
+            result = run_bounded(
+                (sys.executable, "-I", "-c", parent),
+                cwd=root,
+                env=env,
+                trusted_offline=True,
+                require_process_supervision=True,
+                timeout_seconds=1,
+            )
+            if result.returncode != 0 or not pid_file.is_file():
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: descendant probe did not run"
+                )
+            descendant_pid = int(pid_file.read_text())
+            deadline = time.monotonic() + 0.5
+            while _pid_exists(descendant_pid) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            time.sleep(0.25)
+            if _pid_exists(descendant_pid) or marker.exists():
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: detached descendant escaped"
+                )
+        finally:
+            if descendant_pid is not None and _pid_exists(descendant_pid):
+                try:
+                    os.kill(descendant_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        system = platform.system()
+        nonce = secrets.token_hex(16)
+        signature = _attestation_signature(
+            "process",
+            {
+                "system": system,
+                "nonce": nonce,
+                "supervisor": _SUPERVISOR_GENERATION,
+            },
+        )
+        return _ProcessAttestation(system, nonce, signature)
 
 
 def _copy_fixture(spec: FixtureSpec, destination: Path) -> dict[str, str]:
