@@ -43,7 +43,7 @@ Skill target precedence:
 3. existing legacy `$HOME/.codex/skills/simple-man`
 4. `$HOME/.agents/skills/simple-man` for a new default install
 
-An existing legacy install is updated in place; the source installer does not create a second copy, migrate it, or create a backup skill. A pre-existing `simple-man.backup` without `SKILL.md` is preserved unchanged; one containing `SKILL.md` makes installation fail before any destination change. Empty, relative, or overlapping path overrides also fail before mutation.
+An existing regular-directory legacy install is updated in place; the source installer does not create a second copy, migrate it, or create a backup skill. Symlinked skill targets require an explicit manual update and fail before mutation. A pre-existing `simple-man.backup` without `SKILL.md` is preserved unchanged; one containing `SKILL.md` makes installation fail before any destination change. Empty, relative, or overlapping path overrides also fail before mutation.
 
 Restart Codex after installing so new sessions load the global instructions.
 

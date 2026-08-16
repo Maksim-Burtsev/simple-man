@@ -51,6 +51,10 @@ SKILL_DIR="$SKILL_ROOT/simple-man"
 LEGACY_BACKUP_DIR="$SKILL_DIR.backup"
 AGENTS_FILE="$CODEX_HOME_PATH/AGENTS.md"
 
+if [ -L "$SKILL_DIR" ]; then
+  fail "$SKILL_DIR is a symlink; symlinked skill targets require explicit manual update"
+fi
+
 if [ -e "$LEGACY_BACKUP_DIR/SKILL.md" ] || [ -L "$LEGACY_BACKUP_DIR/SKILL.md" ]; then
   fail "$LEGACY_BACKUP_DIR contains SKILL.md; move or rename that discoverable backup before installing"
 fi

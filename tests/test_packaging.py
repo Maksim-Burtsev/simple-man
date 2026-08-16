@@ -113,6 +113,58 @@ class PackagingTests(unittest.TestCase):
             self.assert_one_discoverable_skill(home / ".codex" / "skills")
             self.assertFalse((home / ".agents" / "skills" / "simple-man").exists())
 
+    def test_relative_symlinked_legacy_skill_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            external = root / "external"
+            target = external / "simple-man"
+            target.mkdir(parents=True)
+            (target / "SKILL.md").write_text("external skill\n")
+            (target / "notes.txt").write_text("external notes\n")
+            target.chmod(0o750)
+            legacy = home / ".codex" / "skills" / "simple-man"
+            legacy.parent.mkdir(parents=True)
+            link_text = os.path.relpath(target, legacy.parent)
+            legacy.symlink_to(link_text)
+            home_before = self.tree_snapshot(home)
+            external_before = self.tree_snapshot(external)
+
+            result = self.run_installer(home)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("symlinked skill targets", result.stderr)
+            self.assertIn("manual update", result.stderr)
+            self.assertEqual(self.tree_snapshot(home), home_before)
+            self.assertEqual(self.tree_snapshot(external), external_before)
+            self.assertTrue(legacy.is_symlink())
+            self.assertEqual(os.readlink(legacy), link_text)
+
+    def test_broken_symlinked_legacy_skill_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            external = root / "external"
+            external.mkdir()
+            (external / "sentinel.txt").write_text("external sentinel\n")
+            legacy = home / ".codex" / "skills" / "simple-man"
+            legacy.parent.mkdir(parents=True)
+            link_text = os.path.relpath(external / "missing-simple-man", legacy.parent)
+            legacy.symlink_to(link_text)
+            home_before = self.tree_snapshot(home)
+            external_before = self.tree_snapshot(external)
+
+            result = self.run_installer(home)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("symlinked skill targets", result.stderr)
+            self.assertIn("manual update", result.stderr)
+            self.assertEqual(self.tree_snapshot(home), home_before)
+            self.assertEqual(self.tree_snapshot(external), external_before)
+            self.assertTrue(legacy.is_symlink())
+            self.assertEqual(os.readlink(legacy), link_text)
+            self.assertFalse((external / "missing-simple-man").exists())
+
     def test_discoverable_preexisting_backup_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
