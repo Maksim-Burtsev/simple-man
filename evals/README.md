@@ -1,12 +1,42 @@
 # Simple Man Benchmark
 
-This repo has two benchmark suites because "token savings" can mean two
-different things:
+This repo has two historical benchmark suites plus the offline-verifiable eval
+v2 release gates. "Token savings" can mean two different things:
 
 - `runtime_economics`: Codex coding-agent cost, including instruction overhead
   and amortized long-session net.
 - `reference_compression`: Caveman README-style output compression, measured
   against a normal helpful baseline and output tokens only.
+
+## Eval v2 release gates
+
+Eval v2 is the release-decision path. It contains 12 output dev cases, 20
+activation dev cases, three isolated coding fixtures, anonymous pairwise
+judging, deterministic material-fact checks, and separate visible/cache/usage
+metrics. The committed holdout is a schema only; final holdout content is
+created after the PR4 candidate head is frozen.
+
+Run every credential-free gate, including fake answer/judge/seal/reveal,
+tamper rejection, pristine coding validation, and hidden-validator probes:
+
+```bash
+make eval-gates-check
+```
+
+Preview the preregistered 275-call plan under the 280-call hard cap without
+reading Codex auth or starting Codex:
+
+```bash
+make eval-release-dry-run
+```
+
+The release metrics keep commentary, final, visible output, uncached input,
+cached input, output usage, and latency separate. `estimated_session_net` is an
+explicit estimate, not observed billing or universal cost savings.
+
+Live coding lanes require the exact macOS filesystem, network, and process
+isolation preflight. An unsupported process boundary returns `INCONCLUSIVE`
+before model-generated code runs.
 
 ## Runtime Economics Suite
 
