@@ -1316,7 +1316,7 @@ class _DarwinProcessSupervisor:
         for _ in range(3):
             values = (ctypes.c_int * (capacity + 64))()
             count = self.proc.proc_listallpids(values, ctypes.sizeof(values))
-            if count < 0:
+            if count <= 0:
                 raise InfrastructureError(
                     "process supervision is INCONCLUSIVE: cannot list Darwin processes"
                 )
@@ -1457,6 +1457,9 @@ class _DarwinProcessSupervisor:
                 unstable = True
                 continue
             if token is None:
+                if terminate:
+                    unstable = True
+                    continue
                 raise InfrastructureError(
                     "process supervision is INCONCLUSIVE: invalid process audit token"
                 )

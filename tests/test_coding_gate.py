@@ -531,6 +531,16 @@ class CodingGateTests(unittest.TestCase):
 
         self.assertEqual(supervisor._cleanup_scan.call_count, 3)
 
+    def test_darwin_process_list_zero_result_is_inconclusive(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor.proc = mock.Mock()
+        supervisor.proc.proc_listallpids.side_effect = (10, 0)
+
+        with self.assertRaisesRegex(
+            gate.InfrastructureError, "cannot list Darwin processes"
+        ):
+            supervisor._pids()
+
     @unittest.skipUnless(
         gate.platform.system() == "Linux",
         "credential-free process attestation is exercised by Linux CI",
