@@ -289,8 +289,14 @@ def build_private_mapping(
         if run["arm"] in arms:
             raise ValueError("duplicate private arm run")
         arms[run["arm"]] = run
-    side_keys = [{"id": f"{comparison_id}\0{canonical_json(selector)}"} for comparison_id, selector, _, _ in slots]
-    sides = balanced_sides(side_keys, secret)
+    sides = {}
+    for comparison_id in sorted(seen_comparisons):
+        side_keys = [
+            {"id": f"{comparison_id}\0{canonical_json(selector)}"}
+            for slot_comparison, selector, _, _ in slots
+            if slot_comparison == comparison_id
+        ]
+        sides.update(balanced_sides(side_keys, secret))
     pairs: dict[str, Any] = {}
     for comparison_id, selector, baseline_arm, candidate_arm in slots:
         identity = (selector["case_id"], selector["trial"], selector["model"], selector["effort"], selector["cli"])
@@ -554,7 +560,7 @@ def clustered_bootstrap_ci(pairs: list[dict[str, Any]], metric: str, *, seed: in
 
 
 def build_seal(payload: dict[str, Any], key: bytes | str) -> dict[str, Any]:
-    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256"}
+    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256", "answer_commitment_sha256", "judgment_commitment_sha256"}
     require_exact_fields(payload, fields, "seal payload")
     result = dict(payload)
     result["hmac"] = hmac_digest(key, payload)
@@ -562,17 +568,17 @@ def build_seal(payload: dict[str, Any], key: bytes | str) -> dict[str, Any]:
 
 
 def verify_seal(seal: dict[str, Any], key: bytes | str) -> None:
-    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256", "hmac"}
+    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256", "answer_commitment_sha256", "judgment_commitment_sha256", "hmac"}
     require_exact_fields(seal, fields, "seal")
     payload = {key_: value for key_, value in seal.items() if key_ != "hmac"}
     if not hmac.compare_digest(seal["hmac"], hmac_digest(key, payload)):
         raise ValueError("invalid seal HMAC")
 
 
-def reveal(mapping: dict[str, Any], seal: dict[str, Any], *, mapping_key: bytes | str, seal_key: bytes | str, config_sha256: str, manifest_sha256: str, schedule_sha256: str, bundle_sha256: str, judgments_sha256: str, judge_manifest_sha256: str, judgments: list[dict[str, Any]]) -> dict[str, Any]:
+def reveal(mapping: dict[str, Any], seal: dict[str, Any], *, mapping_key: bytes | str, seal_key: bytes | str, config_sha256: str, manifest_sha256: str, schedule_sha256: str, bundle_sha256: str, judgments_sha256: str, judge_manifest_sha256: str, answer_commitment_sha256: str, judgment_commitment_sha256: str, judgments: list[dict[str, Any]]) -> dict[str, Any]:
     commitment = mapping_commitment(mapping, mapping_key)
     verify_seal(seal, seal_key)
-    expected = {"config_sha256": config_sha256, "manifest_sha256": manifest_sha256, "schedule_sha256": schedule_sha256, "bundle_sha256": bundle_sha256, "mapping_commitment": commitment, "judgments_sha256": judgments_sha256, "judge_manifest_sha256": judge_manifest_sha256}
+    expected = {"config_sha256": config_sha256, "manifest_sha256": manifest_sha256, "schedule_sha256": schedule_sha256, "bundle_sha256": bundle_sha256, "mapping_commitment": commitment, "judgments_sha256": judgments_sha256, "judge_manifest_sha256": judge_manifest_sha256, "answer_commitment_sha256": answer_commitment_sha256, "judgment_commitment_sha256": judgment_commitment_sha256}
     if any(seal[key] != value for key, value in expected.items()):
         raise ValueError("seal artifact mismatch")
     remapped = []

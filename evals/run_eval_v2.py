@@ -387,11 +387,20 @@ def live_execution_status(
     *,
     actual_model: str | None,
     actual_effort: str | None,
-    actual_cli: str | None,
     arm_policy_sha256: dict[str, str],
     description_policy_sha256: dict[str, str],
     evaluated_head_sha: str,
+    evaluated_tree_sha: str,
 ) -> dict[str, Any]:
+    registered = [item for item in plan.get("records", []) if item.get("call_id") == record.get("call_id")]
+    if len(registered) != 1 or registered[0] != record:
+        return {"status": "INCONCLUSIVE", "reason": "call record is not exactly preregistered"}
+    if actual_model != record["model"] or actual_effort != record["effort"]:
+        return {"status": "INCONCLUSIVE", "reason": "required execution identity unavailable or substituted"}
+    for configs in (plan["arm_policies"], plan["description_policies"]):
+        if any(policy["offline_only"] or policy["source"] is None for policy in configs.values()):
+            return {"status": "INCONCLUSIVE", "reason": "live policy or description is not frozen"}
+    actual_cli = _probe_cli_identity()
     identity = execution_identity_status(
         record,
         actual_model=actual_model,
@@ -400,9 +409,6 @@ def live_execution_status(
     )
     if identity["status"] != "READY":
         return identity
-    for configs in (plan["arm_policies"], plan["description_policies"]):
-        if any(policy["offline_only"] or policy["source"] is None for policy in configs.values()):
-            return {"status": "INCONCLUSIVE", "reason": "live policy or description is not frozen"}
     source_hashes = _source_hashes(plan)
     expected_hashes = (
         (arm_policy_sha256, _policy_hashes(plan["arm_policies"], source_hashes)),
@@ -413,9 +419,14 @@ def live_execution_status(
             return {"status": "INCONCLUSIVE", "reason": "live policy or description hash is unavailable"}
     git_state = _live_git_state()
     actual_head_sha = git_state["head_sha"]
-    if not git_state["clean"] or actual_head_sha != evaluated_head_sha or len(actual_head_sha) not in {40, 64} or any(char not in "0123456789abcdef" for char in actual_head_sha):
+    actual_tree_sha = git_state["tree_sha"]
+    valid_git = all(
+        isinstance(value, str) and len(value) in {40, 64} and not any(char not in "0123456789abcdef" for char in value)
+        for value in (actual_head_sha, actual_tree_sha, evaluated_head_sha, evaluated_tree_sha)
+    )
+    if not valid_git or not git_state["clean"] or actual_head_sha != evaluated_head_sha or actual_tree_sha != evaluated_tree_sha:
         return {"status": "INCONCLUSIVE", "reason": "evaluated HEAD is dirty or changed"}
-    return {"status": "READY", "identity": identity["identity"], "evaluated_head_sha": evaluated_head_sha}
+    return {"status": "READY", "identity": identity["identity"], "evaluated_head_sha": evaluated_head_sha, "evaluated_tree_sha": evaluated_tree_sha}
 
 
 def _require_call_id(identity: dict[str, Any]) -> None:
@@ -494,6 +505,21 @@ def _git_identity() -> dict[str, str]:
     return values
 
 
+def _probe_cli_identity() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["codex", "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else None
+
+
 def _live_git_state() -> dict[str, Any]:
     identity = _git_identity()
     completed = subprocess.run(
@@ -568,15 +594,20 @@ def _policy_hashes(config: dict[str, Any], source_hashes: dict[str, str]) -> dic
     return result
 
 
-def _manifest_value(output_cases: list[dict[str, Any]], activation_cases: list[dict[str, Any]], plan: dict[str, Any]) -> dict[str, Any]:
+def _manifest_value(output_cases: list[dict[str, Any]], activation_cases: list[dict[str, Any]], plan: dict[str, Any], *, release_eligible: bool = False) -> dict[str, Any]:
     records = plan["records"]
     source_hashes = _source_hashes(plan)
+    git_state = _live_git_state()
+    if release_eligible and not git_state["clean"]:
+        raise ValueError("release manifest requires a clean evaluated HEAD")
     return {
         "schema_version": 3,
         "runner": RUNNER_ID,
-        "execution_mode": "offline_fake",
+        "execution_mode": "live_release" if release_eligible else "offline_fake",
+        "release_eligible": release_eligible,
         "fake_executor": FAKE_EXECUTOR_ID,
-        "evaluated_git": _git_identity(),
+        "evaluated_git": {"head_sha": git_state["head_sha"], "tree_sha": git_state["tree_sha"]},
+        "worktree_clean": git_state["clean"],
         "source_sha256": source_hashes,
         "arm_policy_sha256": _policy_hashes(plan["arm_policies"], source_hashes),
         "description_policy_sha256": _policy_hashes(plan["description_policies"], source_hashes),
@@ -656,6 +687,8 @@ def _answer_payload(identity: dict[str, Any], commentary: str, final: str) -> di
 
 
 ANSWER_METRICS = {"commentary", "final", "commentary_visible_tokens", "final_visible_tokens", "visible_output_tokens", "input_tokens", "cached_input_tokens", "uncached_input_tokens", "output_tokens", "latency_ms"}
+ANSWER_COMMITMENT = "answer-commitment.json"
+JUDGMENT_COMMITMENT = "judgment-commitment.json"
 
 
 def _assert_completed_attempt_inventory(path: Path) -> None:
@@ -746,6 +779,54 @@ def _load_runs(root: Path, schedule: dict[str, Any]) -> list[dict[str, Any]]:
     return [_load_answer_attempt(attempts / call["run_id"], dict(call)) for call in schedule["calls"]]
 
 
+def _completed_attempt_hashes(directory: Path, expected_ids: set[str]) -> list[dict[str, Any]]:
+    if set(_directory_names(directory, private=True, directories_only=True)) != expected_ids:
+        raise ValueError("committed attempt inventory mismatch")
+    rows = []
+    for attempt_id in sorted(expected_ids):
+        path = directory / attempt_id
+        names = _directory_names(path, private=True)
+        if names != ["raw.jsonl", "result.json", "started.json"]:
+            raise ValueError("committed attempt file inventory mismatch")
+        rows.append({"attempt_id": attempt_id, "files": {name: _sha(path / name, private=True) for name in names}})
+    return rows
+
+
+def _signed_commitment(kind: str, payload: dict[str, Any], key: str) -> dict[str, Any]:
+    body = {"schema_version": 1, "kind": kind, "payload": payload}
+    return {**body, "hmac": lib.hmac_digest(key, body)}
+
+
+def _freeze_or_verify_commitment(path: Path, expected: dict[str, Any]) -> None:
+    if _exists(path, private=True):
+        if _read_json(path, private=True) != expected:
+            raise ValueError("runner commitment mismatch")
+    else:
+        _write_json(path, expected, private=True, exclusive=True)
+
+
+def _verify_commitment(path: Path, expected: dict[str, Any]) -> None:
+    if not _exists(path, private=True) or _read_json(path, private=True) != expected:
+        raise ValueError("runner commitment mismatch")
+
+
+def _answer_commitment_value(root: Path, schedule: dict[str, Any], key: str) -> dict[str, Any]:
+    expected_ids = {call["run_id"] for call in schedule["calls"]}
+    payload = {
+        "schedule_sha256": _sha(root / "private/schedule.json", private=True),
+        "attempts": _completed_attempt_hashes(root / "private/attempts", expected_ids),
+    }
+    return _signed_commitment("answers", payload, key)
+
+
+def _freeze_or_verify_answer_commitment(root: Path, schedule: dict[str, Any], key: str) -> None:
+    _freeze_or_verify_commitment(root / "private" / ANSWER_COMMITMENT, _answer_commitment_value(root, schedule, key))
+
+
+def _verify_answer_commitment(root: Path, schedule: dict[str, Any], key: str) -> None:
+    _verify_commitment(root / "private" / ANSWER_COMMITMENT, _answer_commitment_value(root, schedule, key))
+
+
 def _public_scan(root: Path, artifacts: list[dict[str, Any]], runs: list[dict[str, Any]]) -> None:
     private_ids = {str(run[key]) for run in runs for key in ("run_id", "call_id") if key in run}
     lib.assert_public_safe({"artifacts": artifacts}, arm_aliases=set(OUTPUT_TREATMENTS) | set(ACTIVATION_DESCRIPTIONS), private_ids=private_ids, protected_roots={ROOT, CASES, root, root / "private", Path.home(), Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))})
@@ -823,6 +904,7 @@ def _load_chain(root: Path, output_cases: list[dict[str, Any]], activation_cases
     if schedule != expected_schedule:
         raise ValueError("schedule does not reconstruct from fixed identities")
     runs = _load_runs(root, expected_schedule)
+    _verify_answer_commitment(root, expected_schedule, seal_key)
     mapping = _read_json(root / "private/mapping.json", private=True)
     expected_mapping = lib.build_private_mapping(output_cases, [run for run in runs if run["kind"] == "output"], schedule_key, comparisons=_dev_comparisons(output_cases, plan))
     if mapping != expected_mapping:
@@ -897,6 +979,25 @@ def _judge_manifest_value(bundle: dict[str, Any], mapping: dict[str, Any], plan:
     return {"schema_version": 3, "judge": JUDGE_CONTRACT_ID, "executor": FAKE_JUDGE_ID, "runner": RUNNER_ID, "bundle_sha256": bundle_sha256, "model": judge_identity["model"], "effort": judge_identity["effort"], "cli": plan["execution_contract"]["cli"], "policy_role": "blind_judge", "used_call_ids": used, "reserved_call_ids": reserved, "comparison_contract_sha256": _sha256_value(plan["comparison_contract"])}
 
 
+def _judgment_commitment_value(root: Path, bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any], key: str) -> dict[str, Any]:
+    expected_ids = {pair["pair_id"] for pair in _judge_pairs(bundle, mapping, plan)}
+    payload = {
+        "bundle_sha256": _sha(root / "public/bundle.json", private=False),
+        "judge_manifest_sha256": _sha(root / "private/judge-manifest.json", private=True),
+        "judgments_sha256": _sha(root / "private/judgments.jsonl", private=True),
+        "attempts": _completed_attempt_hashes(root / "private/judge-attempts", expected_ids),
+    }
+    return _signed_commitment("judgments", payload, key)
+
+
+def _freeze_or_verify_judgment_commitment(root: Path, bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any], key: str) -> None:
+    _freeze_or_verify_commitment(root / "private" / JUDGMENT_COMMITMENT, _judgment_commitment_value(root, bundle, mapping, plan, key))
+
+
+def _verify_judgment_commitment(root: Path, bundle: dict[str, Any], mapping: dict[str, Any], plan: dict[str, Any], key: str) -> None:
+    _verify_commitment(root / "private" / JUDGMENT_COMMITMENT, _judgment_commitment_value(root, bundle, mapping, plan, key))
+
+
 def _load_judgment_attempt(path: Path, identity: dict[str, Any]) -> dict[str, Any]:
     loaded = _attempt_state(path, identity)
     if loaded["status"] != "completed":
@@ -957,12 +1058,15 @@ def _run_or_load_judges(root: Path, bundle: dict[str, Any], mapping: dict[str, A
     if spent:
         if _exists(aggregate, private=True):
             raise ValueError("incomplete judge chain has judgment aggregate")
+        if _exists(root / "private" / JUDGMENT_COMMITMENT, private=True):
+            raise ValueError("incomplete judge chain has frozen commitment")
         return rows, sorted(spent)
     if _exists(aggregate, private=True):
         if _read_jsonl(aggregate, private=True) != rows:
             raise ValueError("judgment aggregate mismatch")
     else:
         _write_jsonl(aggregate, rows, private=True, exclusive=True)
+    _freeze_or_verify_judgment_commitment(root, bundle, mapping, plan, _load_key(root, "seal"))
     return rows, []
 
 
@@ -978,11 +1082,12 @@ def _load_judgments(root: Path, bundle: dict[str, Any], mapping: dict[str, Any],
         raise ValueError("judgment aggregate mismatch")
     if _read_json(root / "private/judge-manifest.json", private=True) != _judge_manifest_value(bundle, mapping, plan):
         raise ValueError("judge manifest does not reconstruct from fixed identities")
+    _verify_judgment_commitment(root, bundle, mapping, plan, _load_key(root, "seal"))
     return rows
 
 
 def _assert_private_inventory(root: Path, *, revealed: bool = False) -> None:
-    allowed = {"manifest.json", "mapping-key.json", "seal-key.json", "schedule-key.json", "schedule.json", "mapping.json", "attempts", "judge-attempts", "judgments.jsonl", "judge-manifest.json"}
+    allowed = {"manifest.json", "mapping-key.json", "seal-key.json", "schedule-key.json", "schedule.json", "mapping.json", "attempts", "judge-attempts", "judgments.jsonl", "judge-manifest.json", ANSWER_COMMITMENT, JUDGMENT_COMMITMENT}
     if revealed:
         allowed.add("revealed.json")
     if not set(_directory_names(root / "private", private=True)).issubset(allowed):
@@ -997,10 +1102,10 @@ def _seal(root: Path, output_cases: list[dict[str, Any]], activation_cases: list
     _assert_private_inventory(root)
     _, runs, mapping, bundle, mapping_key, seal_key = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json"})
     judgments = _load_judgments(root, bundle, mapping, plan)
-    required = {"manifest.json", "mapping-key.json", "seal-key.json", "schedule-key.json", "schedule.json", "mapping.json", "attempts", "judge-attempts", "judgments.jsonl", "judge-manifest.json"}
+    required = {"manifest.json", "mapping-key.json", "seal-key.json", "schedule-key.json", "schedule.json", "mapping.json", "attempts", "judge-attempts", "judgments.jsonl", "judge-manifest.json", ANSWER_COMMITMENT, JUDGMENT_COMMITMENT}
     if set(_directory_names(root / "private", private=True)) != required:
         raise ValueError("incomplete private artifact inventory")
-    payload = {"config_sha256": _config_sha256(plan), "manifest_sha256": _sha(root / "private/manifest.json", private=True), "schedule_sha256": _sha(root / "private/schedule.json", private=True), "bundle_sha256": _sha(root / "public/bundle.json", private=False), "mapping_commitment": lib.mapping_commitment(mapping, mapping_key), "judgments_sha256": _sha(root / "private/judgments.jsonl", private=True), "judge_manifest_sha256": _sha(root / "private/judge-manifest.json", private=True)}
+    payload = {"config_sha256": _config_sha256(plan), "manifest_sha256": _sha(root / "private/manifest.json", private=True), "schedule_sha256": _sha(root / "private/schedule.json", private=True), "bundle_sha256": _sha(root / "public/bundle.json", private=False), "mapping_commitment": lib.mapping_commitment(mapping, mapping_key), "judgments_sha256": _sha(root / "private/judgments.jsonl", private=True), "judge_manifest_sha256": _sha(root / "private/judge-manifest.json", private=True), "answer_commitment_sha256": _sha(root / "private" / ANSWER_COMMITMENT, private=True), "judgment_commitment_sha256": _sha(root / "private" / JUDGMENT_COMMITMENT, private=True)}
     _write_json(root / "public/seal.json", lib.build_seal(payload, seal_key), private=False, exclusive=True)
     _assert_public_inventory(root, {"bundle.json", "seal.json"}, runs)
     return {"status": "sealed", "judgments": len(judgments)}
@@ -1011,7 +1116,7 @@ def _reveal(root: Path, output_cases: list[dict[str, Any]], activation_cases: li
     _, runs, mapping, bundle, mapping_key, seal_key = _load_chain(root, output_cases, activation_cases, plan, public_allowed={"bundle.json", "seal.json"})
     judgments = _load_judgments(root, bundle, mapping, plan)
     seal = _read_json(root / "public/seal.json", private=False)
-    result = lib.reveal(mapping, seal, mapping_key=mapping_key, seal_key=seal_key, config_sha256=_config_sha256(plan), manifest_sha256=_sha(root / "private/manifest.json", private=True), schedule_sha256=_sha(root / "private/schedule.json", private=True), bundle_sha256=_sha(root / "public/bundle.json", private=False), judgments_sha256=_sha(root / "private/judgments.jsonl", private=True), judge_manifest_sha256=_sha(root / "private/judge-manifest.json", private=True), judgments=judgments)
+    result = lib.reveal(mapping, seal, mapping_key=mapping_key, seal_key=seal_key, config_sha256=_config_sha256(plan), manifest_sha256=_sha(root / "private/manifest.json", private=True), schedule_sha256=_sha(root / "private/schedule.json", private=True), bundle_sha256=_sha(root / "public/bundle.json", private=False), judgments_sha256=_sha(root / "private/judgments.jsonl", private=True), judge_manifest_sha256=_sha(root / "private/judge-manifest.json", private=True), answer_commitment_sha256=_sha(root / "private" / ANSWER_COMMITMENT, private=True), judgment_commitment_sha256=_sha(root / "private" / JUDGMENT_COMMITMENT, private=True), judgments=judgments)
     path = root / "private/revealed.json"
     if _exists(path, private=True):
         if _read_json(path, private=True) != result:
@@ -1050,14 +1155,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         _assert_private_inventory(root)
         _manifest(root, output_cases, activation_cases, plan)
         mapping_key = _load_or_create_key(root, "mapping", args.secret)
-        _load_or_create_key(root, "seal", args.secret)
+        seal_key = _load_or_create_key(root, "seal", args.secret)
         schedule_key = _load_or_create_key(root, "schedule", args.secret)
         schedule = _load_or_create_schedule(root, output_cases, activation_cases, schedule_key, plan)
         runs, spent = _answer_runs(root, output_cases, activation_cases, schedule)
         if spent:
-            if _exists(root / "private/mapping.json", private=True) or _exists(root / "public/bundle.json", private=False):
+            if _exists(root / "private/mapping.json", private=True) or _exists(root / "public/bundle.json", private=False) or _exists(root / "private" / ANSWER_COMMITMENT, private=True):
                 raise ValueError("incomplete answer chain has frozen artifacts")
             return {"status": "incomplete", "unsealable": True, "runs": len(runs), "spent_call_ids": spent}
+        _freeze_or_verify_answer_commitment(root, schedule, seal_key)
         _mapping_and_bundle(root, output_cases, runs, schedule_key, mapping_key, plan)
         return {"status": "answered", "runs": len(runs)}
     if args.command == "reveal" and not _exists(root / "public/seal.json", private=False):

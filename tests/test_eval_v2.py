@@ -214,6 +214,28 @@ class EvalV2Tests(unittest.TestCase):
         pairs = lib.pair_measurements(runs, baseline_arm="B", candidate_arm="C")
         self.assertEqual({pair["cli"] for pair in pairs}, {"codex-cli 0.145.0", "codex-cli 0.146.0"})
 
+    def test_side_balance_is_independent_inside_every_comparison(self):
+        cases = [
+            {"id": f"case-{number:02}", "category": "status", "language": "en", "prompt": "p", "verified_context": {}}
+            for number in range(15)
+        ]
+        selector = lambda case: {"case_id": case["id"], "trial": 1, "model": "m", "effort": "e", "cli": "cli"}
+        runs = [
+            {**selector(case), "arm": arm, "run_id": f"{case['id']}-{arm}", "commentary": "", "final": arm}
+            for case in cases for arm in ("A", "B", "C", "generic")
+        ]
+        comparisons = [
+            {"comparison_id": "twelve", "baseline_arm": "B", "candidate_arm": "C", "run_selectors": [selector(case) for case in cases[:12]]},
+            {"comparison_id": "fifteen", "baseline_arm": "A", "candidate_arm": "B", "run_selectors": [selector(case) for case in cases]},
+            {"comparison_id": "one", "baseline_arm": "generic", "candidate_arm": "C", "run_selectors": [selector(cases[0])]},
+        ]
+        for secret in ("balance-1", "balance-2", "balance-3"):
+            mapping = lib.build_private_mapping(cases, runs, secret, comparisons=comparisons)
+            for comparison in comparisons:
+                pairs = [pair for pair in mapping["pairs"].values() if pair["comparison_id"] == comparison["comparison_id"]]
+                baseline_left = sum(pair["left"]["arm"] == comparison["baseline_arm"] for pair in pairs)
+                self.assertLessEqual(abs(baseline_left - (len(pairs) - baseline_left)), 1)
+
     def test_balanced_schedule_has_exact_ordinal_balance(self):
         cases = [{"id": f"case-{number}"} for number in range(12)]
         schedule = lib.balanced_schedule(cases, ("A", "B", "C", "generic"), "seed")
@@ -578,6 +600,9 @@ class EvalV2Tests(unittest.TestCase):
             runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
             schedule = json.loads((root / "private/schedule.json").read_text())
             self.assertEqual({call["executor"] for call in schedule["calls"]}, {runner.FAKE_EXECUTOR_ID})
+            manifest = json.loads((root / "private/manifest.json").read_text())
+            self.assertFalse(manifest["release_eligible"])
+            self.assertEqual(manifest["execution_mode"], "offline_fake")
             runner.main(["judge", "--root", str(root), "--fake"])
             judge_manifest = json.loads((root / "private/judge-manifest.json").read_text())
             self.assertEqual(judge_manifest["executor"], runner.FAKE_JUDGE_ID)
@@ -586,11 +611,21 @@ class EvalV2Tests(unittest.TestCase):
     def test_live_readiness_requires_frozen_policy_hashes_and_clean_exact_head(self):
         plan = runner.build_plan(ROOT / "evals/release-plan.json")
         record = next(record for record in plan["records"] if record["lane"] == "dev_output")
-        identity = {"actual_model": record["model"], "actual_effort": record["effort"], "actual_cli": record["cli"]}
+        identity = {"actual_model": record["model"], "actual_effort": record["effort"]}
+        rogues = ({**record, "call_id": "call_rogue"}, {**record, "policy_role": "forged"})
+        with mock.patch("run_eval_v2._probe_cli_identity", side_effect=AssertionError("rogue record reached CLI probe")):
+            for rogue in rogues:
+                self.assertEqual(
+                    runner.live_execution_status(
+                        plan, rogue, **identity, arm_policy_sha256={}, description_policy_sha256={},
+                        evaluated_head_sha="a" * 40, evaluated_tree_sha="c" * 40,
+                    )["status"],
+                    "INCONCLUSIVE",
+                )
         self.assertEqual(
             runner.live_execution_status(
                 plan, record, **identity, arm_policy_sha256={}, description_policy_sha256={},
-                evaluated_head_sha="a" * 40,
+                evaluated_head_sha="a" * 40, evaluated_tree_sha="c" * 40,
             )["status"],
             "INCONCLUSIVE",
         )
@@ -608,23 +643,27 @@ class EvalV2Tests(unittest.TestCase):
             policy["source"]: description_hashes[name]
             for name, policy in frozen["description_policies"].items()
         }
-        with mock.patch("run_eval_v2._source_hashes", return_value=source_hashes), mock.patch(
+        with mock.patch("run_eval_v2._probe_cli_identity", return_value="codex-cli 0.145.0"), mock.patch(
+            "run_eval_v2._source_hashes", return_value=source_hashes,
+        ), mock.patch(
             "run_eval_v2._live_git_state", return_value={"head_sha": "a" * 40, "tree_sha": "c" * 40, "clean": True},
         ):
             self.assertEqual(
                 runner.live_execution_status(
                     frozen, record, **identity, arm_policy_sha256=policy_hashes,
-                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40,
+                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40, evaluated_tree_sha="c" * 40,
                 )["status"],
                 "READY",
             )
-        with mock.patch("run_eval_v2._source_hashes", return_value=source_hashes), mock.patch(
+        with mock.patch("run_eval_v2._probe_cli_identity", return_value="codex-cli 0.145.0"), mock.patch(
+            "run_eval_v2._source_hashes", return_value=source_hashes,
+        ), mock.patch(
             "run_eval_v2._live_git_state", return_value={"head_sha": "b" * 40, "tree_sha": "c" * 40, "clean": True},
         ):
             self.assertEqual(
                 runner.live_execution_status(
                     frozen, record, **identity, arm_policy_sha256=policy_hashes,
-                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40,
+                    description_policy_sha256=description_hashes, evaluated_head_sha="a" * 40, evaluated_tree_sha="c" * 40,
                 )["status"],
                 "INCONCLUSIVE",
             )
@@ -632,6 +671,64 @@ class EvalV2Tests(unittest.TestCase):
         future = copy.deepcopy(plan)
         future["arm_policies"]["B"] = {"state": "frozen", "source": "evals/policies/simple_man_b.md", "offline_only": False}
         self.assertIn("evals/policies/simple_man_b.md", runner._manifest_relative_paths(future))
+
+    def test_coherent_answer_and_judgment_rewrites_break_runner_commitments(self):
+        def rewrite_answer(root):
+            schedule = json.loads((root / "private/schedule.json").read_text())
+            activation = next(call for call in schedule["calls"] if call["kind"] == "activation")
+            attempt = root / "private/attempts" / activation["run_id"]
+            raw_path = attempt / "raw.jsonl"
+            payload = json.loads(raw_path.read_text())
+            payload["final"] = '{"activate":false}' if payload["final"] != '{"activate":false}' else '{"activate":true}'
+            raw_bytes = (lib.canonical_json(payload) + "\n").encode()
+            raw_path.write_bytes(raw_bytes)
+            result_path = attempt / "result.json"
+            result = json.loads(result_path.read_text())
+            result["result"] = {**payload, "raw_sha256": hashlib.sha256(raw_bytes).hexdigest()}
+            result_path.write_text(lib.canonical_json(result) + "\n")
+
+        def rewrite_judgment(root):
+            attempt = next((root / "private/judge-attempts").iterdir())
+            raw_path = attempt / "raw.jsonl"
+            payload = json.loads(raw_path.read_text())
+            payload["judgment"]["quality"] = "left"
+            payload["judgment"]["rationale"] = "coherently rewritten"
+            raw_bytes = (lib.canonical_json(payload) + "\n").encode()
+            raw_path.write_bytes(raw_bytes)
+            result_path = attempt / "result.json"
+            result = json.loads(result_path.read_text())
+            result["result"] = {**payload, "raw_sha256": hashlib.sha256(raw_bytes).hexdigest()}
+            result_path.write_text(lib.canonical_json(result) + "\n")
+            aggregate = root / "private/judgments.jsonl"
+            rows = [json.loads(line) for line in aggregate.read_text().splitlines()]
+            row = next(row for row in rows if row["pair_id"] == payload["pair_id"])
+            row["judgment"] = payload["judgment"]
+            aggregate.write_text("".join(lib.canonical_json(row) + "\n" for row in rows))
+
+        answer_phases = (
+            ("judge", lambda root: None),
+            ("seal", lambda root: runner.main(["judge", "--root", str(root), "--fake"])),
+            ("reveal", lambda root: (runner.main(["judge", "--root", str(root), "--fake"]), runner.main(["seal", "--root", str(root)]))),
+        )
+        for phase, prepare in answer_phases:
+            with self.subTest(kind="answer", phase=phase), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                prepare(root)
+                rewrite_answer(root)
+                with self.assertRaises(ValueError):
+                    runner.main([phase, "--root", str(root), *(["--fake"] if phase == "judge" else [])])
+
+        for phase in ("seal", "reveal"):
+            with self.subTest(kind="judgment", phase=phase), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                runner.main(["judge", "--root", str(root), "--fake"])
+                if phase == "reveal":
+                    runner.main(["seal", "--root", str(root)])
+                rewrite_judgment(root)
+                with self.assertRaises(ValueError):
+                    runner.main([phase, "--root", str(root)])
 
     def test_resume_marks_started_failed_and_interrupted_answer_calls_spent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -650,6 +747,7 @@ class EvalV2Tests(unittest.TestCase):
             untouched = attempts[3]
             shutil.rmtree(untouched)
             (root / "private/mapping.json").unlink()
+            (root / "private/answer-commitment.json").unlink()
             (root / "public/bundle.json").unlink()
 
             first = runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
