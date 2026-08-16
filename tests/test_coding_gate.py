@@ -1,8 +1,10 @@
 import os
+import signal
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from dataclasses import replace
@@ -370,6 +372,66 @@ class CodingGateTests(unittest.TestCase):
 
         self.assertTrue(patch.production.strip())
 
+    def test_collect_patch_rejects_concurrent_regular_and_symlink_flips(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        for replacement_kind in ("regular", "symlink"):
+            with self.subTest(replacement_kind=replacement_kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                workspace = root / "model"
+                baseline = gate.prepare_model_workspace(fixture, workspace)
+                source = workspace / "src/middleware.js"
+                source.write_text(
+                    source.read_text().replace(
+                        "  return {\n    status: 200,",
+                        "  if (session.expiresAt <= store.now()) return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                    )
+                )
+                outside = root / "outside.js"
+                outside.write_text("OUTSIDE_CONTENT_MUST_NOT_BE_CAPTURED\n")
+                replace_now = threading.Event()
+                replaced = threading.Event()
+
+                def replace_source():
+                    if not replace_now.wait(5):
+                        return
+                    staged = root / "replacement"
+                    if replacement_kind == "symlink":
+                        staged.symlink_to(outside)
+                    else:
+                        staged.write_text(outside.read_text())
+                    os.replace(staged, source)
+                    replaced.set()
+
+                original_is_symlink = Path.is_symlink
+
+                def synchronize_after_check(path):
+                    result = original_is_symlink(path)
+                    if path == source and not replace_now.is_set():
+                        replace_now.set()
+                        if not replaced.wait(5):
+                            raise AssertionError("concurrent replacement did not run")
+                    return result
+
+                thread = threading.Thread(target=replace_source)
+                thread.start()
+                captured = None
+                error = None
+                try:
+                    with mock.patch.object(Path, "is_symlink", synchronize_after_check):
+                        captured = gate.collect_patch(fixture, workspace, baseline)
+                except gate.IntegrityError as exc:
+                    error = exc
+                finally:
+                    thread.join(5)
+
+                self.assertFalse(thread.is_alive())
+                self.assertTrue(replaced.is_set())
+                self.assertIsNotNone(
+                    error,
+                    f"race captured outside content: {captured.production if captured else ''}",
+                )
+
     def test_worker_protocol_fails_closed(self):
         case = gate.HiddenCase("case", {}, {"ok": True})
         bad = (
@@ -547,17 +609,21 @@ class CodingGateTests(unittest.TestCase):
 
             self.assertFalse((root / "late-child").exists())
 
-    def test_bounded_runner_reaps_detached_descendant_and_inherits_cpu_limit(self):
+    def test_bounded_runner_reaps_marker_clearing_detached_descendant_and_inherits_cpu_limit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             marker = root / "detached-proof"
+            pid_file = root / "detached-pid"
             child = (
                 "import time; from pathlib import Path; "
-                f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped')"
+                f"time.sleep(0.2); Path({str(marker)!r}).write_text('escaped'); time.sleep(5)"
             )
             parent = (
-                "import subprocess, sys; "
-                f"subprocess.Popen([sys.executable, '-c', {child!r}], start_new_session=True)"
+                "import os, subprocess, sys; from pathlib import Path; "
+                "env = dict(os.environ); env.pop('CODEX_CODING_GATE_RUN_TOKEN', None); "
+                f"child = subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "start_new_session=True, env=env); "
+                f"Path({str(pid_file)!r}).write_text(str(child.pid))"
             )
             cpu_probe = (
                 "import resource, subprocess, sys; "
@@ -567,14 +633,6 @@ class CodingGateTests(unittest.TestCase):
             )
             with tempfile.TemporaryDirectory() as environment:
                 env = gate.validation_environment(Path(environment))
-                gate.run_bounded(
-                    (sys.executable, "-c", parent),
-                    cwd=root,
-                    env=env,
-                    monitor_workspace=root,
-                    trusted_offline=True,
-                    timeout_seconds=1,
-                )
                 cpu = gate.run_bounded(
                     (sys.executable, "-c", cpu_probe),
                     cwd=root,
@@ -582,10 +640,43 @@ class CodingGateTests(unittest.TestCase):
                     trusted_offline=True,
                     timeout_seconds=1,
                 )
-            time.sleep(0.3)
+                try:
+                    gate.run_bounded(
+                        (sys.executable, "-c", parent),
+                        cwd=root,
+                        env=env,
+                        monitor_workspace=root,
+                        trusted_offline=True,
+                        require_process_supervision=True,
+                        timeout_seconds=1,
+                    )
+                except gate.InfrastructureError as exc:
+                    self.assertIn("INCONCLUSIVE", str(exc))
+                    time.sleep(0.3)
+                    self.assertFalse(pid_file.exists())
+                    self.assertFalse(marker.exists())
+                    self.assertLessEqual(int(cpu.stdout.strip()), 2)
+                    return
+            detached_pid = int(pid_file.read_text())
+            try:
+                deadline = time.monotonic() + 0.5
+                while time.monotonic() < deadline:
+                    try:
+                        os.kill(detached_pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.01)
+                else:
+                    self.fail(f"detached process {detached_pid} survived supervision")
+                time.sleep(0.3)
 
-            self.assertFalse(marker.exists())
-            self.assertLessEqual(int(cpu.stdout.strip()), 2)
+                self.assertFalse(marker.exists())
+                self.assertLessEqual(int(cpu.stdout.strip()), 2)
+            finally:
+                try:
+                    os.kill(detached_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     @unittest.skipUnless(
         gate.platform.system() == "Darwin" and shutil.which("codex"),

@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import secrets
+import select
 import shutil
 import signal
 import socket
@@ -635,12 +636,152 @@ def _tree(root: Path) -> dict[str, str]:
     return dict(sorted(files.items()))
 
 
+def _stat_signature(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _read_stable_file(fd: int) -> tuple[bytes, os.stat_result]:
+    before = os.fstat(fd)
+    if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES:
+        raise IntegrityError("workspace path is not a bounded regular file")
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = os.read(fd, min(64 * 1024, MAX_FILE_BYTES + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+        if size > MAX_FILE_BYTES:
+            raise IntegrityError("workspace file exceeds byte cap")
+    if _stat_signature(os.fstat(fd)) != _stat_signature(before):
+        raise IntegrityError("workspace file changed while being read")
+    return b"".join(chunks), before
+
+
 def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
-    return {
-        path: digest
-        for path, digest in _tree(workspace).items()
-        if path != ".git" and not path.startswith(".git/")
-    }
+    if workspace.is_symlink():
+        raise IntegrityError("model workspace must not be a symlink")
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise UnsupportedPlatformError("safe descriptor-relative capture is unavailable")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY
+    nofollow = os.O_NOFOLLOW
+    root_fd = os.open(workspace, directory_flags | nofollow)
+    files: dict[str, str] = {}
+    total = 0
+    entries = 0
+
+    def visit(directory_fd: int, prefix: str, *, root: bool = False) -> None:
+        nonlocal total, entries
+        before = os.fstat(directory_fd)
+        for name in sorted(os.listdir(directory_fd)):
+            if root and name == ".git":
+                continue
+            entries += 1
+            if entries > MAX_FILES:
+                raise IntegrityError("workspace exceeds file cap")
+            item = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            relative = f"{prefix}/{name}" if prefix else name
+            if stat.S_ISLNK(item.st_mode):
+                raise IntegrityError("workspace contains a symlink")
+            if stat.S_ISDIR(item.st_mode):
+                child_fd = os.open(
+                    name,
+                    directory_flags | nofollow,
+                    dir_fd=directory_fd,
+                )
+                try:
+                    if _stat_signature(os.fstat(child_fd)) != _stat_signature(item):
+                        raise IntegrityError("workspace directory changed while opening")
+                    visit(child_fd, relative)
+                finally:
+                    os.close(child_fd)
+                continue
+            if not stat.S_ISREG(item.st_mode):
+                raise IntegrityError("workspace contains a special file")
+            file_fd = os.open(name, os.O_RDONLY | nofollow, dir_fd=directory_fd)
+            try:
+                if _stat_signature(os.fstat(file_fd)) != _stat_signature(item):
+                    raise IntegrityError("workspace file changed while opening")
+                content, _ = _read_stable_file(file_fd)
+            finally:
+                os.close(file_fd)
+            total += len(content)
+            if total > MAX_TREE_BYTES:
+                raise IntegrityError("workspace exceeds byte cap")
+            files[relative] = sha256_bytes(content)
+        if _stat_signature(os.fstat(directory_fd)) != _stat_signature(before):
+            raise IntegrityError("workspace directory changed while being read")
+
+    try:
+        visit(root_fd, "", root=True)
+    except OSError as exc:
+        raise IntegrityError("cannot safely read model workspace") from exc
+    finally:
+        os.close(root_fd)
+    return dict(sorted(files.items()))
+
+
+def _capture_production_files(
+    workspace: Path,
+    production_paths: Sequence[str],
+    expected_manifest: Mapping[str, str],
+) -> dict[str, tuple[bytes, int] | None]:
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise UnsupportedPlatformError("safe descriptor-relative capture is unavailable")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY
+    nofollow = os.O_NOFOLLOW
+    root_fd = os.open(workspace, directory_flags | nofollow)
+    captured: dict[str, tuple[bytes, int] | None] = {}
+    try:
+        for relative in production_paths:
+            parts = Path(relative).parts
+            if not parts or Path(relative).is_absolute() or ".." in parts:
+                raise IntegrityError("invalid production path")
+            source = workspace / relative
+            if source.is_symlink():
+                raise IntegrityError("production path must not be a symlink")
+            parent_fd = os.dup(root_fd)
+            file_fd: int | None = None
+            try:
+                for part in parts[:-1]:
+                    next_fd = os.open(
+                        part,
+                        directory_flags | nofollow,
+                        dir_fd=parent_fd,
+                    )
+                    os.close(parent_fd)
+                    parent_fd = next_fd
+                try:
+                    file_fd = os.open(
+                        parts[-1],
+                        os.O_RDONLY | nofollow,
+                        dir_fd=parent_fd,
+                    )
+                except FileNotFoundError:
+                    captured[relative] = None
+                    continue
+                content, before = _read_stable_file(file_fd)
+                if sha256_bytes(content) != expected_manifest.get(relative):
+                    raise IntegrityError("production file changed before capture")
+                captured[relative] = (content, stat.S_IMODE(before.st_mode))
+            except OSError as exc:
+                raise IntegrityError("cannot safely capture production file") from exc
+            finally:
+                if file_fd is not None:
+                    os.close(file_fd)
+                os.close(parent_fd)
+    finally:
+        os.close(root_fd)
+    return captured
 
 
 def validation_environment(root: Path) -> dict[str, str]:
@@ -692,54 +833,216 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
-def _run_token_pids(token: str) -> set[int]:
-    needle = f"CODEX_CODING_GATE_RUN_TOKEN={token}"
-    if platform.system() == "Linux" and Path("/proc").is_dir():
-        encoded = needle.encode("utf-8")
-        pids: set[int] = set()
-        for entry in Path("/proc").iterdir():
-            if not entry.name.isdigit():
-                continue
-            try:
-                environment = (entry / "environ").read_bytes().split(b"\0")
-            except (FileNotFoundError, PermissionError, ProcessLookupError):
-                continue
-            if encoded in environment:
-                pids.add(int(entry.name))
-        return pids
-    if platform.system() == "Darwin":
-        process = subprocess.run(
-            ("/bin/ps", "eww", "-axo", "pid=,command="),
-            capture_output=True,
-            text=True,
-            timeout=5,
+_BOOTSTRAP = (
+    "import os,sys; fd=int(sys.argv[1]); ready=os.read(fd,1); os.close(fd); "
+    "ready == b'1' or os._exit(126); os.execvpe(sys.argv[2],sys.argv[2:],os.environ)"
+)
+
+
+class _DarwinProcessSupervisor:
+    def __init__(self) -> None:
+        required = (
+            "kqueue",
+            "kevent",
+            "KQ_FILTER_PROC",
+            "KQ_EV_ADD",
+            "KQ_EV_DELETE",
+            "KQ_EV_ENABLE",
+            "KQ_EV_CLEAR",
+            "KQ_EV_ERROR",
+            "KQ_NOTE_FORK",
+            "KQ_NOTE_TRACK",
+            "KQ_NOTE_TRACKERR",
+            "KQ_NOTE_CHILD",
+            "KQ_NOTE_EXIT",
         )
-        if process.returncode != 0:
-            raise InfrastructureError("cannot inspect bounded descendants")
-        return {
-            int(line.lstrip().split(None, 1)[0])
-            for line in process.stdout.splitlines()
-            if needle in line and line.lstrip().split(None, 1)[0].isdigit()
+        if any(not hasattr(select, name) for name in required):
+            raise InfrastructureError(
+                "process supervision is INCONCLUSIVE: Darwin kqueue tracking is unavailable"
+            )
+        self.queue = select.kqueue()
+        self.root_pid: int | None = None
+        self.alive: set[int] = set()
+        self.tracking_error = False
+        try:
+            self._change(os.getpid(), select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_CLEAR)
+            self._change(os.getpid(), select.KQ_EV_DELETE)
+        except BaseException:
+            self.queue.close()
+            raise
+
+    @staticmethod
+    def _fflags() -> int:
+        return select.KQ_NOTE_FORK | select.KQ_NOTE_TRACK | select.KQ_NOTE_EXIT
+
+    def _change(self, pid: int, flags: int) -> None:
+        event = select.kevent(
+            pid,
+            filter=select.KQ_FILTER_PROC,
+            flags=flags,
+            fflags=self._fflags(),
+        )
+        returned = self.queue.control([event], 1, 0)
+        for result in returned:
+            if result.flags & select.KQ_EV_ERROR and result.data:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: " + os.strerror(result.data)
+                )
+
+    def launch(self, command: Sequence[str]) -> tuple[tuple[str, ...], tuple[int, ...], int]:
+        read_fd, write_fd = os.pipe()
+        return (
+            (sys.executable, "-I", "-c", _BOOTSTRAP, str(read_fd), *command),
+            (read_fd,),
+            write_fd,
+        )
+
+    def register(self, process: subprocess.Popen[bytes], release_fd: int) -> None:
+        self.root_pid = process.pid
+        self.alive = {process.pid}
+        self._change(
+            process.pid,
+            select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_CLEAR,
+        )
+        os.write(release_fd, b"1")
+
+    def poll(self, timeout: float = 0) -> None:
+        for event in self.queue.control(None, MAX_FILES, timeout):
+            if event.flags & select.KQ_EV_ERROR:
+                self.tracking_error = True
+            if event.fflags & select.KQ_NOTE_TRACKERR:
+                self.tracking_error = True
+            if event.fflags & select.KQ_NOTE_CHILD:
+                self.alive.add(int(event.ident))
+            if event.fflags & select.KQ_NOTE_EXIT:
+                self.alive.discard(int(event.ident))
+
+    def cleanup(self) -> None:
+        deadline = time.monotonic() + 1
+        quiet = 0
+        while quiet < 2:
+            self.poll(0.01)
+            if self.tracking_error:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: kqueue lost a descendant"
+                )
+            survivors = set(self.alive)
+            for pid in survivors:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    self.alive.discard(pid)
+                except PermissionError as exc:
+                    raise InfrastructureError("cannot kill supervised descendant") from exc
+            before = set(self.alive)
+            self.poll(0.01)
+            quiet = quiet + 1 if not self.alive and not before else 0
+            if time.monotonic() >= deadline:
+                raise InfrastructureError("supervised descendants survived cleanup")
+
+    def close(self) -> None:
+        self.queue.close()
+
+
+def _linux_parent_map() -> dict[int, int]:
+    parents: dict[int, int] = {}
+    try:
+        entries = tuple(Path("/proc").iterdir())
+    except OSError as exc:
+        raise InfrastructureError("Linux process supervision requires /proc") from exc
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / "status").read_text()
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        match = re.search(r"(?m)^PPid:\s+(\d+)$", status)
+        if match:
+            parents[int(entry.name)] = int(match.group(1))
+    return parents
+
+
+class _LinuxProcessSupervisor:
+    def __init__(self) -> None:
+        import ctypes
+
+        if not Path("/proc/self/status").is_file():
+            raise InfrastructureError("Linux process supervision requires /proc")
+        self.ctypes = ctypes
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.prctl.restype = ctypes.c_int
+        current = ctypes.c_int()
+        if self.libc.prctl(37, ctypes.byref(current), 0, 0, 0) != 0:
+            raise InfrastructureError("cannot query Linux child subreaper")
+        self.previous = current.value
+        if self.libc.prctl(36, 1, 0, 0, 0) != 0:
+            raise InfrastructureError("cannot enable Linux child subreaper")
+        self.baseline = {
+            pid for pid, parent in _linux_parent_map().items() if parent == os.getpid()
         }
-    raise UnsupportedPlatformError("bounded descendant cleanup is unsupported")
+        self.known: set[int] = set()
+
+    def launch(self, command: Sequence[str]) -> tuple[tuple[str, ...], tuple[int, ...], int | None]:
+        return tuple(command), (), None
+
+    def register(self, process: subprocess.Popen[bytes], release_fd: int | None) -> None:
+        self.known.add(process.pid)
+
+    def poll(self, timeout: float = 0) -> None:
+        if timeout:
+            time.sleep(timeout)
+        parents = _linux_parent_map()
+        roots = self.known | {
+            pid
+            for pid, parent in parents.items()
+            if parent == os.getpid() and pid not in self.baseline
+        }
+        descendants = set(roots)
+        while True:
+            added = {
+                pid for pid, parent in parents.items() if parent in descendants
+            } - descendants
+            if not added:
+                break
+            descendants.update(added)
+        self.known.update(descendants)
+
+    def cleanup(self) -> None:
+        deadline = time.monotonic() + 1
+        while True:
+            self.poll()
+            alive = {pid for pid in self.known if Path(f"/proc/{pid}").exists()}
+            if not alive:
+                return
+            for pid in alive:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except PermissionError as exc:
+                    raise InfrastructureError("cannot kill supervised descendant") from exc
+            for pid in alive:
+                try:
+                    os.waitpid(pid, os.WNOHANG)
+                except (ChildProcessError, ProcessLookupError):
+                    pass
+            if time.monotonic() >= deadline:
+                raise InfrastructureError("supervised descendants survived cleanup")
+            time.sleep(0.01)
+
+    def close(self) -> None:
+        if self.libc.prctl(36, self.previous, 0, 0, 0) != 0:
+            raise InfrastructureError("cannot restore Linux child subreaper")
 
 
-def _kill_token_processes(token: str) -> None:
-    deadline = time.monotonic() + 1
-    while True:
-        pids = _run_token_pids(token) - {os.getpid()}
-        if not pids:
-            return
-        for pid in pids:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            except PermissionError as exc:
-                raise InfrastructureError("cannot kill detached bounded descendant") from exc
-        if time.monotonic() >= deadline:
-            raise InfrastructureError("detached bounded descendants survived cleanup")
-        time.sleep(0.01)
+def _process_supervisor() -> _DarwinProcessSupervisor | _LinuxProcessSupervisor:
+    system = platform.system()
+    if system == "Darwin":
+        return _DarwinProcessSupervisor()
+    if system == "Linux":
+        return _LinuxProcessSupervisor()
+    raise UnsupportedPlatformError("kernel descendant supervision is unsupported")
 
 
 def run_bounded(
@@ -751,12 +1054,23 @@ def run_bounded(
     monitor_workspace: Path | None = None,
     isolation: SourceIsolation | None = None,
     trusted_offline: bool = False,
+    require_process_supervision: bool = False,
     timeout_seconds: int = TIMEOUT_SECONDS,
     max_output_bytes: int = MAX_OUTPUT_BYTES,
 ) -> CommandResult:
     if isolation is None and not trusted_offline:
         raise IntegrityError("unisolated command execution is allowed only for offline self-checks")
     actual = isolation.wrap(command, cwd) if isolation else tuple(command)
+    supervisor = (
+        _process_supervisor()
+        if isolation is not None or require_process_supervision
+        else None
+    )
+    inherited_fds: tuple[int, ...] = ()
+    release_fd: int | None = None
+    launch = actual
+    if supervisor is not None:
+        launch, inherited_fds, release_fd = supervisor.launch(actual)
     stdout_fd, stdout_name = tempfile.mkstemp(prefix="coding-gate-stdout-")
     stderr_fd, stderr_name = tempfile.mkstemp(prefix="coding-gate-stderr-")
     stdout_path = Path(stdout_name)
@@ -764,20 +1078,20 @@ def run_bounded(
     started = time.monotonic()
     timed_out = output_limited = tree_limited = False
     process: subprocess.Popen[bytes] | None = None
-    run_token = secrets.token_hex(16)
-    process_env = dict(env)
-    process_env["CODEX_CODING_GATE_RUN_TOKEN"] = run_token
+    group_cleaned = False
+    supervisor_closed = False
     try:
         with os.fdopen(stdout_fd, "wb") as stdout, os.fdopen(stderr_fd, "wb") as stderr:
             try:
                 process = subprocess.Popen(
-                    actual,
+                    launch,
                     cwd=cwd,
-                    env=process_env,
+                    env=dict(env),
                     stdin=subprocess.PIPE,
                     stdout=stdout,
                     stderr=stderr,
                     start_new_session=True,
+                    pass_fds=inherited_fds,
                     preexec_fn=(
                         lambda: _child_limits(max(1, math.ceil(timeout_seconds) + 1))
                         if os.name == "posix"
@@ -785,7 +1099,19 @@ def run_bounded(
                     ),
                 )
             except OSError as exc:
-                raise InfrastructureError(f"cannot start command: {actual[0]}") from exc
+                raise InfrastructureError(f"cannot start command: {launch[0]}") from exc
+            finally:
+                for descriptor in inherited_fds:
+                    os.close(descriptor)
+                inherited_fds = ()
+            if supervisor is not None:
+                descriptor = release_fd
+                release_fd = None
+                try:
+                    supervisor.register(process, descriptor)
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
             if process.stdin is not None:
                 try:
                     if input_text is not None:
@@ -795,6 +1121,8 @@ def run_bounded(
                 finally:
                     process.stdin.close()
             while process.poll() is None:
+                if supervisor is not None:
+                    supervisor.poll()
                 elapsed = time.monotonic() - started
                 if elapsed > timeout_seconds:
                     timed_out = True
@@ -816,7 +1144,11 @@ def run_bounded(
             else:
                 process.wait()
                 _kill_group(process)
-            _kill_token_processes(run_token)
+            group_cleaned = True
+            if supervisor is not None:
+                supervisor.cleanup()
+                supervisor.close()
+                supervisor_closed = True
             stdout.flush()
             stderr.flush()
         stdout_bytes = stdout_path.read_bytes()
@@ -838,8 +1170,17 @@ def run_bounded(
             tree_limited=tree_limited,
         )
     finally:
-        if process is not None:
-            _kill_token_processes(run_token)
+        for descriptor in inherited_fds:
+            os.close(descriptor)
+        if release_fd is not None:
+            os.close(release_fd)
+        if process is not None and not group_cleaned:
+            _kill_group(process)
+        if supervisor is not None and not supervisor_closed:
+            try:
+                supervisor.cleanup()
+            finally:
+                supervisor.close()
         stdout_path.unlink(missing_ok=True)
         stderr_path.unlink(missing_ok=True)
 
@@ -952,6 +1293,13 @@ def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
         raise IntegrityError("baseline tests are immutable")
     if not changed_set.issubset(spec.production_paths):
         raise IntegrityError("patch changes non-production fixture paths")
+    captured = _capture_production_files(
+        workspace,
+        spec.production_paths,
+        workspace_manifest,
+    )
+    if _model_fixture_manifest(workspace) != workspace_manifest:
+        raise IntegrityError("model workspace changed during patch capture")
     with tempfile.TemporaryDirectory(prefix="coding-gate-collect-") as temporary:
         control = Path(temporary)
         repository = control / "repository"
@@ -976,15 +1324,14 @@ def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
             ("rev-parse", "HEAD"), cwd=repository, env=env
         ).stdout.strip()
         for relative in spec.production_paths:
-            source = workspace / relative
             destination = repository / relative
-            if source.exists():
-                if not source.is_file() or source.is_symlink():
-                    raise IntegrityError("production path is not a regular file")
-                shutil.copyfile(source, destination)
-                shutil.copymode(source, destination)
-            else:
+            snapshot = captured[relative]
+            if snapshot is None:
                 destination.unlink(missing_ok=True)
+            else:
+                content, mode = snapshot
+                destination.write_bytes(content)
+                destination.chmod(mode)
         diff_check = subprocess.run(
             (
                 "git",
