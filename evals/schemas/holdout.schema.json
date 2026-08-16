@@ -20,12 +20,12 @@
       "additionalProperties": false,
       "required": ["id", "scope", "groups"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
         "scope": {"enum": ["commentary", "final", "visible"]},
         "groups": {
           "type": "array",
           "minItems": 1,
-          "items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+          "items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}}
         }
       }
     },
@@ -34,8 +34,8 @@
       "additionalProperties": false,
       "required": ["id", "any_of"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "any_of": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "any_of": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}}
       }
     },
     "structure": {
@@ -57,13 +57,13 @@
       "additionalProperties": false,
       "required": ["id", "kind", "cluster_id", "language", "category", "requested_shape", "prompt", "verified_context", "critical_facts", "forbidden_claims", "structure"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
         "kind": {"const": "output"},
-        "cluster_id": {"type": "string", "minLength": 1},
+        "cluster_id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
         "language": {"enum": ["en", "ru"]},
         "category": {"enum": ["status", "final", "review", "security", "setup", "diagnosis", "plan", "failed_validation", "destructive_risk", "detailed_override", "teaching_override", "creative_override"]},
         "requested_shape": {"enum": ["compact", "normal", "detailed", "teaching", "creative"]},
-        "prompt": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
         "verified_context": {"type": "object", "propertyNames": {"not": {"enum": ["arm", "candidate", "policy", "winner", "mapping"]}}, "additionalProperties": {"$ref": "#/$defs/context"}},
         "critical_facts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/critical_fact"}},
         "forbidden_claims": {"type": "array", "items": {"$ref": "#/$defs/forbidden_claim"}},
@@ -78,14 +78,14 @@
       "additionalProperties": false,
       "required": ["id", "kind", "language", "activation_class", "execution", "expected", "protected_near_miss", "prompt"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
         "kind": {"const": "activation"},
         "language": {"enum": ["en", "ru"]},
         "activation_class": {"enum": ["explicit", "implicit", "negative"]},
         "execution": {"enum": ["mechanical", "routed"]},
         "expected": {"enum": ["activate", "do_not_activate"]},
         "protected_near_miss": {"enum": [null, "detailed", "teaching", "creative"]},
-        "prompt": {"type": "string", "minLength": 1}
+        "prompt": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}
       },
       "allOf": [
         {"if": {"properties": {"activation_class": {"const": "explicit"}}}, "then": {"properties": {"execution": {"const": "mechanical"}, "expected": {"const": "activate"}}}},

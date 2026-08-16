@@ -1,6 +1,8 @@
+import copy
 import json
 import hashlib
 import os
+import shutil
 import stat
 import sys
 import tempfile
@@ -137,9 +139,9 @@ class EvalV2Tests(unittest.TestCase):
         self.assertEqual(result["planned_calls"], 275)
         with tempfile.TemporaryDirectory() as directory:
             attempt = Path(directory) / "attempt"
-            runner.start_attempt(attempt, {"id": "opaque", "kind": "answer"})
+            runner.start_attempt(attempt, {"call_id": "call_opaque", "id": "opaque", "kind": "answer"})
             with self.assertRaises(FileExistsError):
-                runner.start_attempt(attempt, {"id": "opaque", "kind": "answer"})
+                runner.start_attempt(attempt, {"call_id": "call_opaque", "id": "opaque", "kind": "answer"})
             self.assertEqual(runner.load_attempt(attempt)["status"], "started")
 
     def test_seal_is_terminal_and_judge_started_attempt_is_consumed(self):
@@ -147,7 +149,7 @@ class EvalV2Tests(unittest.TestCase):
             root = Path(directory)
             runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
             judge_attempt = root / "private/judge-attempt"
-            runner.start_attempt(judge_attempt, {"kind": "judge"})
+            runner.start_attempt(judge_attempt, {"call_id": "call_unexpected", "kind": "judge"})
             with self.assertRaises(ValueError):
                 runner.main(["judge", "--root", str(root), "--fake"])
             self.assertFalse((root / "private/judgments.jsonl").exists())
@@ -223,10 +225,7 @@ class EvalV2Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
-            bundle = json.loads((root / "public/bundle.json").read_text())
-            pair_id = bundle["pairs"][0]["pair_id"]
-            bundle_sha = hashlib.sha256(lib.canonical_json(bundle).encode()).hexdigest()
-            runner.start_attempt(root / "private/judge-attempts" / pair_id, {"pair_id": pair_id, "bundle_sha256": bundle_sha})
+            runner.start_attempt(root / "private/judge-attempts" / "unexpected", {"call_id": "call_unexpected", "kind": "judge"})
             with self.assertRaises(ValueError):
                 runner.main(["judge", "--root", str(root), "--fake"])
 
@@ -238,8 +237,10 @@ class EvalV2Tests(unittest.TestCase):
             root = Path(directory)
             runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
             schedule = json.loads((root / "private/schedule.json").read_text())
-            self.assertEqual(len(schedule["calls"]), 24)
-            self.assertEqual(len(list((root / "private/attempts").glob("*"))), 24)
+            self.assertEqual(len(schedule["calls"]), 84)
+            self.assertEqual(len(list((root / "private/attempts").glob("*"))), 84)
+            self.assertEqual(sum(call["kind"] == "output" for call in schedule["calls"]), 48)
+            self.assertEqual(sum(call["kind"] == "activation" for call in schedule["calls"]), 36)
             (root / "private/attempts/extra").mkdir()
             with self.assertRaises(ValueError):
                 runner.main(["judge", "--root", str(root), "--fake"])
@@ -272,6 +273,10 @@ class EvalV2Tests(unittest.TestCase):
         lib.validate_holdout_case(case)
         case = dict(case)
         case["verified_context"] = {"nested": {"candidate": "leak"}}
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(case)
+        case = dict(lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0])
+        case["verified_context"] = {"nested": {"value": object()}}
         with self.assertRaises(ValueError):
             lib.validate_holdout_case(case)
         case = dict(lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0])
@@ -313,6 +318,157 @@ class EvalV2Tests(unittest.TestCase):
         case = lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0]
         result = lib.check_critical_facts(case, {"commentary": "", "final": "Implementation finished; 84/84 passed; integration not run because auth returns 503; PR #27 is not ready to merge."})
         self.assertTrue(result["passed"], result)
+
+    def test_seal_and_reveal_reconstruct_fixed_identity_artifacts(self):
+        mutations = (
+            ("private/schedule.json", lambda value: value["calls"][0].__setitem__("ordinal", 99)),
+            ("private/manifest.json", lambda value: value.__setitem__("runner", "forged-runner")),
+            ("private/judge-manifest.json", lambda value: value.__setitem__("judge", "forged-judge")),
+        )
+        for path, mutate in mutations:
+            with self.subTest(phase="seal", path=path), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                runner.main(["judge", "--root", str(root), "--fake"])
+                artifact = root / path
+                value = json.loads(artifact.read_text())
+                mutate(value)
+                artifact.write_text(json.dumps(value))
+                with self.assertRaises(ValueError):
+                    runner.main(["seal", "--root", str(root)])
+            with self.subTest(phase="reveal", path=path), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+                runner.main(["judge", "--root", str(root), "--fake"])
+                runner.main(["seal", "--root", str(root)])
+                artifact = root / path
+                value = json.loads(artifact.read_text())
+                mutate(value)
+                artifact.write_text(json.dumps(value))
+                with self.assertRaises(ValueError):
+                    runner.main(["reveal", "--root", str(root)])
+
+    def test_dry_plan_has_concrete_preregistered_call_identities(self):
+        derived = runner.build_plan(ROOT / "evals/release-plan.json")
+        records = derived["records"]
+        required = {"call_id", "lane", "case_slot", "treatment", "description", "trial", "model", "effort", "cli", "policy_role", "conditional"}
+        self.assertEqual(len(records), 275)
+        self.assertEqual(len({record["call_id"] for record in records}), 275)
+        self.assertTrue(all(set(record) == required for record in records))
+        self.assertTrue(all(record["call_id"].startswith("call_") for record in records))
+        self.assertTrue(all(isinstance(record["case_slot"], str) and record["case_slot"] for record in records))
+        self.assertTrue(all(isinstance(record["model"], str) and record["model"] for record in records))
+        self.assertTrue(all(isinstance(record["effort"], str) and record["effort"] for record in records))
+        self.assertEqual(
+            {lane: sum(record["lane"] == lane for record in records) for lane in runner.LANES},
+            runner.LANES,
+        )
+        self.assertEqual(
+            {record["treatment"] for record in records if record["lane"] == "dev_output"},
+            {"A", "B", "C", "generic"},
+        )
+        self.assertNotIn("prompt", lib.canonical_json(records))
+
+    def test_resume_marks_started_failed_and_interrupted_answer_calls_spent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            attempts = sorted((root / "private/attempts").iterdir())
+            states = ("started", "failed", "interrupted")
+            consumed = []
+            for attempt, state in zip(attempts, states):
+                identity = runner.load_attempt(attempt)["identity"]
+                consumed.append(identity["call_id"])
+                (attempt / "raw.jsonl").unlink()
+                (attempt / "result.json").unlink()
+                if state != "started":
+                    runner.finish_attempt(attempt, {}, state)
+            untouched = attempts[3]
+            shutil.rmtree(untouched)
+            (root / "private/mapping.json").unlink()
+            (root / "public/bundle.json").unlink()
+
+            first = runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            self.assertEqual(first["status"], "incomplete")
+            self.assertTrue(first["unsealable"])
+            self.assertEqual(set(first["spent_call_ids"]), set(consumed))
+            self.assertTrue((untouched / "result.json").exists())
+            self.assertFalse((attempts[0] / "result.json").exists())
+            with mock.patch("run_eval_v2._fake_response", side_effect=AssertionError("spent call retried")):
+                second = runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            self.assertEqual(second["status"], "incomplete")
+            with self.assertRaises(ValueError):
+                runner.main(["seal", "--root", str(root)])
+
+    def test_resume_marks_started_judge_call_spent_and_runs_only_untouched_pairs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            bundle = json.loads((root / "public/bundle.json").read_text())
+            plan = runner.build_plan(ROOT / "evals/release-plan.json")
+            pair = bundle["pairs"][0]
+            identity = runner._judge_identity(pair, runner._bundle_sha256(bundle), plan, bundle["pairs"])
+            attempt = root / "private/judge-attempts" / pair["pair_id"]
+            runner.start_attempt(attempt, identity)
+
+            result = runner.main(["judge", "--root", str(root), "--fake"])
+            self.assertEqual(result["status"], "incomplete")
+            self.assertTrue(result["unsealable"])
+            self.assertEqual(result["spent_call_ids"], [identity["call_id"]])
+            self.assertFalse((attempt / "result.json").exists())
+            self.assertFalse((root / "private/judgments.jsonl").exists())
+            self.assertTrue((root / "private/judge-manifest.json").exists())
+            with mock.patch("run_eval_v2._fake_judgment", side_effect=AssertionError("spent judge retried")):
+                self.assertEqual(runner.main(["judge", "--root", str(root), "--fake"])["status"], "incomplete")
+
+    def test_public_inventory_is_exact_and_neutral_positions_are_left_right(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            bundle = json.loads((root / "public/bundle.json").read_text())
+            self.assertEqual(set(bundle["pairs"][0]) - {"pair_id", "case_id", "language", "prompt", "verified_context"}, {"left", "right"})
+            self.assertNotIn("response_A", lib.canonical_json(bundle))
+            self.assertNotIn("response_B", lib.canonical_json(bundle))
+            runner.main(["judge", "--root", str(root), "--fake"])
+            (root / "public/arm-map.json").write_text('{"arm":"A"}')
+            with self.assertRaises(ValueError):
+                runner.main(["seal", "--root", str(root)])
+        with self.assertRaises(ValueError):
+            lib.assert_public_safe({"note": "generic terse"}, arm_aliases={"generic"})
+
+    def test_root_ownership_and_holdout_runtime_schema_are_fail_closed(self):
+        for unsafe in ("/", str(Path.home()), tempfile.gettempdir(), str(ROOT / "eval-v2-output")):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
+                runner._root(unsafe)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "foreign.txt").write_text("not an eval root")
+            with self.assertRaises(ValueError):
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+
+        case = copy.deepcopy(lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0])
+        case["critical_facts"][0]["id"] = " "
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(case)
+        case = copy.deepcopy(lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0])
+        case["critical_facts"][0]["groups"][0][0] = " "
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(case)
+        judgment = {"quality": "tie", "naturalness": "tie", "flags": {"left": [], "right": []}, "rationale": " "}
+        with self.assertRaises(ValueError):
+            lib.validate_judgment(judgment)
+        schema = json.loads((ROOT / "evals/schemas/holdout.schema.json").read_text())
+        self.assertEqual(schema["$defs"]["critical_fact"]["properties"]["id"]["pattern"], ".*\\S.*")
+
+    def test_pair_measurements_preserve_registered_cluster_id(self):
+        runs = []
+        for case_id in ("one", "two"):
+            for arm in ("A", "B"):
+                runs.append({"case_id": case_id, "cluster_id": "shared", "trial": 1, "model": "m", "effort": "e", "arm": arm,
+                             "commentary_visible_tokens": 1, "final_visible_tokens": 1, "input_tokens": 10,
+                             "cached_input_tokens": 5, "output_tokens": 2, "latency_ms": 1})
+        pairs = lib.pair_measurements(runs)
+        self.assertEqual({pair["cluster_id"] for pair in pairs}, {"shared"})
 
 
 if __name__ == "__main__":

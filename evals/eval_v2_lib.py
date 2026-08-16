@@ -116,6 +116,25 @@ def _reject_identity(value: Any) -> None:
             _reject_identity(item)
 
 
+def _validate_context(value: Any) -> None:
+    if value is None or isinstance(value, (str, bool)):
+        return
+    if type(value) in {int, float}:
+        _finite(value)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_context(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("invalid verified context key")
+            _validate_context(item)
+        return
+    raise ValueError("invalid verified context value")
+
+
 def _validate_output_case(row: dict[str, Any]) -> None:
     require_exact_fields(row, OUTPUT_FIELDS, "output case")
     _reject_identity(row)
@@ -125,16 +144,24 @@ def _validate_output_case(row: dict[str, Any]) -> None:
         raise ValueError("invalid output case enum")
     if not isinstance(row["verified_context"], dict) or not isinstance(row["critical_facts"], list) or not row["critical_facts"] or not isinstance(row["forbidden_claims"], list) or not isinstance(row["structure"], dict):
         raise ValueError("invalid output case payload")
+    _validate_context(row["verified_context"])
     for fact in row["critical_facts"]:
         require_exact_fields(fact, {"id", "scope", "groups"}, "critical fact")
-        if not isinstance(fact["id"], str) or fact["scope"] not in {"commentary", "final", "visible"} or not isinstance(fact["groups"], list) or not fact["groups"]:
+        if fact["scope"] not in {"commentary", "final", "visible"} or not isinstance(fact["groups"], list) or not fact["groups"]:
             raise ValueError("invalid critical fact")
-        if any(not isinstance(group, list) or not group or any(not isinstance(term, str) or not term for term in group) for group in fact["groups"]):
+        _string(fact["id"], "critical fact id")
+        if any(not isinstance(group, list) or not group for group in fact["groups"]):
             raise ValueError("invalid critical fact groups")
+        for group in fact["groups"]:
+            for term in group:
+                _string(term, "critical fact term")
     for claim in row["forbidden_claims"]:
         require_exact_fields(claim, {"id", "any_of"}, "forbidden claim")
-        if not isinstance(claim["id"], str) or not isinstance(claim["any_of"], list) or not claim["any_of"] or any(not isinstance(term, str) or not term for term in claim["any_of"]):
+        if not isinstance(claim["any_of"], list) or not claim["any_of"]:
             raise ValueError("invalid forbidden claim")
+        _string(claim["id"], "forbidden claim id")
+        for term in claim["any_of"]:
+            _string(term, "forbidden claim term")
     if set(row["structure"]) - STRUCTURE_FIELDS:
         raise ValueError("unknown structure rule")
     for key, value in row["structure"].items():
@@ -212,8 +239,8 @@ def balanced_sides(cases: list[dict[str, Any]], secret: bytes | str) -> dict[str
 def build_private_mapping(cases: list[dict[str, Any]], runs: list[dict[str, Any]], secret: bytes | str) -> dict[str, Any]:
     by_case: dict[str, dict[str, dict[str, Any]]] = {}
     for run in runs:
-        if run.get("arm") not in {"A", "B"} or not isinstance(run.get("run_id"), str):
-            raise ValueError("private runs must have A/B arm and run id")
+        if run.get("arm") not in {"A", "B", "C", "generic"} or not isinstance(run.get("run_id"), str):
+            raise ValueError("private runs must have known arm and run id")
         arms = by_case.setdefault(run.get("case_id"), {})
         if run["arm"] in arms:
             raise ValueError("duplicate private arm run")
@@ -222,7 +249,7 @@ def build_private_mapping(cases: list[dict[str, Any]], runs: list[dict[str, Any]
     pairs: dict[str, Any] = {}
     for case in cases:
         arms = by_case.get(case["id"], {})
-        if set(arms) != {"A", "B"}:
+        if not {"A", "B"}.issubset(arms):
             raise ValueError("missing private pair counterpart")
         pair_id = opaque_id("pair", secret, {"case": case["id"]})
         left, right = ("A", "B") if sides[case["id"]] else ("B", "A")
@@ -246,8 +273,9 @@ def _normalized(value: str) -> str:
 
 
 def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None = None, private_ids: set[str] | None = None, protected_roots: set[Path] | None = None) -> None:
-    forbidden = {"arm", "candidate", "winner", "runid", "private", "authorization", "secret"}
-    aliases = "|".join(re.escape(alias) for alias in sorted(arm_aliases or {"A", "B"}) if alias)
+    forbidden = {"arm", "candidate", "winner", "runid", "private", "authorization", "secret", "responsea", "responseb"}
+    alias_values = sorted(alias for alias in arm_aliases or {"A", "B"} if alias)
+    aliases = "|".join(re.escape(alias) for alias in alias_values)
     identifiers = {_normalized(identifier) for identifier in private_ids or set()}
     roots = [unicodedata.normalize("NFKC", str(root)).casefold() for root in protected_roots or set()]
     def walk(value: Any, *, top_level: bool = False) -> None:
@@ -266,6 +294,9 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
             if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
                 raise ValueError("public text leak")
             if aliases and re.search(rf"\b(?:arm|variant|treatment)\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+                raise ValueError("public arm leak")
+            long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
+            if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):
                 raise ValueError("public arm leak")
             if re.search(r"\bBearer\s+\S+|\b(?:api[_ -]?key|access[_ -]?token|password)\s*[:=]\s*\S+", raw, re.IGNORECASE):
                 raise ValueError("public secret leak")
@@ -289,7 +320,7 @@ def build_public_bundle(cases: list[dict[str, Any]], runs: list[dict[str, Any]],
         case = case_by_id.get(left["case_id"])
         if not case:
             raise ValueError("unknown mapping case")
-        pairs.append({"pair_id": pair_id, "case_id": case["id"], "language": case["language"], "prompt": case["prompt"], "verified_context": case["verified_context"], "response_A": {"commentary": left["commentary"], "final": left["final"]}, "response_B": {"commentary": right["commentary"], "final": right["final"]}})
+        pairs.append({"pair_id": pair_id, "case_id": case["id"], "language": case["language"], "prompt": case["prompt"], "verified_context": case["verified_context"], "left": {"commentary": left["commentary"], "final": left["final"]}, "right": {"commentary": right["commentary"], "final": right["final"]}})
     bundle = {"schema_version": 1, "mapping_commitment": commitment or mapping_commitment(mapping), "pairs": pairs}
     assert_public_safe(bundle, arm_aliases={"A", "B"}, private_ids={str(run["run_id"]) for run in runs}, protected_roots=protected_roots)
     return bundle
@@ -313,7 +344,7 @@ def validate_judgment(raw: str | dict[str, Any]) -> dict[str, Any]:
     for flags in value["flags"].values():
         if not isinstance(flags, list) or len(set(flags)) != len(flags) or any(flag not in JUDGE_FLAGS for flag in flags):
             raise ValueError("invalid judgment flags")
-    if not isinstance(value["rationale"], str) or len(value["rationale"]) > 600:
+    if not isinstance(value["rationale"], str) or not value["rationale"].strip() or len(value["rationale"]) > 600:
         raise ValueError("invalid rationale")
     return value
 
@@ -389,22 +420,30 @@ def _metrics(run: dict[str, Any]) -> dict[str, float]:
         raise ValueError("cached input exceeds input")
     result["visible_output_tokens"] = result["commentary_visible_tokens"] + result["final_visible_tokens"]
     result["uncached_input_tokens"] = result["input_tokens"] - result["cached_input_tokens"]
+    for key in ("visible_output_tokens", "uncached_input_tokens"):
+        if key in run and run[key] != result[key]:
+            raise ValueError(f"invalid derived metric {key}")
     return result
 
 
 def pair_measurements(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, int, str, str], dict[str, dict[str, Any]]] = {}
+    grouped: dict[tuple[str, int, str, str], dict[str, Any]] = {}
     for run in runs:
         key = (run.get("case_id"), run.get("trial"), run.get("model"), run.get("effort"))
         if not isinstance(key[0], str) or type(key[1]) is not int or not isinstance(key[2], str) or not isinstance(key[3], str) or run.get("arm") not in {"A", "B"}:
             raise ValueError("invalid pairing identity")
-        bucket = grouped.setdefault(key, {})
-        if run["arm"] in bucket: raise ValueError("duplicate pair counterpart")
-        bucket[run["arm"]] = _metrics(run)
+        cluster_id = run.get("cluster_id", key[0])
+        _string(cluster_id, "cluster_id")
+        bucket = grouped.setdefault(key, {"cluster_id": cluster_id, "sides": {}})
+        if bucket["cluster_id"] != cluster_id:
+            raise ValueError("mismatched pair cluster")
+        if run["arm"] in bucket["sides"]: raise ValueError("duplicate pair counterpart")
+        bucket["sides"][run["arm"]] = _metrics(run)
     paired = []
-    for key, sides in sorted(grouped.items()):
+    for key, bucket in sorted(grouped.items()):
+        sides = bucket["sides"]
         if set(sides) != {"A", "B"}: raise ValueError("missing pair counterpart")
-        paired.append({"case_id": key[0], "cluster_id": key[0], "trial": key[1], "model": key[2], "effort": key[3], "A": sides["A"], "B": sides["B"]})
+        paired.append({"case_id": key[0], "cluster_id": bucket["cluster_id"], "trial": key[1], "model": key[2], "effort": key[3], "A": sides["A"], "B": sides["B"]})
     return paired
 
 
