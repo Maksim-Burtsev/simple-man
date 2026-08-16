@@ -8,6 +8,7 @@ import json
 import math
 import random
 import re
+import statistics
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -98,84 +99,87 @@ def _string(value: Any, field: str) -> str:
     return value
 
 
+OUTPUT_FIELDS = {"id", "kind", "cluster_id", "language", "category", "requested_shape", "prompt", "verified_context", "critical_facts", "forbidden_claims", "structure"}
+ACTIVATION_FIELDS = {"id", "kind", "language", "activation_class", "execution", "expected", "protected_near_miss", "prompt"}
+IDENTITY_FIELDS = {"arm", "candidate", "policy", "winner", "mapping"}
+STRUCTURE_FIELDS = {"exact_nonempty_lines", "exact_paragraphs", "min_words", "max_words", "exact_top_level_items", "required_code_fence"}
+
+
+def _reject_identity(value: Any) -> None:
+    if isinstance(value, dict):
+        if IDENTITY_FIELDS.intersection(value):
+            raise ValueError("identity field is forbidden")
+        for item in value.values():
+            _reject_identity(item)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_identity(item)
+
+
+def _validate_output_case(row: dict[str, Any]) -> None:
+    require_exact_fields(row, OUTPUT_FIELDS, "output case")
+    _reject_identity(row)
+    for field in ("id", "cluster_id", "prompt"):
+        _string(row[field], field)
+    if row["kind"] != "output" or row["language"] not in {"en", "ru"} or row["category"] not in OUTPUT_CATEGORIES or row["requested_shape"] not in {"compact", "normal", "detailed", "teaching", "creative"}:
+        raise ValueError("invalid output case enum")
+    if not isinstance(row["verified_context"], dict) or not isinstance(row["critical_facts"], list) or not row["critical_facts"] or not isinstance(row["forbidden_claims"], list) or not isinstance(row["structure"], dict):
+        raise ValueError("invalid output case payload")
+    for fact in row["critical_facts"]:
+        require_exact_fields(fact, {"id", "scope", "groups"}, "critical fact")
+        if not isinstance(fact["id"], str) or fact["scope"] not in {"commentary", "final", "visible"} or not isinstance(fact["groups"], list) or not fact["groups"]:
+            raise ValueError("invalid critical fact")
+        if any(not isinstance(group, list) or not group or any(not isinstance(term, str) or not term for term in group) for group in fact["groups"]):
+            raise ValueError("invalid critical fact groups")
+    for claim in row["forbidden_claims"]:
+        require_exact_fields(claim, {"id", "any_of"}, "forbidden claim")
+        if not isinstance(claim["id"], str) or not isinstance(claim["any_of"], list) or not claim["any_of"] or any(not isinstance(term, str) or not term for term in claim["any_of"]):
+            raise ValueError("invalid forbidden claim")
+    if set(row["structure"]) - STRUCTURE_FIELDS:
+        raise ValueError("unknown structure rule")
+    for key, value in row["structure"].items():
+        if key == "required_code_fence":
+            if type(value) is not bool: raise ValueError("invalid structure rule")
+        elif type(value) is not int or value < 1:
+            raise ValueError("invalid structure rule")
+    if row["requested_shape"] == "compact" and "max_words" in row["structure"]:
+        raise ValueError("compact holdout cases cannot add an artificial max words rule")
+
+
+def _validate_activation_case(row: dict[str, Any]) -> None:
+    require_exact_fields(row, ACTIVATION_FIELDS, "activation case")
+    _reject_identity(row)
+    _string(row["id"], "id"); _string(row["prompt"], "prompt")
+    valid = row["kind"] == "activation" and row["language"] in {"en", "ru"} and row["activation_class"] in {"explicit", "implicit", "negative"} and row["execution"] in {"mechanical", "routed"} and row["expected"] in {"activate", "do_not_activate"} and row["protected_near_miss"] in {None, "detailed", "teaching", "creative"}
+    if not valid:
+        raise ValueError("invalid activation case enum")
+    expected = {"explicit": ("mechanical", "activate"), "implicit": ("routed", "activate"), "negative": ("routed", "do_not_activate")}[row["activation_class"]]
+    if (row["execution"], row["expected"]) != expected or (row["protected_near_miss"] is not None and row["activation_class"] != "negative"):
+        raise ValueError("invalid activation case contract")
+
+
 def load_output_cases(path: Path) -> list[dict[str, Any]]:
-    fields = {"id", "kind", "cluster_id", "language", "category", "requested_shape", "prompt", "verified_context", "critical_facts", "forbidden_claims", "structure"}
     rows = _load_jsonl(path)
-    seen: set[str] = set()
-    for row in rows:
-        require_exact_fields(row, fields, "output case")
-        for field in ("id", "cluster_id", "prompt"):
-            _string(row[field], field)
-        if row["kind"] != "output" or row["language"] not in {"en", "ru"} or row["category"] not in OUTPUT_CATEGORIES:
-            raise ValueError("invalid output case enum")
-        if row["requested_shape"] not in {"compact", "normal", "detailed", "teaching", "creative"}:
-            raise ValueError("invalid requested shape")
-        if not isinstance(row["verified_context"], dict) or not isinstance(row["critical_facts"], list) or not row["critical_facts"] or not isinstance(row["forbidden_claims"], list) or not isinstance(row["structure"], dict):
-            raise ValueError("invalid output case payload")
-        if row["id"] in seen:
-            raise ValueError("duplicate output case")
-        seen.add(row["id"])
-    if len(rows) != 12:
-        raise ValueError("output corpus must contain exactly 12 cases")
+    for row in rows: _validate_output_case(row)
+    if len(rows) != 12 or len({row["id"] for row in rows}) != 12:
+        raise ValueError("output corpus must contain exactly 12 unique cases")
     return rows
 
 
 def load_activation_cases(path: Path) -> list[dict[str, Any]]:
-    fields = {"id", "kind", "language", "activation_class", "execution", "expected", "protected_near_miss", "prompt"}
     rows = _load_jsonl(path)
-    seen: set[str] = set()
-    for row in rows:
-        require_exact_fields(row, fields, "activation case")
-        _string(row["id"], "id"); _string(row["prompt"], "prompt")
-        valid = (
-            row["kind"] == "activation" and row["language"] in {"en", "ru"}
-            and row["activation_class"] in {"explicit", "implicit", "negative"}
-            and row["execution"] in {"mechanical", "routed"}
-            and row["expected"] in {"activate", "do_not_activate"}
-            and row["protected_near_miss"] in {None, "detailed", "teaching", "creative"}
-        )
-        if not valid:
-            raise ValueError("invalid activation case enum")
-        if ((row["activation_class"] == "explicit") != (row["execution"] == "mechanical" and row["expected"] == "activate")):
-            raise ValueError("invalid explicit activation case")
-        if row["activation_class"] == "implicit" and (row["execution"], row["expected"]) != ("routed", "activate"):
-            raise ValueError("invalid implicit activation case")
-        if row["activation_class"] == "negative" and (row["execution"], row["expected"]) != ("routed", "do_not_activate"):
-            raise ValueError("invalid negative activation case")
-        if row["protected_near_miss"] is not None and row["activation_class"] != "negative":
-            raise ValueError("protected near miss must be negative")
-        if row["id"] in seen:
-            raise ValueError("duplicate activation case")
-        seen.add(row["id"])
-    if len(rows) != 20:
-        raise ValueError("activation corpus must contain exactly 20 cases")
+    for row in rows: _validate_activation_case(row)
+    if len(rows) != 20 or len({row["id"] for row in rows}) != 20:
+        raise ValueError("activation corpus must contain exactly 20 unique cases")
     return rows
 
 
 def validate_holdout_case(case: dict[str, Any]) -> None:
-    banned = {"arm", "candidate", "policy", "winner", "mapping"}
-    if banned.intersection(case):
-        raise ValueError("holdout case contains forbidden identity field")
-    if case.get("kind") == "output":
-        row = dict(case); row.setdefault("cluster_id", row.get("id")); load_output_cases_from_rows([row])
-    elif case.get("kind") == "activation":
-        load_activation_cases_from_rows([case])
-    else:
-        raise ValueError("unknown holdout kind")
-
-
-def load_output_cases_from_rows(rows: list[dict[str, Any]]) -> None:
-    # Single-row validator used only for schema-like inline holdout checks.
-    if len(rows) != 1:
-        raise ValueError("one output case required")
-    row = rows[0]
-    if row.get("kind") != "output" or row.get("category") not in OUTPUT_CATEGORIES:
-        raise ValueError("invalid output holdout case")
-
-
-def load_activation_cases_from_rows(rows: list[dict[str, Any]]) -> None:
-    if len(rows) != 1 or rows[0].get("kind") != "activation":
-        raise ValueError("invalid activation holdout case")
+    if not isinstance(case, dict):
+        raise ValueError("holdout case must be an object")
+    if case.get("kind") == "output": _validate_output_case(case)
+    elif case.get("kind") == "activation": _validate_activation_case(case)
+    else: raise ValueError("unknown holdout kind")
 
 
 def hmac_digest(secret: bytes | str, value: Any) -> str:
@@ -199,15 +203,10 @@ def balanced_schedule(cases: list[dict[str, Any]], arms: tuple[str, ...], secret
 
 
 def balanced_sides(cases: list[dict[str, Any]], secret: bytes | str) -> dict[str, bool]:
-    blocks: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for case in cases:
-        blocks.setdefault((case["category"], case["language"]), []).append(case)
-    result: dict[str, bool] = {}
-    for block_cases in blocks.values():
-        ordered = sorted(block_cases, key=lambda case: hmac_digest(secret, {"case": case["id"]}))
-        for index, case in enumerate(ordered):
-            result[case["id"]] = index % 2 == 0
-    return result
+    # A keyed ordering is the preregistered odd-stratum coin: alternating it
+    # keeps every singleton stratum random while global left/right differs by at most one.
+    ordered = sorted(cases, key=lambda case: hmac_digest(secret, {"side_coin": case["id"]}))
+    return {case["id"]: index % 2 == 0 for index, case in enumerate(ordered)}
 
 
 def build_private_mapping(cases: list[dict[str, Any]], runs: list[dict[str, Any]], secret: bytes | str) -> dict[str, Any]:
@@ -235,51 +234,64 @@ def build_private_mapping(cases: list[dict[str, Any]], runs: list[dict[str, Any]
     return {"schema_version": 1, "eval_id": opaque_id("eval", secret, "eval"), "commitment_nonce": nonce, "pairs": pairs}
 
 
-def mapping_commitment(mapping: dict[str, Any]) -> str:
+def mapping_commitment(mapping: dict[str, Any], key: bytes | str | None = None) -> str:
     require_exact_fields(mapping, {"schema_version", "eval_id", "commitment_nonce", "pairs"}, "mapping")
     if mapping["schema_version"] != 1 or not re.fullmatch(r"[0-9a-f]{64}", mapping["commitment_nonce"]):
         raise ValueError("invalid mapping")
-    return hashlib.sha256(canonical_json(mapping).encode()).hexdigest()
+    return hmac_digest(key, mapping) if key is not None else hashlib.sha256(canonical_json(mapping).encode()).hexdigest()
 
 
 def _normalized(value: str) -> str:
     return re.sub(r"[\W_]+", "", unicodedata.normalize("NFKC", value).casefold())
 
 
-def assert_public_safe(bundle: dict[str, Any]) -> None:
-    forbidden = {"arm", "candidate", "policy", "winner", "mapping", "runid", "private", "authorization", "secret"}
-    def walk(value: Any) -> None:
+def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None = None, private_ids: set[str] | None = None, protected_roots: set[Path] | None = None) -> None:
+    forbidden = {"arm", "candidate", "winner", "runid", "private", "authorization", "secret"}
+    aliases = "|".join(re.escape(alias) for alias in sorted(arm_aliases or {"A", "B"}) if alias)
+    identifiers = {_normalized(identifier) for identifier in private_ids or set()}
+    roots = [unicodedata.normalize("NFKC", str(root)).casefold() for root in protected_roots or set()]
+    def walk(value: Any, *, top_level: bool = False) -> None:
         if isinstance(value, dict):
             for key, item in value.items():
-                if _normalized(key) in forbidden:
+                normalized = _normalized(key)
+                if normalized in forbidden or (normalized == "mapping" and not (top_level and key == "mapping_commitment")):
                     raise ValueError("public identity leak")
                 walk(item)
         elif isinstance(value, list):
             for item in value:
                 walk(item)
         elif isinstance(value, str):
-            text = _normalized(value)
-            if any(word in text for word in ("arma", "armb", "candidate", "policy", "mapping", "authorization", "secret")):
+            raw = unicodedata.normalize("NFKC", value)
+            text = _normalized(raw)
+            if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
                 raise ValueError("public text leak")
-    walk(bundle)
+            if aliases and re.search(rf"\b(?:arm|variant|treatment)\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+                raise ValueError("public arm leak")
+            if re.search(r"\bBearer\s+\S+|\b(?:api[_ -]?key|access[_ -]?token|password)\s*[:=]\s*\S+", raw, re.IGNORECASE):
+                raise ValueError("public secret leak")
+            if any(root and root in raw.casefold() for root in roots) or re.search(r"/(?:Users|home|private|var|tmp)/", raw, re.IGNORECASE):
+                raise ValueError("public path leak")
+    walk(bundle, top_level=True)
 
 
-def build_public_bundle(cases: list[dict[str, Any]], runs: list[dict[str, Any]], mapping: dict[str, Any]) -> dict[str, Any]:
+def build_public_bundle(cases: list[dict[str, Any]], runs: list[dict[str, Any]], mapping: dict[str, Any], *, commitment: str | None = None, protected_roots: set[Path] | None = None) -> dict[str, Any]:
     mapping_commitment(mapping)
     run_by_id = {run.get("run_id"): run for run in runs}
     case_by_id = {case["id"]: case for case in cases}
     pairs: list[dict[str, Any]] = []
     for pair_id, pair in sorted(mapping["pairs"].items()):
         require_exact_fields(pair, {"left", "right"}, "mapping pair")
-        left, right = run_by_id.get(pair["left"].get("run_id")), run_by_id.get(pair["right"].get("run_id"))
-        if not left or not right or left["case_id"] != right["case_id"]:
+        require_exact_fields(pair["left"], {"arm", "run_id"}, "mapping side")
+        require_exact_fields(pair["right"], {"arm", "run_id"}, "mapping side")
+        left, right = run_by_id.get(pair["left"]["run_id"]), run_by_id.get(pair["right"]["run_id"])
+        if not left or not right or left["case_id"] != right["case_id"] or left.get("arm") != pair["left"]["arm"] or right.get("arm") != pair["right"]["arm"] or left["arm"] == right["arm"]:
             raise ValueError("invalid mapping run reference")
         case = case_by_id.get(left["case_id"])
         if not case:
             raise ValueError("unknown mapping case")
         pairs.append({"pair_id": pair_id, "case_id": case["id"], "language": case["language"], "prompt": case["prompt"], "verified_context": case["verified_context"], "response_A": {"commentary": left["commentary"], "final": left["final"]}, "response_B": {"commentary": right["commentary"], "final": right["final"]}})
-    bundle = {"schema_version": 1, "pairs": pairs}
-    assert_public_safe(bundle)
+    bundle = {"schema_version": 1, "mapping_commitment": commitment or mapping_commitment(mapping), "pairs": pairs}
+    assert_public_safe(bundle, arm_aliases={"A", "B"}, private_ids={str(run["run_id"]) for run in runs}, protected_roots=protected_roots)
     return bundle
 
 
@@ -317,6 +329,17 @@ def _match(text: str, phrase: str) -> bool:
     return unicodedata.normalize("NFC", phrase).casefold() in unicodedata.normalize("NFC", text).casefold()
 
 
+def _forbidden_match(text: str, phrase: str) -> bool:
+    normalized = re.sub(r"\s+", " ", unicodedata.normalize("NFC", text).casefold())
+    target = unicodedata.normalize("NFC", phrase).casefold()
+    for match in re.finditer(re.escape(target), normalized):
+        prefix = normalized[max(0, match.start() - 24):match.start()]
+        if re.search(r"\b(?:not|no|never|не)\s*$", prefix):
+            continue
+        return True
+    return False
+
+
 def check_critical_facts(case: dict[str, Any], response: dict[str, str]) -> dict[str, Any]:
     missing = []
     for fact in case.get("critical_facts", []):
@@ -326,7 +349,7 @@ def check_critical_facts(case: dict[str, Any], response: dict[str, str]) -> dict
         if not all(any(isinstance(term, str) and _match(text, term) for term in group) for group in fact["groups"]):
             missing.append(fact.get("id", "unknown"))
     visible = _scope_text(response, "visible")
-    forbidden = [claim.get("id", "unknown") for claim in case.get("forbidden_claims", []) if any(_match(visible, phrase) for phrase in claim.get("any_of", []))]
+    forbidden = [claim.get("id", "unknown") for claim in case.get("forbidden_claims", []) if any(_forbidden_match(visible, phrase) for phrase in claim.get("any_of", []))]
     structure = []
     rules = case.get("structure", {})
     lines = [line for line in visible.splitlines() if line.strip()]
@@ -390,9 +413,9 @@ def paired_summary(pairs: list[dict[str, Any]]) -> dict[str, Any]:
     metrics = sorted(pairs[0]["A"])
     summary = {}
     for metric in metrics:
-        baseline = sum(pair["A"][metric] for pair in pairs) / len(pairs)
-        candidate = sum(pair["B"][metric] for pair in pairs) / len(pairs)
-        summary[metric] = {"delta": candidate - baseline, "relative_reduction": (baseline - candidate) / baseline if baseline else None}
+        deltas = [pair["B"][metric] - pair["A"][metric] for pair in pairs]
+        reductions = [(pair["A"][metric] - pair["B"][metric]) / pair["A"][metric] for pair in pairs if pair["A"][metric] != 0]
+        summary[metric] = {"delta": statistics.median(deltas), "relative_reduction": statistics.median(reductions) if reductions else None}
     summary["estimate"] = {"estimated_session_net": {"value": None, "assumptions": "estimate only; not billing or cost savings"}}
     return summary
 
@@ -406,13 +429,16 @@ def clustered_bootstrap_ci(pairs: list[dict[str, Any]], metric: str, *, seed: in
     values = []
     for _ in range(iterations):
         sampled = [pair for cluster in (rng.choice(ids) for _ in ids) for pair in clusters[cluster]]
-        values.append(sum(pair["B"][metric] - pair["A"][metric] for pair in sampled) / len(sampled))
+        reductions = [(pair["A"][metric] - pair["B"][metric]) / pair["A"][metric] for pair in sampled if pair["A"][metric] != 0]
+        if not reductions:
+            raise ValueError("zero baseline metric")
+        values.append(statistics.median(reductions))
     values.sort()
     return values[int((iterations - 1) * 0.025)], values[int((iterations - 1) * 0.975)]
 
 
 def build_seal(payload: dict[str, Any], key: bytes | str) -> dict[str, Any]:
-    fields = {"config_sha256", "manifest_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256"}
+    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256"}
     require_exact_fields(payload, fields, "seal payload")
     result = dict(payload)
     result["hmac"] = hmac_digest(key, payload)
@@ -420,17 +446,23 @@ def build_seal(payload: dict[str, Any], key: bytes | str) -> dict[str, Any]:
 
 
 def verify_seal(seal: dict[str, Any], key: bytes | str) -> None:
-    fields = {"config_sha256", "manifest_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256", "hmac"}
+    fields = {"config_sha256", "manifest_sha256", "schedule_sha256", "bundle_sha256", "mapping_commitment", "judgments_sha256", "judge_manifest_sha256", "hmac"}
     require_exact_fields(seal, fields, "seal")
     payload = {key_: value for key_, value in seal.items() if key_ != "hmac"}
     if not hmac.compare_digest(seal["hmac"], hmac_digest(key, payload)):
         raise ValueError("invalid seal HMAC")
 
 
-def reveal(mapping: dict[str, Any], seal: dict[str, Any], *, config_sha256: str, manifest_sha256: str, bundle_sha256: str, judgments_sha256: str, judge_manifest_sha256: str) -> dict[str, Any]:
-    commitment = mapping_commitment(mapping)
-    verify_seal(seal, mapping["commitment_nonce"])
-    expected = {"config_sha256": config_sha256, "manifest_sha256": manifest_sha256, "bundle_sha256": bundle_sha256, "mapping_commitment": commitment, "judgments_sha256": judgments_sha256, "judge_manifest_sha256": judge_manifest_sha256}
+def reveal(mapping: dict[str, Any], seal: dict[str, Any], *, mapping_key: bytes | str, seal_key: bytes | str, config_sha256: str, manifest_sha256: str, schedule_sha256: str, bundle_sha256: str, judgments_sha256: str, judge_manifest_sha256: str, judgments: list[dict[str, Any]]) -> dict[str, Any]:
+    commitment = mapping_commitment(mapping, mapping_key)
+    verify_seal(seal, seal_key)
+    expected = {"config_sha256": config_sha256, "manifest_sha256": manifest_sha256, "schedule_sha256": schedule_sha256, "bundle_sha256": bundle_sha256, "mapping_commitment": commitment, "judgments_sha256": judgments_sha256, "judge_manifest_sha256": judge_manifest_sha256}
     if any(seal[key] != value for key, value in expected.items()):
         raise ValueError("seal artifact mismatch")
-    return {"status": "revealed", "mapping_commitment": commitment}
+    remapped = []
+    for row in judgments:
+        pair = mapping["pairs"].get(row["pair_id"])
+        if not pair:
+            raise ValueError("unknown remapped judgment")
+        remapped.append({"pair_id": row["pair_id"], "left_arm": pair["left"]["arm"], "right_arm": pair["right"]["arm"], "judgment": row["judgment"]})
+    return {"status": "revealed", "mapping_commitment": commitment, "judgments": remapped}

@@ -1,4 +1,7 @@
 import json
+import hashlib
+import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -101,7 +104,7 @@ class EvalV2Tests(unittest.TestCase):
         ])
         self.assertEqual(paired[0]["A"]["visible_output_tokens"], 8)
         self.assertEqual(paired[0]["A"]["uncached_input_tokens"], 20)
-        self.assertEqual(lib.clustered_bootstrap_ci(paired, "visible_output_tokens", seed=7, iterations=20), (-4.0, -4.0))
+        self.assertEqual(lib.clustered_bootstrap_ci(paired, "visible_output_tokens", seed=7, iterations=20), (0.5, 0.5))
         self.assertEqual(lib.paired_summary(paired)["visible_output_tokens"]["relative_reduction"], 0.5)
         self.assertIn("estimated_session_net", lib.paired_summary(paired)["estimate"])
 
@@ -173,6 +176,143 @@ class EvalV2Tests(unittest.TestCase):
             judgments.write_bytes(b'{"pair_id":"x","pair_id":"x","judgment":{}}\n\xff')
             with self.assertRaises(ValueError):
                 runner.main(["seal", "--root", str(root)])
+
+    def test_bundle_commits_mapping_before_judge_and_rejects_arm_swap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            bundle = json.loads((root / "public/bundle.json").read_text())
+            self.assertIn("mapping_commitment", bundle)
+            mapping_path = root / "private/mapping.json"
+            mapping = json.loads(mapping_path.read_text())
+            pair = next(iter(mapping["pairs"].values()))
+            pair["left"]["arm"], pair["right"]["arm"] = pair["right"]["arm"], pair["left"]["arm"]
+            mapping_path.write_text(json.dumps(mapping))
+            with self.assertRaises(ValueError):
+                runner.main(["judge", "--root", str(root), "--fake"])
+
+    def test_raw_answer_and_judgment_results_are_reconstructed_before_seal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            result = next((root / "private/attempts").iterdir()) / "result.json"
+            value = json.loads(result.read_text())
+            value["result"]["final"] = "forged"
+            result.write_text(json.dumps(value))
+            with self.assertRaises(ValueError):
+                runner.main(["judge", "--root", str(root), "--fake"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            runner.main(["judge", "--root", str(root), "--fake"])
+            result = next((root / "private/judge-attempts").iterdir()) / "result.json"
+            value = json.loads(result.read_text())
+            value["result"]["judgment"]["quality"] = "left"
+            result.write_text(json.dumps(value))
+            with self.assertRaises(ValueError):
+                runner.main(["seal", "--root", str(root)])
+
+    def test_attempt_inventories_reject_extra_files_and_started_judge_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            attempt = next((root / "private/attempts").iterdir())
+            (attempt / "extra.json").write_text("{}")
+            with self.assertRaises(ValueError):
+                runner.main(["judge", "--root", str(root), "--fake"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            bundle = json.loads((root / "public/bundle.json").read_text())
+            pair_id = bundle["pairs"][0]["pair_id"]
+            bundle_sha = hashlib.sha256(lib.canonical_json(bundle).encode()).hexdigest()
+            runner.start_attempt(root / "private/judge-attempts" / pair_id, {"pair_id": pair_id, "bundle_sha256": bundle_sha})
+            with self.assertRaises(ValueError):
+                runner.main(["judge", "--root", str(root), "--fake"])
+
+    def test_committed_schedule_executes_balanced_sides_and_rejects_extra_attempt(self):
+        cases = lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")
+        sides = lib.balanced_sides(cases, "test-secret")
+        self.assertLessEqual(abs(sum(sides.values()) - (len(sides) - sum(sides.values()))), 1)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            schedule = json.loads((root / "private/schedule.json").read_text())
+            self.assertEqual(len(schedule["calls"]), 24)
+            self.assertEqual(len(list((root / "private/attempts").glob("*"))), 24)
+            (root / "private/attempts/extra").mkdir()
+            with self.assertRaises(ValueError):
+                runner.main(["judge", "--root", str(root), "--fake"])
+
+    def test_private_artifacts_are_no_follow_private_and_root_is_not_source(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            root = Path(directory)
+            os.symlink(outside, root / "private")
+            with self.assertRaises(ValueError):
+                runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            self.assertEqual(stat.S_IMODE((root / "private").stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE((root / "private/mapping.json").stat().st_mode), 0o600)
+        with self.assertRaises(ValueError):
+            runner.main(["answers", "--root", str(ROOT / "eval-v2-output"), "--fake", "--secret", "test-secret"])
+
+    def test_public_leak_scan_uses_dynamic_identifiers_secrets_and_paths(self):
+        with self.assertRaises(ValueError):
+            lib.assert_public_safe(
+                {"pairs": [{"response_A": {"final": "ARM-A Bearer live_token api_key=live_token /Users/name/repo call_private_123"}}]},
+                arm_aliases={"A", "B"}, private_ids={"call_private_123"}, protected_roots={Path("/Users/name")},
+            )
+
+    def test_holdout_validation_matches_nested_contract(self):
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case({"kind": "output", "category": "status"})
+        case = lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0]
+        lib.validate_holdout_case(case)
+        case = dict(case)
+        case["verified_context"] = {"nested": {"candidate": "leak"}}
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(case)
+        case = dict(lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0])
+        case["structure"] = {"max_words": 9}
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(case)
+        activation = dict(lib.load_activation_cases(ROOT / "evals/cases/activation-dev.jsonl")[2])
+        activation["protected_near_miss"] = "detailed"
+        with self.assertRaises(ValueError):
+            lib.validate_holdout_case(activation)
+
+    def test_holdout_schema_closes_nested_case_contracts(self):
+        schema = json.loads((ROOT / "evals/schemas/holdout.schema.json").read_text())
+        definitions = schema["$defs"]
+        self.assertFalse(definitions["critical_fact"]["additionalProperties"])
+        self.assertEqual(definitions["critical_fact"]["required"], ["id", "scope", "groups"])
+        self.assertFalse(definitions["forbidden_claim"]["additionalProperties"])
+        self.assertFalse(definitions["structure"]["additionalProperties"])
+
+    def test_budget_records_are_exact_and_no_lane_transfer_is_allowed(self):
+        plan = json.loads((ROOT / "evals/release-plan.json").read_text())
+        derived = runner.build_plan(ROOT / "evals/release-plan.json")
+        self.assertEqual(len(derived["records"]), 275)
+        moved = dict(plan)
+        moved["lanes"] = dict(plan["lanes"])
+        moved["lanes"]["dev_output"] = 0
+        moved["lanes"]["compatibility"] += 48
+        with self.assertRaises(ValueError):
+            runner.validate_budget(moved)
+
+    def test_paired_summary_and_bootstrap_use_median_percentage_reduction(self):
+        pairs = []
+        for number, reduction in enumerate((0.5, 0.1, 0.1)):
+            pairs.append({"case_id": str(number), "cluster_id": str(number), "trial": 1, "model": "m", "effort": "e", "A": {"visible_output_tokens": 100}, "B": {"visible_output_tokens": 100 * (1 - reduction)}})
+        self.assertEqual(lib.paired_summary(pairs)["visible_output_tokens"]["relative_reduction"], 0.1)
+        self.assertEqual(lib.clustered_bootstrap_ci(pairs, "visible_output_tokens", seed=3, iterations=50), (0.1, 0.5))
+
+    def test_negative_forbidden_claim_does_not_reject_required_not_ready_fact(self):
+        case = lib.load_output_cases(ROOT / "evals/cases/output-dev.jsonl")[0]
+        result = lib.check_critical_facts(case, {"commentary": "", "final": "Implementation finished; 84/84 passed; integration not run because auth returns 503; PR #27 is not ready to merge."})
+        self.assertTrue(result["passed"], result)
 
 
 if __name__ == "__main__":
