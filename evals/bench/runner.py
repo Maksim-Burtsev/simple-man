@@ -19,7 +19,9 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
+from concurrent import futures
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -248,10 +250,31 @@ def load_done(path: Path) -> set[tuple]:
     return {_key(row) for row in lib.strict_jsonl(path)}
 
 
+_append_lock = threading.Lock()
+
+
 def append(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(lib.canonical_json(record) + "\n")
+    line = lib.canonical_json(record) + "\n"
+    with _append_lock, path.open("a", encoding="utf-8") as handle:
+        handle.write(line)
+
+
+def run_concurrently(work: list, worker, *, workers: int) -> None:
+    """Run one call per work item.
+
+    Record order becomes arrival order rather than plan order, which is harmless:
+    resumption keys on (phase, case, arm) and the report sorts before computing
+    anything. A failing item stops the run rather than silently thinning the
+    corpus, because a missing arm would drop that case from every pairing.
+    """
+    if workers <= 1:
+        for item in work:
+            worker(item)
+        return
+    with futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        for future in futures.as_completed([pool.submit(worker, item) for item in work]):
+            future.result()
 
 
 def plan_output(cases: list[dict], arms: list[str]) -> list[tuple[dict, str]]:
@@ -270,15 +293,15 @@ def run_output_phase(
     model: str,
     identity: dict[str, Any],
     dry_run: bool,
+    workers: int = 1,
 ) -> int:
     done = load_done(out)
-    calls = 0
-    for case, arm in plan_output(cases, arms):
-        if ("output", case["id"], arm) in done:
-            continue
-        calls += 1
-        if dry_run:
-            continue
+    work = [(c, a) for c, a in plan_output(cases, arms) if ("output", c["id"], a) not in done]
+    if dry_run:
+        return len(work)
+
+    def one(item: tuple[dict, str]) -> None:
+        case, arm = item
         envelope = call_claude(case["prompt"], system=system_prompt(arm), model=model)
         final = envelope.get("result") or ""
         record = {
@@ -295,7 +318,9 @@ def run_output_phase(
             **usage_metrics(envelope),
         }
         append(out, record)
-    return calls
+
+    run_concurrently(work, one, workers=workers)
+    return len(work)
 
 
 def run_activation_phase(
@@ -306,15 +331,18 @@ def run_activation_phase(
     model: str,
     identity: dict[str, Any],
     dry_run: bool,
+    workers: int = 1,
 ) -> int:
     done = load_done(out)
-    calls = 0
-    for case, name in plan_activation(cases, descriptions):
-        if ("activation", case["id"], name) in done:
-            continue
-        calls += 1
-        if dry_run:
-            continue
+    work = [
+        (c, n) for c, n in plan_activation(cases, descriptions)
+        if ("activation", c["id"], n) not in done
+    ]
+    if dry_run:
+        return len(work)
+
+    def one(item: tuple[dict, str]) -> None:
+        case, name = item
         prompt = ACTIVATION_PROMPT.format(
             description=DESCRIPTIONS[name].read_text().strip(),
             request=case["prompt"],
@@ -335,7 +363,9 @@ def run_activation_phase(
             "latency_ms": envelope["latency_ms"],
         }
         append(out, record)
-    return calls
+
+    run_concurrently(work, one, workers=workers)
+    return len(work)
 
 
 JUDGE_SYSTEM = """You compare two answers to the same task and return one JSON object.
@@ -346,7 +376,7 @@ it keeps every fact the reader needs to act; a longer answer is better only when
 the extra words carry decision-relevant content.
 
 Return exactly this JSON and nothing else, no code fence:
-{"quality":"left|right|tie|both_bad","naturalness":"left|right|tie","flags":{"left":[],"right":[]},"rationale":"<600 chars"}
+{"quality":"left|right|tie|both_bad","naturalness":"left|right|tie","flags":{"left":[],"right":[]},"rationale":"one or two sentences"}
 
 Valid flags: factual_error, missing_material_fact, false_validation_claim,
 safety_or_approval_loss, detail_override_loss, constraint_violation,
@@ -357,12 +387,27 @@ unnatural_compression, unnecessary_content."""
 JUDGE_PROMPT = "{payload}"
 
 
+#: ``lib.validate_judgment`` rejects a rationale over 600 characters. The
+#: rationale is commentary and no metric reads it, so a verbose explanation must
+#: not discard an otherwise valid judgment: it is truncated instead. The first
+#: run of this benchmark lost 35% of its judgments to exactly that, which is why
+#: the limit is enforced here rather than left to the judge's self-restraint.
+MAX_RATIONALE = 600
+
+
 def _parse_judgment(text: str) -> dict[str, Any]:
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
         cleaned = cleaned.rsplit("```", 1)[0]
-    return lib.validate_judgment(cleaned.strip())
+    cleaned = cleaned.strip()
+    try:
+        value = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"judgment is not JSON: {exc}") from exc
+    if isinstance(value, dict) and isinstance(value.get("rationale"), str):
+        value["rationale"] = value["rationale"][:MAX_RATIONALE]
+    return lib.validate_judgment(value)
 
 
 def run_judge_phase(
@@ -375,6 +420,7 @@ def run_judge_phase(
     identity: dict[str, Any],
     seed: str,
     dry_run: bool,
+    workers: int = 1,
 ) -> int:
     """Blind pairwise judging of one arm pair, each case judged in both positions."""
     left_arm, right_arm = comparison
@@ -385,59 +431,62 @@ def run_judge_phase(
     label = f"{left_arm}-vs-{right_arm}"
     sides = lib.balanced_sides(cases, seed, stratum_id=label)
     done = load_done(out)
-    calls = 0
-    for case in cases:
-        answers = by_case.get(case["id"], {})
-        if left_arm not in answers or right_arm not in answers:
-            continue
-        for position in ("primary", "swapped"):
-            key = ("judge", case["id"], f"{label}:{position}")
-            if key in done:
-                continue
-            calls += 1
-            if dry_run:
-                continue
-            first_is_left = sides[case["id"]] if position == "primary" else not sides[case["id"]]
-            left_record = answers[left_arm] if first_is_left else answers[right_arm]
-            right_record = answers[right_arm] if first_is_left else answers[left_arm]
-            payload = lib.build_judge_payload(
-                case,
-                left_record["response"]["final"],
-                right_record["response"]["final"],
-            )
-            envelope = call_claude(
-                JUDGE_PROMPT.format(payload=lib.canonical_json(payload)),
-                system=JUDGE_SYSTEM,
-                model=model,
-            )
-            raw = envelope.get("result") or ""
-            try:
-                judgment = _parse_judgment(raw)
-                error = None
-            except ValueError as exc:
-                judgment, error = None, str(exc)[:200]
-            append(
-                out,
-                {
-                    "phase": "judge",
-                    "case_id": case["id"],
-                    "arm": f"{label}:{position}",
-                    "comparison": label,
-                    "position": position,
-                    # which arm actually sat on each side, recorded only after
-                    # the judgment exists so the report can un-blind it
-                    "left_arm": left_arm if first_is_left else right_arm,
-                    "right_arm": right_arm if first_is_left else left_arm,
-                    "judgment": judgment,
-                    "parse_error": error,
-                    "raw": None if judgment else raw[:400],
-                    "model": model,
-                    "cli": identity["cli"],
-                    "cost_usd": envelope.get("total_cost_usd"),
-                    "latency_ms": envelope["latency_ms"],
-                },
-            )
-    return calls
+    work = [
+        (case, position)
+        for case in cases
+        if left_arm in by_case.get(case["id"], {}) and right_arm in by_case.get(case["id"], {})
+        for position in ("primary", "swapped")
+        if ("judge", case["id"], f"{label}:{position}") not in done
+    ]
+    if dry_run:
+        return len(work)
+
+    def one(item: tuple[dict, str]) -> None:
+        case, position = item
+        answers = by_case[case["id"]]
+        first_is_left = sides[case["id"]] if position == "primary" else not sides[case["id"]]
+        left_record = answers[left_arm] if first_is_left else answers[right_arm]
+        right_record = answers[right_arm] if first_is_left else answers[left_arm]
+        payload = lib.build_judge_payload(
+            case,
+            left_record["response"]["final"],
+            right_record["response"]["final"],
+        )
+        envelope = call_claude(
+            JUDGE_PROMPT.format(payload=lib.canonical_json(payload)),
+            system=JUDGE_SYSTEM,
+            model=model,
+        )
+        raw = envelope.get("result") or ""
+        try:
+            judgment = _parse_judgment(raw)
+            error = None
+        except ValueError as exc:
+            judgment, error = None, str(exc)[:200]
+        append(
+            out,
+            {
+                "phase": "judge",
+                "case_id": case["id"],
+                "arm": f"{label}:{position}",
+                "comparison": label,
+                "position": position,
+                # which arm actually sat on each side, recorded only after
+                # the judgment exists so the report can un-blind it
+                "left_arm": left_arm if first_is_left else right_arm,
+                "right_arm": right_arm if first_is_left else left_arm,
+                "judgment": judgment,
+                "parse_error": error,
+                "raw": None if judgment else raw[:4000],
+                "model": model,
+                "cli": identity["cli"],
+                "cost_usd": envelope.get("total_cost_usd"),
+                "latency_ms": envelope["latency_ms"],
+            },
+        )
+
+    run_concurrently(work, one, workers=workers)
+    return len(work)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -463,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--max-calls", type=int, required=True)
     parser.add_argument("--limit", type=int, default=0, help="use only the first N cases")
+    parser.add_argument("--workers", type=int, default=6, help="concurrent calls")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -496,6 +546,7 @@ def main(argv: list[str] | None = None) -> int:
                 model=args.model,
                 identity=identity,
                 dry_run=dry,
+                workers=args.workers,
             )
         if args.phase in ("activation", "all"):
             total += run_activation_phase(
@@ -505,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
                 model=args.model,
                 identity=identity,
                 dry_run=dry,
+                workers=args.workers,
             )
         if args.phase in ("judge", "all"):
             answers = lib.strict_jsonl(out_path) if out_path.exists() else []
@@ -518,6 +570,7 @@ def main(argv: list[str] | None = None) -> int:
                     identity=identity,
                     seed=args.seed,
                     dry_run=dry,
+                    workers=args.workers,
                 )
         return total
 
