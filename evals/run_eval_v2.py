@@ -191,6 +191,37 @@ def _read_jsonl(path: Path, *, private: bool) -> list[dict[str, Any]]:
     return rows
 
 
+class _MalformedPostStartArtifact(ValueError):
+    pass
+
+
+def _read_post_start_json(path: Path) -> dict[str, Any]:
+    data = _read_bytes(path, private=True)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _MalformedPostStartArtifact("malformed post-start UTF-8") from exc
+    try:
+        return lib._json_object(text, str(path))
+    except ValueError as exc:
+        raise _MalformedPostStartArtifact("malformed post-start JSON") from exc
+
+
+def _read_post_start_jsonl(path: Path) -> list[dict[str, Any]]:
+    data = _read_bytes(path, private=True)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _MalformedPostStartArtifact("malformed post-start UTF-8") from exc
+    try:
+        rows = [lib._json_object(line, f"{path}:{number}") for number, line in enumerate(text.splitlines(), 1) if line.strip()]
+    except ValueError as exc:
+        raise _MalformedPostStartArtifact("malformed post-start JSONL") from exc
+    if not rows:
+        raise _MalformedPostStartArtifact("empty post-start JSONL")
+    return rows
+
+
 def _write_json(path: Path, value: Any, *, private: bool, exclusive: bool = False) -> None:
     _write_bytes(path, _json_bytes(value), private=private, exclusive=exclusive)
 
@@ -446,7 +477,7 @@ def finish_attempt(path: Path, result: dict[str, Any], status: str = "completed"
     _write_json(path / "result.json", {"schema_version": 1, "status": status, "result": result}, private=True, exclusive=True)
 
 
-def load_attempt(path: Path) -> dict[str, Any]:
+def load_attempt(path: Path, *, quarantine_malformed_result: bool = False) -> dict[str, Any]:
     started = _read_json(path / "started.json", private=True)
     lib.require_exact_fields(started, {"schema_version", "status", "identity"}, "started attempt")
     if started["schema_version"] != 1 or started["status"] != "started":
@@ -454,7 +485,10 @@ def load_attempt(path: Path) -> dict[str, Any]:
     _require_call_id(started["identity"])
     if not _exists(path / "result.json", private=True):
         return {"status": "started", "identity": started["identity"]}
-    result = _read_json(path / "result.json", private=True)
+    try:
+        result = _read_post_start_json(path / "result.json") if quarantine_malformed_result else _read_json(path / "result.json", private=True)
+    except _MalformedPostStartArtifact:
+        return {"status": "corrupt", "identity": started["identity"]}
     lib.require_exact_fields(result, {"schema_version", "status", "result"}, "attempt result")
     if result["schema_version"] != 1 or result["status"] not in {"completed", "failed", "interrupted"} or not isinstance(result["result"], dict):
         raise ValueError("invalid attempt result")
@@ -702,24 +736,33 @@ def _attempt_state(
     *,
     partial_raw_validator: Callable[[Path, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    loaded = load_attempt(path)
+    loaded = load_attempt(path, quarantine_malformed_result=True)
     if loaded["identity"] != expected_identity:
         raise ValueError("attempt identity tampered")
     names = set(_directory_names(path, private=True))
-    if loaded["status"] == "started":
+    if loaded["status"] == "corrupt":
+        if names not in ({"started.json", "result.json"}, {"started.json", "raw.jsonl", "result.json"}):
+            raise ValueError("corrupt attempt artifact inventory mismatch")
+    elif loaded["status"] == "started":
         if names not in ({"started.json"}, {"started.json", "raw.jsonl"}):
             raise ValueError("started attempt artifact inventory mismatch")
         if "raw.jsonl" in names:
             if partial_raw_validator is None:
                 raise ValueError("started attempt raw evidence is not expected")
-            partial_raw_validator(path / "raw.jsonl", expected_identity)
+            try:
+                partial_raw_validator(path / "raw.jsonl", expected_identity)
+            except _MalformedPostStartArtifact:
+                loaded = {"status": "corrupt", "identity": loaded["identity"]}
     elif loaded["status"] in {"failed", "interrupted"}:
         if names not in ({"started.json", "result.json"}, {"started.json", "raw.jsonl", "result.json"}):
             raise ValueError("consumed attempt artifact inventory mismatch")
         if "raw.jsonl" in names:
             if partial_raw_validator is None:
                 raise ValueError("consumed attempt raw evidence is not expected")
-            partial_raw_validator(path / "raw.jsonl", expected_identity)
+            try:
+                partial_raw_validator(path / "raw.jsonl", expected_identity)
+            except _MalformedPostStartArtifact:
+                return {"status": "corrupt", "identity": loaded["identity"]}
             raw_sha256 = loaded["result"].get("raw_sha256")
             if raw_sha256 is not None and raw_sha256 != _sha(path / "raw.jsonl", private=True):
                 raise ValueError("consumed attempt raw hash mismatch")
@@ -737,7 +780,7 @@ def _validate_answer_content(payload: dict[str, Any], expected_identity: dict[st
 
 
 def _validate_partial_answer_raw(path: Path, expected_identity: dict[str, Any]) -> None:
-    rows = _read_jsonl(path, private=True)
+    rows = _read_post_start_jsonl(path)
     if len(rows) != 1:
         raise ValueError("partial answer raw evidence mismatch")
     _validate_answer_content(rows[0], expected_identity)
@@ -1034,7 +1077,7 @@ def _validate_judgment_content(payload: dict[str, Any], identity: dict[str, Any]
 
 
 def _validate_partial_judgment_raw(path: Path, identity: dict[str, Any]) -> None:
-    rows = _read_jsonl(path, private=True)
+    rows = _read_post_start_jsonl(path)
     if len(rows) != 1:
         raise ValueError("partial judge raw evidence mismatch")
     _validate_judgment_content(rows[0], identity)

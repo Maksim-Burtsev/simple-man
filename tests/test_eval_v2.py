@@ -437,12 +437,14 @@ class EvalV2Tests(unittest.TestCase):
             "D:/evals/private.json",
             r"\\server\share\evidence.json",
             "//server/share/evidence.json",
+            "file:///etc/passwd",
+            "file:///C:/Users/name/.codex/auth.json",
         )
         for value in absolute_paths:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 lib.assert_public_safe({"location": value})
         lib.assert_public_safe({
-            "locations": ["api/users.js:42", "GET /api/accounts/:id", "GET /v1/balance"],
+            "locations": ["api/users.js:42", "GET /api/accounts/:id", "GET /v1/balance", "https://example.com/docs"],
         })
 
     def test_holdout_validation_matches_nested_contract(self):
@@ -875,6 +877,68 @@ class EvalV2Tests(unittest.TestCase):
                         runner.finish_attempt(attempt, {"raw_sha256": "0" * 64}, "failed")
                     with self.assertRaises(ValueError):
                         runner._attempt_state(attempt, identity, partial_raw_validator=validator)
+
+    def test_resume_quarantines_truncated_answer_artifacts_and_continues_untouched_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            attempts = sorted((root / "private/attempts").iterdir())
+            raw_only, bad_result, untouched = attempts[:3]
+            spent = {
+                runner.load_attempt(raw_only)["identity"]["call_id"],
+                runner.load_attempt(bad_result)["identity"]["call_id"],
+            }
+            (raw_only / "result.json").unlink()
+            (raw_only / "raw.jsonl").write_bytes(b'{"truncated"')
+            (bad_result / "result.json").write_bytes(b'{"schema_version":')
+            shutil.rmtree(untouched)
+            for artifact in (root / "private/mapping.json", root / "private/answer-commitment.json", root / "public/bundle.json"):
+                artifact.unlink()
+
+            result = runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            self.assertEqual(result["status"], "incomplete")
+            self.assertEqual(set(result["spent_call_ids"]), spent)
+            self.assertTrue((untouched / "result.json").exists())
+            self.assertEqual((raw_only / "raw.jsonl").read_bytes(), b'{"truncated"')
+            self.assertEqual((bad_result / "result.json").read_bytes(), b'{"schema_version":')
+            with mock.patch("run_eval_v2._fake_response", side_effect=AssertionError("spent answer retried")), mock.patch(
+                "run_eval_v2._fake_activation_response", side_effect=AssertionError("spent activation retried"),
+            ):
+                self.assertEqual(runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])["status"], "incomplete")
+            with self.assertRaises(ValueError):
+                runner.main(["seal", "--root", str(root)])
+
+    def test_resume_quarantines_truncated_judge_artifacts_and_continues_untouched_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
+            bundle = json.loads((root / "public/bundle.json").read_text())
+            mapping = json.loads((root / "private/mapping.json").read_text())
+            plan = runner.build_plan(ROOT / "evals/release-plan.json")
+            pairs = bundle["pairs"][:2]
+            spent = set()
+            attempts = []
+            for pair in pairs:
+                identity = runner._judge_identity(pair, runner._bundle_sha256(bundle), plan, bundle["pairs"], mapping)
+                spent.add(identity["call_id"])
+                attempt = root / "private/judge-attempts" / pair["pair_id"]
+                attempts.append(attempt)
+                runner.start_attempt(attempt, identity)
+                payload = {"pair_id": pair["pair_id"], "judgment": runner._fake_judgment()}
+                (attempt / "raw.jsonl").write_text(lib.canonical_json(payload) + "\n")
+            (attempts[0] / "raw.jsonl").write_bytes(b'{"truncated"')
+            (attempts[1] / "result.json").write_bytes(b'{"schema_version":')
+
+            result = runner.main(["judge", "--root", str(root), "--fake"])
+            self.assertEqual(result["status"], "incomplete")
+            self.assertEqual(set(result["spent_call_ids"]), spent)
+            untouched = root / "private/judge-attempts" / bundle["pairs"][2]["pair_id"]
+            self.assertTrue((untouched / "result.json").exists())
+            self.assertFalse((root / "private/judgments.jsonl").exists())
+            with mock.patch("run_eval_v2._fake_judgment", side_effect=AssertionError("spent judge retried")):
+                self.assertEqual(runner.main(["judge", "--root", str(root), "--fake"])["status"], "incomplete")
+            with self.assertRaises(ValueError):
+                runner.main(["seal", "--root", str(root)])
 
     def test_public_inventory_is_exact_and_neutral_positions_are_left_right(self):
         with tempfile.TemporaryDirectory() as directory:

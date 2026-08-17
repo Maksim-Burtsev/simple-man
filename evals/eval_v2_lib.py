@@ -350,6 +350,8 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
     identifiers = {_normalized(identifier) for identifier in private_ids or set()}
     roots = [unicodedata.normalize("NFKC", str(root)).casefold() for root in protected_roots or set()]
     def contains_absolute_path(value: str) -> bool:
+        if re.search(r"\bfile:(?:/+|[a-z]:[\\/])", value, re.IGNORECASE):
+            return True
         posix = re.compile(r"(?<![\w:/.])/(?!/)(?:[^/\s]+/)*[^/\s]+")
         for match in posix.finditer(value):
             prefix = value[:match.start()]
