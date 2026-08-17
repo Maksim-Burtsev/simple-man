@@ -89,9 +89,85 @@ It must not reduce:
 
 ## Examples
 
-Measured before/after examples are being regenerated against a pinned model and a
-committed benchmark snapshot. Until that lands, this section is intentionally
-empty rather than showing unreproducible numbers.
+Real captured pairs from the committed benchmark run: same model
+(`claude-sonnet-5`), same prompt, only the communication policy differs. Both
+answers below kept **every** fact the case required and obeyed the requested
+shape — the work is equal, only the wording is shorter. Full evidence in
+[`evals/releases/v0.3.0/`](./evals/releases/v0.3.0/report.md).
+
+### Review findings (`out-dev-22`)
+
+Prompt supplies three confirmed defects with exact locations and asks for
+findings only, labelled P1–P3.
+
+<table>
+<tr><th width="50%">No policy — 804 tokens</th><th width="50%">Simple Man — 243 tokens</th></tr>
+<tr valign="top">
+<td>
+
+<b>Security Findings — session-service</b>
+
+<b>P1 — Plaintext Session Token Storage</b><br>
+<b>Location:</b> <code>auth/session.py:41</code>
+
+The session token is stored in plaintext in the <code>sessions</code> table. If the database is compromised (via SQL injection, backup leak, insider access, or misconfigured replica), an attacker can directly hijack any active session without needing to intercept traffic or crack anything.
+
+<b>Recommendation:</b> Store only a cryptographic hash (e.g., SHA-256) of the session token, similar to password hashing practice. Validate incoming tokens by hashing them and comparing against the stored hash…
+
+<i>(continues for P2 and P3 at similar length)</i>
+
+</td>
+<td>
+
+P1. <code>auth/session.py:41</code> — session token stored in plaintext in <code>sessions</code> table. Compromise of DB yields usable session tokens directly. Fix: store salted hash (e.g. SHA-256) of token, compare hash on lookup.
+
+P2. <code>auth/session.py:88</code> — session ID regenerated on login but not on privilege elevation (role change). Enables session fixation for privilege escalation: attacker-controlled session ID retained after role change. Fix: regenerate session ID on any privilege change, not just login.
+
+P3. <code>middleware/csrf.py:19</code> — CSRF token compared with <code>==</code>. Non-constant-time comparison enables timing attack to brute-force token. Fix: use <code>hmac.compare_digest</code>.
+
+</td>
+</tr>
+<tr><td colspan="2"><b>70% fewer output tokens.</b> All three findings, all three locations, all three fixes retained.</td></tr>
+</table>
+
+### Status update (`out-dev-14`)
+
+<table>
+<tr><th width="50%">No policy — 260 tokens</th><th width="50%">Simple Man — 115 tokens</th></tr>
+<tr valign="top">
+<td>
+
+<b>Subject: inventory-sync — Kafka consumer rewrite: canary status update</b>
+
+Hi [Manager],
+
+Quick update on the inventory-sync canary rollout:
+
+<ul>
+<li><b>Deployed:</b> Kafka consumer rewrite is live on canary (10%).</li>
+<li><b>Performance:</b> p99 latency at 340ms — within our 500ms SLO.</li>
+<li><b>Issue:</b> Pod <code>inventory-sync-7f9d8</code> is failing its readiness probe with <code>connection refused</code> on port 9090.</li>
+<li><b>Action taken:</b> Paused rollout to the remaining 90% of pods pending investigation.</li>
+</ul>
+
+Will update once we've root-caused the probe failure and confirmed it's safe to resume.
+
+Thanks,<br>[Your name]
+
+</td>
+<td>
+
+Subject: inventory-sync status
+
+Kafka consumer rewrite deployed to canary. p99 latency 340ms (within 500ms SLO). Pod inventory-sync-7f9d8 failing readiness probe: connection refused on port 9090. Rollout to remaining 90% paused pending fix.
+
+</td>
+</tr>
+<tr><td colspan="2"><b>56% fewer output tokens.</b> The failing probe and the paused rollout — the two facts that change what the manager does — both survive.</td></tr>
+</table>
+
+These two are illustrative, not the headline. The headline is the whole corpus,
+below.
 
 ### Historical examples
 
@@ -126,9 +202,41 @@ Agent-specific dotdir rule files are not committed here. They are target-project
 
 ## Benchmark
 
-Benchmark harnesses live in [`evals/`](./evals/README.md). No canonical result
-snapshot is committed yet — see [`evals/README.md`](./evals/README.md) for what
-runs offline, what needs live model calls, and what each suite actually measures.
+600 live calls on `claude-sonnet-5`, 60 output cases across 12 categories plus
+30 activation cases, 38% of them Russian. Raw records, report and gate results
+are committed in [`evals/releases/v0.3.0/`](./evals/releases/v0.3.0/report.md),
+and `make bench-v3-check` fails if any published number cannot be rebuilt from
+them.
+
+Five arms, each the same neutral prelude plus one policy: **N** none, **A** the
+shipped policy, **B** a candidate, **G** one sentence of "be concise", **C** the
+external Caveman skill.
+
+| Arm | Output vs no policy | 95% CI | Facts kept | Requested format kept |
+| --- | ---: | --- | ---: | ---: |
+| A (shipped) | −53.9% | [−43.8%, −66.8%] | 61.7% | 80.0% |
+| B (candidate) | −52.4% | [−41.7%, −61.6%] | 66.7% | 80.0% |
+| C (Caveman) | −47.9% | [−33.4%, −57.8%] | 61.7% | 78.3% |
+| G ("be concise") | −26.2% | [−20.4%, −35.8%] | 68.3% | 76.7% |
+| N (none) | — | — | 71.7% | 73.3% |
+
+Read honestly, that says two things. Compression roughly halves output length and
+holds up under a clustered bootstrap. It also **costs facts**: no policy retains
+the most, and every compression arm retains fewer. The policies buy that back on
+obeying an explicitly requested shape.
+
+The v0.3 candidate **did not ship**. It cleared 10 of 11 preregistered gates but
+lost blind preference to the one-sentence control, 9 wins to 23, concentrated in
+the categories where the user asked for length and it compressed anyway. That
+outcome is published rather than patched — see
+[`gates.md`](./evals/releases/v0.3.0/gates.md).
+
+Gates and inputs were [preregistered](./evals/releases/v0.3.0/preregistration.json)
+by commit before the first call, and a test rehashes every pinned input so the
+corpus cannot be edited afterwards.
+
+Older Codex-based suites and what still runs offline are described in
+[`evals/README.md`](./evals/README.md).
 
 ## Recommended usage
 
