@@ -43,6 +43,73 @@ COMPARISON_FIELDS = {
     "comparison_id", "baseline_arm", "candidate_arm", "case_set", "max_pairs",
     "max_judge_calls", "judge_call_slots", "condition",
 }
+EXPECTED_COMPARISON_CONTRACT = {
+    "judge_cap": 28,
+    "comparisons": [
+        {
+            "comparison_id": "dev-naturalness-b-c",
+            "baseline_arm": "B",
+            "candidate_arm": "C",
+            "case_set": "output-dev",
+            "max_pairs": 12,
+            "max_judge_calls": 12,
+            "judge_call_slots": [1, 12],
+            "condition": "dev_scout",
+        },
+        {
+            "comparison_id": "primary-winner-a",
+            "baseline_arm": "A",
+            "candidate_arm": "winner",
+            "case_set": "primary-output-holdout",
+            "max_pairs": 15,
+            "max_judge_calls": 15,
+            "judge_call_slots": [13, 27],
+            "condition": "winner_selected",
+        },
+        {
+            "comparison_id": "primary-winner-generic",
+            "baseline_arm": "generic",
+            "candidate_arm": "winner",
+            "case_set": "primary-output-holdout",
+            "max_pairs": 15,
+            "max_judge_calls": 0,
+            "judge_call_slots": None,
+            "condition": "deterministic_metrics_only",
+        },
+        {
+            "comparison_id": "conditional-tiebreak",
+            "baseline_arm": "runner_up",
+            "candidate_arm": "winner",
+            "case_set": "registered-tiebreak",
+            "max_pairs": 1,
+            "max_judge_calls": 1,
+            "judge_call_slots": [28, 28],
+            "condition": "full_tie_after_policy_tokens",
+        },
+    ],
+}
+EXPECTED_SCORING_CONTRACT = {
+    "quality_order": [
+        "hard_quality_safety",
+        "material_fact_retention",
+        "blind_naturalness",
+        "policy_input_tokens",
+    ],
+    "deterministic_checks": [
+        "critical_facts",
+        "forbidden_claims",
+        "requested_shape",
+    ],
+    "judge_schema": "strict-json-v1",
+    "visible_tokenizer": "tiktoken:o200k_base",
+    "tokenizer_version": "0.13.0",
+}
+EXPECTED_BOOTSTRAP_CONTRACT = {
+    "method": "clustered_percentile",
+    "cluster_field": "cluster_id",
+    "confidence": 0.95,
+    "iterations": 10000,
+}
 
 
 def _open_directory(path: Path, *, create: bool, private: bool) -> int:
@@ -361,9 +428,13 @@ def validate_budget(plan: dict[str, Any]) -> None:
         seen.add(item["comparison_id"])
     if slots != list(range(1, comparison["judge_cap"] + 1)):
         raise ValueError("judge call slots must exactly cover the cap")
+    if comparison != EXPECTED_COMPARISON_CONTRACT:
+        raise ValueError("comparison contract differs from preregistration")
 
-    lib.require_exact_fields(plan["scoring_contract"], {"quality_order", "deterministic_checks", "judge_schema", "visible_tokenizer", "tokenizer_version"}, "scoring contract")
-    lib.require_exact_fields(plan["bootstrap_contract"], {"method", "cluster_field", "confidence", "iterations"}, "bootstrap contract")
+    scoring = lib.require_exact_fields(plan["scoring_contract"], {"quality_order", "deterministic_checks", "judge_schema", "visible_tokenizer", "tokenizer_version"}, "scoring contract")
+    bootstrap = lib.require_exact_fields(plan["bootstrap_contract"], {"method", "cluster_field", "confidence", "iterations"}, "bootstrap contract")
+    if scoring != EXPECTED_SCORING_CONTRACT or bootstrap != EXPECTED_BOOTSTRAP_CONTRACT:
+        raise ValueError("scoring contract differs from preregistration")
 
 
 def _record(execution: dict[str, Any], lane: str, case_slot: str, treatment: str, description: str, *, policy_role: str, conditional: str, trial: int = 1) -> dict[str, Any]:
@@ -599,7 +670,7 @@ def _manifest_relative_paths(plan: dict[str, Any] | None = None) -> list[str]:
                 fixed.add(relative.as_posix())
     fixed.update(path.relative_to(root).as_posix() for path in (root / "evals").glob("*.py"))
     for directory in (
-        "evals/coding_workers", "evals/fixtures/skill-comparison", "evals/policies",
+        "evals/fixtures/skill-comparison", "evals/policies",
         "evals/hidden_validators", "plugins/simple-man",
     ):
         base = root / directory
@@ -784,7 +855,10 @@ def _validate_answer_content(payload: dict[str, Any], expected_identity: dict[st
     lib.require_exact_fields(payload, set(expected_identity) | ANSWER_METRICS, "answer payload")
     if any(payload[key] != value for key, value in expected_identity.items()):
         raise ValueError("answer identity tampered")
-    if payload["visible_output_tokens"] != payload["commentary_visible_tokens"] + payload["final_visible_tokens"] or payload["uncached_input_tokens"] != payload["input_tokens"] - payload["cached_input_tokens"]:
+    if not isinstance(payload["commentary"], str) or not isinstance(payload["final"], str):
+        raise ValueError("answer messages must be strings")
+    metrics = lib._metrics(payload)
+    if payload["visible_output_tokens"] != metrics["visible_output_tokens"] or payload["uncached_input_tokens"] != metrics["uncached_input_tokens"]:
         raise ValueError("answer metric derivation mismatch")
 
 

@@ -533,6 +533,24 @@ class EvalV2Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.validate_budget(moved)
 
+        contract_mutations = (
+            lambda value: value["scoring_contract"].__setitem__("visible_tokenizer", "whitespace"),
+            lambda value: value["scoring_contract"].__setitem__("deterministic_checks", []),
+            lambda value: value["bootstrap_contract"].__setitem__("method", "not-clustered"),
+            lambda value: value["bootstrap_contract"].__setitem__("confidence", 0),
+            lambda value: value["bootstrap_contract"].__setitem__("iterations", 1),
+            lambda value: value["comparison_contract"]["comparisons"][1].__setitem__("case_set", "wrong"),
+            lambda value: value["comparison_contract"]["comparisons"][1].__setitem__("condition", "always"),
+            lambda value: value["comparison_contract"]["comparisons"][1].__setitem__("max_pairs", 999),
+            lambda value: value["comparison_contract"]["comparisons"][0].__setitem__("candidate_arm", "A"),
+        )
+        for mutate in contract_mutations:
+            with self.subTest(mutation=mutate.__code__.co_firstlineno):
+                changed = copy.deepcopy(plan)
+                mutate(changed)
+                with self.assertRaises(ValueError):
+                    runner.validate_budget(changed)
+
     def test_paired_summary_and_bootstrap_use_median_percentage_reduction(self):
         pairs = []
         for number, reduction in enumerate((0.5, 0.1, 0.1)):
@@ -922,6 +940,26 @@ class EvalV2Tests(unittest.TestCase):
                         runner.finish_attempt(attempt, {"raw_sha256": "0" * 64}, "failed")
                     with self.assertRaises(ValueError):
                         runner._attempt_state(attempt, identity, partial_raw_validator=validator)
+
+    def test_answer_payload_rejects_invalid_text_and_usage_metrics(self):
+        identity = {"call_id": "call-answer", "kind": "output"}
+        valid = runner._answer_payload(identity, "working", "done")
+        runner._validate_answer_content(valid, identity)
+        mutations = (
+            ("commentary", None),
+            ("final", []),
+            ("commentary_visible_tokens", -1),
+            ("input_tokens", -1),
+            ("cached_input_tokens", 101),
+            ("output_tokens", -1),
+            ("latency_ms", float("inf")),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field):
+                payload = dict(valid)
+                payload[field] = value
+                with self.assertRaises(ValueError):
+                    runner._validate_answer_content(payload, identity)
 
     def test_resume_quarantines_truncated_answer_artifacts_and_continues_untouched_calls(self):
         with tempfile.TemporaryDirectory() as directory:
