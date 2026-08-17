@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import difflib
 import errno
 import hashlib
 import hmac
@@ -1628,6 +1629,168 @@ def _capture_production_files(
     return captured
 
 
+def _added_line_numbers(original: str, current: str) -> frozenset[int]:
+    added: set[int] = set()
+    matcher = difflib.SequenceMatcher(
+        None,
+        original.splitlines(),
+        current.splitlines(),
+        autojunk=False,
+    )
+    for operation, _old_start, _old_end, new_start, new_end in matcher.get_opcodes():
+        if operation in {"insert", "replace"}:
+            added.update(range(new_start + 1, new_end + 1))
+    return frozenset(added)
+
+
+def _source_string_literals(
+    source: str, *, python_source: bool
+) -> tuple[tuple[str, frozenset[int]], ...]:
+    literals: list[tuple[str, frozenset[int]]] = []
+    index = 0
+    line = 1
+    length = len(source)
+    block_comment = False
+    quotes = {"'", '"'} if python_source else {"'", '"', "`"}
+    while index < length:
+        character = source[index]
+        if character == "\n":
+            line += 1
+            index += 1
+            continue
+        if block_comment:
+            if source.startswith("*/", index):
+                block_comment = False
+                index += 2
+            else:
+                index += 1
+            continue
+        if python_source and character == "#":
+            newline = source.find("\n", index)
+            index = length if newline < 0 else newline
+            continue
+        if not python_source and source.startswith("//", index):
+            newline = source.find("\n", index)
+            index = length if newline < 0 else newline
+            continue
+        if not python_source and source.startswith("/*", index):
+            block_comment = True
+            index += 2
+            continue
+        if character not in quotes:
+            index += 1
+            continue
+        delimiter = character
+        if python_source and source.startswith(character * 3, index):
+            delimiter = character * 3
+        start_line = line
+        index += len(delimiter)
+        content: list[str] = []
+        closed = False
+        while index < length:
+            if source.startswith(delimiter, index):
+                index += len(delimiter)
+                closed = True
+                break
+            character = source[index]
+            if character == "\\" and index + 1 < length:
+                content.append(source[index : index + 2])
+                if source[index + 1] == "\n":
+                    line += 1
+                index += 2
+                continue
+            content.append(character)
+            if character == "\n":
+                line += 1
+            index += 1
+        if not closed:
+            raise IntegrityError("cannot inspect unterminated production string")
+        literals.append(
+            ("".join(content), frozenset(range(start_line, line + 1)))
+        )
+    if block_comment:
+        raise IntegrityError("cannot inspect unterminated production comment")
+    return tuple(literals)
+
+
+def _workspace_path_aliases(workspace: Path) -> frozenset[str]:
+    lexical = Path(os.path.abspath(os.fspath(workspace)))
+    resolved = Path(os.path.realpath(os.fspath(workspace)))
+    aliases = {
+        str(workspace),
+        str(workspace.absolute()),
+        str(lexical),
+        str(resolved),
+    }
+    for value in tuple(aliases):
+        if value.startswith("/private/var/"):
+            aliases.add(value.removeprefix("/private"))
+        elif value.startswith("/var/"):
+            aliases.add("/private" + value)
+        if value.startswith("/private/tmp/"):
+            aliases.add(value.removeprefix("/private"))
+        elif value.startswith("/tmp/"):
+            aliases.add("/private" + value)
+    return frozenset(value for value in aliases if value)
+
+
+def _normalized_literal(value: str) -> str:
+    return value.replace("\\/", "/").replace("\\\\", "\\")
+
+
+def _allowed_route(value: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"/(?:api(?:/|$)|v[0-9]+(?:/|$))[A-Za-z0-9_./:{}?&=%-]*",
+            value,
+        )
+    ) and ".." not in value
+
+
+def _reject_local_path_literals(
+    spec: FixtureSpec,
+    workspace: Path,
+    captured: Mapping[str, tuple[bytes, int] | None],
+) -> None:
+    aliases = _workspace_path_aliases(workspace)
+    windows_or_unc = re.compile(
+        r"(?:^|[\s=:(])(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+|//[^/]+/[^/]+)"
+    )
+    file_uri = re.compile(r"(?i)(?:^|[\s=:(])file:/+")
+    posix_path = re.compile(r"(?:^|[\s=:(])(/[A-Za-z0-9._~-]+(?:/[^\s'\"`)]+)*)")
+    for relative in spec.production_paths:
+        snapshot = captured[relative]
+        if snapshot is None:
+            continue
+        try:
+            original = (spec.root / relative).read_text(encoding="utf-8")
+            current = snapshot[0].decode("utf-8")
+        except UnicodeError as exc:
+            raise IntegrityError("production source must be valid UTF-8") from exc
+        added_lines = _added_line_numbers(original, current)
+        if not added_lines:
+            continue
+        literals = _source_string_literals(
+            current,
+            python_source=Path(relative).suffix == ".py",
+        )
+        for raw_literal, lines in literals:
+            if added_lines.isdisjoint(lines):
+                continue
+            literal = _normalized_literal(raw_literal)
+            if any(alias in literal for alias in aliases):
+                raise IntegrityError("production patch contains model workspace path")
+            inspected = re.sub(r"(?i)https?://[^\s'\"`]+", "", literal)
+            if file_uri.search(inspected) or windows_or_unc.search(inspected):
+                raise IntegrityError("production patch contains local absolute path")
+            for match in posix_path.finditer(inspected):
+                candidate = match.group(1)
+                if not _allowed_route(candidate):
+                    raise IntegrityError(
+                        "production patch contains local absolute path"
+                    )
+
+
 def validation_environment(root: Path) -> dict[str, str]:
     home = root / "home"
     scratch = root / "tmp"
@@ -2726,6 +2889,7 @@ def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
     )
     if _model_fixture_manifest(workspace) != workspace_manifest:
         raise IntegrityError("model workspace changed during patch capture")
+    _reject_local_path_literals(spec, workspace, captured)
     with tempfile.TemporaryDirectory(prefix="coding-gate-collect-") as temporary:
         control = Path(temporary)
         repository = control / "repository"

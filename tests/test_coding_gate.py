@@ -112,16 +112,14 @@ class CodingGateTests(unittest.TestCase):
                 1,
             )
 
-        result = self.validate_source(
-            gate.FIXTURES["node-auth-api"], "src/middleware.js", path_cheat
-        )
-
-        self.assertTrue(result.canonical.passed)
-        self.assertFalse(result.passed)
-        self.assertEqual(
-            [case.case_id for case in result.hidden if not case.passed],
-            ["boundary"],
-        )
+        with self.assertRaisesRegex(
+            gate.IntegrityError, "local absolute path"
+        ):
+            self.validate_source(
+                gate.FIXTURES["node-auth-api"],
+                "src/middleware.js",
+                path_cheat,
+            )
 
     def test_auth_patch_cannot_detect_hidden_validation_by_sibling_count(self):
         def sibling_cheat(source):
@@ -736,6 +734,120 @@ class CodingGateTests(unittest.TestCase):
             workspace = Path(tmp) / "model"
             baseline = gate.prepare_model_workspace(fixture, workspace)
             with self.assertRaises(gate.IntegrityError):
+                gate.collect_patch(fixture, workspace, baseline)
+
+    def test_collect_patch_rejects_added_local_absolute_path_literals(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        literals = (
+            '"/opt/acme/token"',
+            "'/Users/name/private/repo'",
+            "`/var/folders/private/repo`",
+            '"C:\\\\Users\\\\name\\\\repo"',
+            '"C:/Users/name/repo"',
+            '"\\\\\\\\server\\\\share\\\\repo"',
+            '"//server/share/repo"',
+            '"file:///private/tmp/repo"',
+        )
+        for literal in literals:
+            with self.subTest(literal=literal), tempfile.TemporaryDirectory() as tmp:
+                workspace = Path(tmp) / "model"
+                baseline = gate.prepare_model_workspace(fixture, workspace)
+                middleware = workspace / "src/middleware.js"
+                middleware.write_text(
+                    middleware.read_text().replace(
+                        "function authenticate(store, req) {",
+                        f"function authenticate(store, req) {{\n  const localPath = {literal};",
+                        1,
+                    )
+                )
+
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "local absolute path"
+                ):
+                    gate.collect_patch(fixture, workspace, baseline)
+
+    def test_collect_patch_rejects_lexical_and_resolved_model_paths(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real_parent = root / "real-parent"
+            real_parent.mkdir()
+            alias_parent = root / "alias-parent"
+            alias_parent.symlink_to(real_parent, target_is_directory=True)
+            for label, suffix in (
+                ("lexical", "lexical-model"),
+                ("resolved", "resolved-model"),
+            ):
+                with self.subTest(label=label):
+                    workspace = alias_parent / suffix
+                    baseline = gate.prepare_model_workspace(fixture, workspace)
+                    model_path = (
+                        str(workspace)
+                        if label == "lexical"
+                        else str(workspace.resolve())
+                    )
+                    middleware = workspace / "src/middleware.js"
+                    middleware.write_text(
+                        middleware.read_text().replace(
+                            "function authenticate(store, req) {",
+                            "function authenticate(store, req) {\n"
+                            f"  const authoredAt = {json.dumps(model_path)};",
+                            1,
+                        )
+                    )
+
+                    with self.assertRaisesRegex(
+                        gate.IntegrityError, "model workspace path"
+                    ):
+                        gate.collect_patch(fixture, workspace, baseline)
+
+    def test_collect_patch_allows_relative_routes_urls_regex_and_comments(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        allowed = (
+            'const value = "./relative/file";',
+            'const value = "../relative/file";',
+            'const value = "src/middleware.js";',
+            'const value = "/api/users/:id";',
+            'const value = "/v1/accounts";',
+            'const value = "https://example.com/api";',
+            'const value = /tmp/;',
+            '// example only: "/private/tmp/not-executed"\n  const value = "ok";',
+        )
+        for addition in allowed:
+            with self.subTest(addition=addition), tempfile.TemporaryDirectory() as tmp:
+                workspace = Path(tmp) / "model"
+                baseline = gate.prepare_model_workspace(fixture, workspace)
+                middleware = workspace / "src/middleware.js"
+                middleware.write_text(
+                    middleware.read_text().replace(
+                        "function authenticate(store, req) {",
+                        f"function authenticate(store, req) {{\n  {addition}",
+                        1,
+                    )
+                )
+
+                patch = gate.collect_patch(fixture, workspace, baseline)
+
+                self.assertTrue(patch.production.strip())
+
+    def test_collect_patch_rejects_python_raw_absolute_path_literal(self):
+        fixture = gate.FIXTURES["python-payment-ledger"]
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "model"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            ledger = workspace / "ledger.py"
+            ledger.write_text(
+                ledger.read_text().replace(
+                    "class GatewayTimeout(Exception):",
+                    'LOCAL_PATH = r"C:\\\\Users\\\\name\\\\repo"\n\n\n'
+                    "class GatewayTimeout(Exception):",
+                    1,
+                )
+            )
+
+            with self.assertRaisesRegex(
+                gate.IntegrityError, "local absolute path"
+            ):
                 gate.collect_patch(fixture, workspace, baseline)
 
     def test_entrypoint_tamper_is_rejected(self):
@@ -2032,21 +2144,10 @@ class CodingGateTests(unittest.TestCase):
                         1,
                     )
 
-                _, inspection_patch = live_patch(
-                    "inspection-model", parent_inspection_cheat
-                )
-                inspection_result = gate.validate_patch(
-                    fixture,
-                    inspection_patch.production,
-                    root / "inspection-validation-receipt",
-                    isolation=validation_isolation,
-                )
-                self.assertTrue(inspection_result.canonical.passed)
-                self.assertFalse(inspection_result.passed)
-                self.assertEqual(
-                    [case.case_id for case in inspection_result.hidden if not case.passed],
-                    ["boundary"],
-                )
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "local absolute path"
+                ):
+                    live_patch("inspection-model", parent_inspection_cheat)
 
                 def temp_tag_oracle_cheat(source):
                     return source.replace(
@@ -2084,6 +2185,33 @@ class CodingGateTests(unittest.TestCase):
                     ["boundary"],
                 )
 
+                read_oracle_model = workspace / "read-oracle-model"
+                read_oracle_baseline = gate.prepare_model_workspace(
+                    fixture, read_oracle_model
+                )
+                authored_source = read_oracle_model / "src/middleware.js"
+                authored_source.write_text(
+                    authored_source.read_text().replace(
+                        "  return {\n    status: 200,",
+                        "  const fs = require('node:fs');\n"
+                        "  let authoredWorkspaceReadable = true;\n"
+                        f"  try {{ fs.readFileSync({json.dumps(str(authored_source))}); }} "
+                        "catch (_) { authoredWorkspaceReadable = false; }\n"
+                        "  if (session.expiresAt < store.now() || "
+                        "(!authoredWorkspaceReadable && "
+                        "session.expiresAt <= store.now())) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+                )
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "model workspace path"
+                ):
+                    gate.collect_patch(
+                        fixture, read_oracle_model, read_oracle_baseline
+                    )
+
                 sidecar_model = workspace / "sidecar-model"
                 sidecar_baseline = gate.prepare_model_workspace(
                     fixture, sidecar_model
@@ -2103,17 +2231,13 @@ class CodingGateTests(unittest.TestCase):
                         1,
                     )
                 )
-                sidecar_patch = gate.collect_patch(
-                    fixture, sidecar_model, sidecar_baseline
-                )
-                sidecar_result = gate.validate_patch(
-                    fixture,
-                    sidecar_patch.production,
-                    root / "sidecar-validation-receipt",
-                    isolation=validation_isolation,
-                )
-                self.assertFalse(sidecar_result.canonical.passed)
-                self.assertFalse(sidecar_result.passed)
+                with self.assertRaisesRegex(
+                    gate.IntegrityError,
+                    "model workspace path|local absolute path",
+                ):
+                    gate.collect_patch(
+                        fixture, sidecar_model, sidecar_baseline
+                    )
                 self.assertTrue(sidecar.is_file())
 
     def test_bounded_runner_reports_timeout_output_and_tree_caps(self):

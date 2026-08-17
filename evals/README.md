@@ -38,6 +38,10 @@ Live coding lanes require the exact macOS filesystem, network, and process
 isolation preflight. An unsupported process boundary returns `INCONCLUSIVE`
 before model-generated code runs.
 
+The production-patch gate rejects added local absolute/file path literals so a
+patch cannot key behavior to the authored workspace. Deliberately obfuscated
+or derived path side channels are outside the v0.3 threat model.
+
 ## Runtime Economics Suite
 
 Default runner suite: `runtime_economics`.
