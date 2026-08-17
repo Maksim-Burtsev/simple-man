@@ -248,11 +248,20 @@ class SourceIsolation:
         model_writable_roots = (ready.workspace.resolve(),)
         if any(path.is_symlink() or not path.is_dir() for path in model_writable_roots):
             raise IntegrityError("attested model-writable roots are unavailable")
+        validation_private_roots = tuple(
+            path.resolve() for path in ready.category_roots("validation")
+        )
+        if not validation_private_roots or any(
+            path.is_symlink() or not path.is_dir()
+            for path in validation_private_roots
+        ):
+            raise IntegrityError("attested validation-private roots are unavailable")
         roots = tuple(
             dict.fromkeys(
                 [
                     *(path.expanduser().resolve() for path in protected_roots),
                     *model_writable_roots,
+                    *validation_private_roots,
                 ]
             )
         )
@@ -299,6 +308,9 @@ class SourceIsolation:
                 "live source isolation is INCONCLUSIVE without model readiness"
             )
         expected_model_roots = (model_contract.workspace.resolve(),)
+        expected_validation_roots = tuple(
+            path.resolve() for path in model_contract.category_roots("validation")
+        )
         if (
             self.model_writable_roots != expected_model_roots
             or model_contract.sandbox_executable != self.sandbox_executable
@@ -309,6 +321,20 @@ class SourceIsolation:
             )
         if any(path.is_symlink() or not path.is_dir() for path in expected_model_roots):
             raise IntegrityError("attested model workspace is unavailable")
+        if (
+            not expected_validation_roots
+            or any(
+                path.is_symlink() or not path.is_dir()
+                for path in expected_validation_roots
+            )
+            or any(
+                not any(item == root or item.is_relative_to(root) for root in roots)
+                for item in expected_validation_roots
+            )
+        ):
+            raise IntegrityError(
+                "live source isolation must protect attested validation-private roots"
+            )
         if not self.process_boundary_proven:
             raise InfrastructureError(
                 "live coding isolation is INCONCLUSIVE without a proven process boundary"
@@ -499,6 +525,42 @@ def _model_contract_digest(contract: ModelSourceIsolation) -> str:
     ).hexdigest()
 
 
+def _model_tag_is_validation_private(contract: ModelSourceIsolation) -> bool:
+    if contract.sandbox_tag is None:
+        return False
+    validation_roots = contract.category_roots("validation")
+    if not validation_roots or any(
+        root.is_symlink() or not root.is_dir() for root in validation_roots
+    ):
+        return False
+    runtime_roots = (contract.tool_home.resolve(), contract.tool_tmp.resolve())
+    if any(
+        validation == runtime
+        or validation.is_relative_to(runtime)
+        or runtime.is_relative_to(validation)
+        for validation in validation_roots
+        for runtime in runtime_roots
+    ):
+        return False
+    tag_denied, tag_control = contract.sandbox_tag
+    if (
+        tag_denied.is_symlink()
+        or tag_control.is_symlink()
+        or not tag_denied.is_file()
+        or not tag_control.is_file()
+        or tag_denied.parent != tag_control.parent
+        or tag_denied.name != "denied"
+        or tag_control.name != "control"
+    ):
+        return False
+    suffix = tag_denied.parent.name.removeprefix(".coding-gate-tag-")
+    return (
+        len(suffix) == 32
+        and all(character in "0123456789abcdef" for character in suffix)
+        and any(tag_denied.parent.parent == root for root in validation_roots)
+    )
+
+
 def _verify_model_readiness(contract: ModelSourceIsolation) -> bool:
     readiness = contract._readiness_attestation
     process = contract._process_attestation
@@ -517,6 +579,7 @@ def _verify_model_readiness(contract: ModelSourceIsolation) -> bool:
     )
     return (
         bool(contract_sha256)
+        and _model_tag_is_validation_private(contract)
         and contract.sandbox_tag is not None
         and tuple(str(path) for path in contract.sandbox_tag)
         == (process.tag_denied, process.tag_control)
@@ -553,13 +616,21 @@ def build_model_source_isolation(
     resolved_workspace = workspace.resolve()
     if workspace.is_symlink() or not resolved_workspace.is_dir():
         raise IntegrityError("model workspace must be an existing regular directory")
+    validation_root_paths = tuple(validation_roots)
+    if not validation_root_paths or any(
+        path.is_symlink() or not path.is_dir() for path in validation_root_paths
+    ):
+        raise IntegrityError(
+            "model validation-private anchor must be an existing regular directory"
+        )
+    resolved_validation_roots = tuple(path.resolve() for path in validation_root_paths)
     categories = (
         ("source", (source_root.resolve(),)),
         ("common_git", (common_git_root.resolve(),)),
         ("home", (real_home.expanduser().resolve(),)),
         ("auth", (auth_file.expanduser().resolve(),)),
         ("codex_home", (codex_home.expanduser().resolve(),)),
-        ("validation", tuple(path.resolve() for path in validation_roots)),
+        ("validation", resolved_validation_roots),
         ("output", tuple(path.resolve() for path in output_roots)),
         ("other_workspace", tuple(path.resolve() for path in other_workspaces)),
     )
@@ -576,7 +647,19 @@ def build_model_source_isolation(
     for path in (tool_home, tool_tmp):
         if path.is_symlink() or not path.resolve().is_dir():
             raise IntegrityError("model tool HOME/TMP must be existing regular directories")
-    tag_root = tool_tmp.resolve() / f".coding-gate-tag-{secrets.token_hex(16)}"
+    resolved_tool_roots = (tool_home.resolve(), tool_tmp.resolve())
+    if any(
+        validation == runtime
+        or validation.is_relative_to(runtime)
+        or runtime.is_relative_to(validation)
+        for validation in resolved_validation_roots
+        for runtime in resolved_tool_roots
+    ):
+        raise IntegrityError(
+            "model validation-private anchor overlaps model tool HOME/TMP"
+        )
+    validation_anchor = resolved_validation_roots[0]
+    tag_root = validation_anchor / f".coding-gate-tag-{secrets.token_hex(16)}"
     tag_root.mkdir(mode=0o700)
     tag_denied = tag_root / "denied"
     tag_control = tag_root / "control"
@@ -699,6 +782,8 @@ def probe_model_source_isolation(
             "model source isolation probe requires macOS",
         )
     expected_categories = {category for category, _ in contract.categories}
+    if not _model_tag_is_validation_private(contract):
+        raise IntegrityError("model process tag is outside validation-private roots")
     if set(denied_targets) != expected_categories:
         raise IntegrityError("probe targets must cover every protected category")
     for category, target in denied_targets.items():

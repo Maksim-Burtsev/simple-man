@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import shutil
@@ -880,15 +881,23 @@ class CodingGateTests(unittest.TestCase):
             workspace = root / "model"
             tool_home = root / "tool-home"
             tool_tmp = root / "tool-tmp"
-            validation = root / "validation"
+            validation_private = root / "validation-private"
+            validation_workspace = root / "validation-execution"
             wrong = root / "wrong-model"
             executable = str(Path(sys.executable).resolve())
-            for path in (workspace, tool_home, tool_tmp, validation, wrong):
+            for path in (
+                workspace,
+                tool_home,
+                tool_tmp,
+                validation_private,
+                validation_workspace,
+                wrong,
+            ):
                 path.mkdir()
             ready = gate.ModelSourceIsolation(
                 sandbox_executable=executable,
                 workspace=workspace,
-                categories=(),
+                categories=(("validation", (validation_private.resolve(),)),),
                 tool_home=tool_home,
                 tool_tmp=tool_tmp,
             )
@@ -913,13 +922,22 @@ class CodingGateTests(unittest.TestCase):
                         isolation.protected_roots
                     )
                 )
+                self.assertIn(
+                    validation_private.resolve(), isolation.protected_roots
+                )
                 with self.assertRaisesRegex(
-                    gate.IntegrityError, "model-writable roots"
+                    gate.IntegrityError, "validation-private roots"
+                ), mock.patch.object(
+                    gate, "_verify_model_readiness", return_value=True
                 ):
                     replace(
                         isolation,
-                        protected_roots=(ROOT.resolve(), Path.home().resolve()),
-                    ).wrap(("python3", "-V"), validation)
+                        protected_roots=(
+                            ROOT.resolve(),
+                            Path.home().resolve(),
+                            workspace.resolve(),
+                        ),
+                    ).wrap(("python3", "-V"), validation_workspace)
                 with self.assertRaisesRegex(
                     gate.IntegrityError, "overlaps a protected root"
                 ), mock.patch.object(
@@ -951,7 +969,7 @@ class CodingGateTests(unittest.TestCase):
                             wrong.resolve(),
                         ),
                         model_writable_roots=(wrong.resolve(),),
-                    ).wrap(("python3", "-V"), validation)
+                    ).wrap(("python3", "-V"), validation_workspace)
                 workspace.rmdir()
                 with self.assertRaisesRegex(
                     gate.IntegrityError, "model workspace is unavailable"
@@ -960,7 +978,117 @@ class CodingGateTests(unittest.TestCase):
                 ), mock.patch.object(
                     gate, "_verify_model_readiness", return_value=True
                 ):
-                    isolation.wrap(("python3", "-V"), validation)
+                    isolation.wrap(("python3", "-V"), validation_workspace)
+
+    def test_model_process_tag_is_nested_under_attested_validation_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            validation = root / "validation-private"
+            output = root / "output"
+            other = root / "other"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            codex_home = root / "codex-home"
+            for path in (
+                workspace,
+                validation,
+                output,
+                other,
+                tool_home,
+                tool_tmp,
+                codex_home,
+            ):
+                path.mkdir()
+            auth = codex_home / "auth.json"
+            auth.write_text("{}")
+            executable = str(Path(sys.executable).resolve())
+
+            with (
+                mock.patch.object(gate.platform, "system", return_value="Darwin"),
+                mock.patch.object(gate.shutil, "which", return_value=executable),
+            ):
+                contract = gate.build_model_source_isolation(
+                    sandbox_executable=executable,
+                    workspace=workspace,
+                    source_root=ROOT,
+                    common_git_root=ROOT / ".git",
+                    real_home=Path.home(),
+                    auth_file=auth,
+                    codex_home=codex_home,
+                    validation_roots=(validation,),
+                    output_roots=(output,),
+                    other_workspaces=(other,),
+                    tool_home=tool_home,
+                    tool_tmp=tool_tmp,
+                )
+
+            tag_denied, tag_control = contract.sandbox_tag
+            self.assertTrue(tag_denied.is_relative_to(validation.resolve()))
+            self.assertTrue(tag_control.is_relative_to(validation.resolve()))
+            self.assertFalse(tag_denied.is_relative_to(tool_tmp.resolve()))
+            self.assertTrue(gate._model_tag_is_validation_private(contract))
+
+            exposed_root = tool_tmp / ".coding-gate-tag-exposed"
+            exposed_root.mkdir()
+            exposed_denied = exposed_root / "denied"
+            exposed_control = exposed_root / "control"
+            exposed_denied.write_text("denied")
+            exposed_control.write_text("control")
+            self.assertFalse(
+                gate._model_tag_is_validation_private(
+                    replace(
+                        contract,
+                        sandbox_tag=(exposed_denied, exposed_control),
+                    )
+                )
+            )
+
+            validation_link = root / "validation-link"
+            validation_link.symlink_to(validation, target_is_directory=True)
+            with (
+                mock.patch.object(gate.platform, "system", return_value="Darwin"),
+                mock.patch.object(gate.shutil, "which", return_value=executable),
+                self.assertRaisesRegex(
+                    gate.IntegrityError, "validation-private anchor"
+                ),
+            ):
+                gate.build_model_source_isolation(
+                    sandbox_executable=executable,
+                    workspace=workspace,
+                    source_root=ROOT,
+                    common_git_root=ROOT / ".git",
+                    real_home=Path.home(),
+                    auth_file=auth,
+                    codex_home=codex_home,
+                    validation_roots=(validation_link,),
+                    output_roots=(output,),
+                    other_workspaces=(other,),
+                    tool_home=tool_home,
+                    tool_tmp=tool_tmp,
+                )
+
+            with (
+                mock.patch.object(gate.platform, "system", return_value="Darwin"),
+                mock.patch.object(gate.shutil, "which", return_value=executable),
+                self.assertRaisesRegex(
+                    gate.IntegrityError, "overlaps model tool HOME/TMP"
+                ),
+            ):
+                gate.build_model_source_isolation(
+                    sandbox_executable=executable,
+                    workspace=workspace,
+                    source_root=ROOT,
+                    common_git_root=ROOT / ".git",
+                    real_home=Path.home(),
+                    auth_file=auth,
+                    codex_home=codex_home,
+                    validation_roots=(tool_tmp,),
+                    output_roots=(output,),
+                    other_workspaces=(other,),
+                    tool_home=tool_home,
+                    tool_tmp=tool_tmp,
+                )
 
     def test_model_write_scope_probe_rejects_external_sidecar_creation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1392,14 +1520,23 @@ class CodingGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="coding-gate-model-profile-") as tmp:
             root = Path(tmp)
             workspace = root / "workspace"
-            validation = root / "validation"
+            validation_private = root / "validation-private"
+            validation_workspace = root / "validation-execution"
             output = root / "output"
             other = root / "other-workspace"
             tool_home = root / "tool-home"
             tool_tmp = root / "tool-tmp"
-            for path in (workspace, validation, output, other, tool_home, tool_tmp):
+            for path in (
+                workspace,
+                validation_private,
+                validation_workspace,
+                output,
+                other,
+                tool_home,
+                tool_tmp,
+            ):
                 path.mkdir()
-            for path in (validation, output, other):
+            for path in (validation_private, output, other):
                 (path / "sentinel").write_text(path.name)
 
             common = subprocess.run(
@@ -1434,7 +1571,7 @@ class CodingGateTests(unittest.TestCase):
                     real_home=Path.home(),
                     auth_file=auth,
                     codex_home=codex_home,
-                    validation_roots=(validation,),
+                    validation_roots=(validation_private,),
                     output_roots=(output,),
                     other_workspaces=(other,),
                     tool_home=tool_home,
@@ -1446,7 +1583,7 @@ class CodingGateTests(unittest.TestCase):
                     "home": home_probe,
                     "auth": auth,
                     "codex_home": codex_probe,
-                    "validation": validation / "sentinel",
+                    "validation": validation_private / "sentinel",
                     "output": output / "sentinel",
                     "other_workspace": other / "sentinel",
                 }
@@ -1461,6 +1598,48 @@ class CodingGateTests(unittest.TestCase):
                 self.assertEqual(probe.status, "READY")
                 ready = gate.require_live_model_isolation(probe)
                 self.assertTrue(ready.ready)
+                model_env = gate.validation_environment(
+                    root / "model-observability-environment"
+                )
+                model_env.update(
+                    {
+                        "TEMP": str(ready.tool_tmp),
+                        "TMP": str(ready.tool_tmp),
+                        "TMPDIR": str(ready.tool_tmp),
+                    }
+                )
+                model_observability = gate._run_model_execution(
+                    ready,
+                    ready.sandbox_command(
+                        (
+                            sys.executable,
+                            "-I",
+                            "-c",
+                            "import errno,json,os,subprocess\n"
+                            "entries=os.listdir(os.environ['TMPDIR'])\n"
+                            "if any(name.startswith('.coding-gate-tag-') for name in entries):\n"
+                            "    raise SystemExit('tag path escaped')\n"
+                            "try:\n"
+                            "    inspected=subprocess.run(['/bin/ps','-p',str(os.getpid()),'-o','command='],capture_output=True,text=True)\n"
+                            "except PermissionError as exc:\n"
+                            "    if exc.errno != errno.EPERM: raise\n"
+                            "else:\n"
+                            "    if inspected.returncode == 0:\n"
+                            "        raise SystemExit('process inspection escaped')\n"
+                            "print(json.dumps({'tmpdir_readable':True,'tag_visible':False,'ps_blocked':True}))\n",
+                        )
+                    ),
+                    env=model_env,
+                )
+                self.assertEqual(model_observability.returncode, 0, model_observability)
+                self.assertEqual(
+                    json.loads(model_observability.stdout),
+                    {
+                        "ps_blocked": True,
+                        "tag_visible": False,
+                        "tmpdir_readable": True,
+                    },
+                )
                 answer_version = gate.run_model_answer(
                     ready,
                     ("--version",),
@@ -1673,7 +1852,7 @@ class CodingGateTests(unittest.TestCase):
                             real_home=Path.home(),
                             auth_file=auth,
                             codex_home=codex_home,
-                            validation_roots=(validation,),
+                            validation_roots=(validation_private,),
                             output_roots=(output,),
                             other_workspaces=(workspace, other),
                             tool_home=attempt_tool_home,
@@ -1768,7 +1947,10 @@ class CodingGateTests(unittest.TestCase):
                 )
                 self.assertTrue(validation_isolation.process_boundary_proven)
                 validation_probe = (
-                    "import errno, os, subprocess, sys\n"
+                    "import errno, json, os, subprocess, sys\n"
+                    "entries=os.listdir(os.environ['TMPDIR'])\n"
+                    "if any(name.startswith('.coding-gate-tag-') for name in entries):\n"
+                    "    raise SystemExit('tag path escaped')\n"
                     "try:\n"
                     "    inspected = subprocess.run(["
                     "'/bin/ps', '-p', str(os.getpid()), '-o', 'command='], "
@@ -1778,18 +1960,31 @@ class CodingGateTests(unittest.TestCase):
                     "else:\n"
                     "    if inspected.returncode == 0:\n"
                     "        raise SystemExit('process inspection escaped')\n"
-                    "print('validated')\n"
+                    "print(json.dumps({'tmpdir_readable':True,'tag_visible':False,'ps_blocked':True}))\n"
+                )
+                validation_env = gate.validation_environment(
+                    root / "validation-environment"
                 )
                 validation_execution = gate.run_bounded(
                     (sys.executable, "-c", validation_probe),
-                    cwd=validation,
-                    env=gate.validation_environment(root / "validation-environment"),
+                    cwd=validation_workspace,
+                    env=validation_env,
                     isolation=validation_isolation,
                 )
                 self.assertEqual(
                     validation_execution.returncode, 0, validation_execution
                 )
-                self.assertEqual(validation_execution.stdout.strip(), "validated")
+                self.assertEqual(
+                    json.loads(validation_execution.stdout),
+                    json.loads(model_observability.stdout),
+                )
+                private_root_probe = gate.run_bounded(
+                    ("/bin/ls", str(validation_private)),
+                    cwd=validation_workspace,
+                    env=validation_env,
+                    isolation=validation_isolation,
+                )
+                self.assertTrue(gate._sandbox_denied(private_root_probe))
 
                 fixture = gate.FIXTURES["node-auth-api"]
 
@@ -1850,6 +2045,42 @@ class CodingGateTests(unittest.TestCase):
                 self.assertFalse(inspection_result.passed)
                 self.assertEqual(
                     [case.case_id for case in inspection_result.hidden if not case.passed],
+                    ["boundary"],
+                )
+
+                def temp_tag_oracle_cheat(source):
+                    return source.replace(
+                        "  return {\n    status: 200,",
+                        "  const fs = require('node:fs');\n"
+                        "  let tagVisible = false;\n"
+                        "  try {\n"
+                        "    tagVisible = fs.readdirSync(process.env.TMPDIR)\n"
+                        "      .some((name) => name.startsWith('.coding-gate-tag-'));\n"
+                        "  } catch (_) {}\n"
+                        "  if (session.expiresAt < store.now() || "
+                        "(tagVisible && session.expiresAt <= store.now())) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+
+                _, tag_oracle_patch = live_patch(
+                    "tag-oracle-model", temp_tag_oracle_cheat
+                )
+                tag_oracle_result = gate.validate_patch(
+                    fixture,
+                    tag_oracle_patch.production,
+                    root / "tag-oracle-validation-receipt",
+                    isolation=validation_isolation,
+                )
+                self.assertTrue(tag_oracle_result.canonical.passed)
+                self.assertFalse(tag_oracle_result.passed)
+                self.assertEqual(
+                    [
+                        case.case_id
+                        for case in tag_oracle_result.hidden
+                        if not case.passed
+                    ],
                     ["boundary"],
                 )
 
