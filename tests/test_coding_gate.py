@@ -531,15 +531,67 @@ class CodingGateTests(unittest.TestCase):
 
         self.assertEqual(supervisor._cleanup_scan.call_count, 3)
 
+    def test_darwin_preflight_retries_snapshot_churn_before_launch(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor._scan_tagged = mock.Mock(
+            side_effect=((0, True), (0, False))
+        )
+
+        with mock.patch.object(gate.time, "sleep"):
+            supervisor._preflight_no_tagged_processes()
+
+        self.assertEqual(supervisor._scan_tagged.call_count, 2)
+
     def test_darwin_process_list_zero_result_is_inconclusive(self):
         supervisor = object.__new__(gate._DarwinProcessSupervisor)
         supervisor.proc = mock.Mock()
-        supervisor.proc.proc_listallpids.side_effect = (10, 0)
+        supervisor.real_uid = 501
+        supervisor.proc.proc_listpids.side_effect = (40, 0)
 
         with self.assertRaisesRegex(
             gate.InfrastructureError, "cannot list Darwin processes"
         ):
             supervisor._pids()
+
+        first = supervisor.proc.proc_listpids.call_args_list[0].args
+        self.assertEqual(first[:2], (gate._DarwinProcessSupervisor._PROC_RUID_ONLY, 501))
+
+    def test_darwin_process_list_full_buffer_is_inconclusive(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor.proc = mock.Mock()
+        supervisor.real_uid = 501
+
+        def fill_buffer(_kind, _uid, buffer, size):
+            return 40 if buffer is None else size
+
+        supervisor.proc.proc_listpids.side_effect = fill_buffer
+
+        with self.assertRaisesRegex(
+            gate.InfrastructureError, "Darwin process list is unstable"
+        ):
+            supervisor._pids()
+
+    def test_darwin_missing_snapshot_identity_is_unstable(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor.real_uid = 501
+        supervisor._pids = mock.Mock(return_value=(123,))
+        supervisor._identity = mock.Mock(return_value=None)
+
+        identities, unstable = supervisor._same_real_uid_snapshot()
+
+        self.assertEqual(identities, ())
+        self.assertTrue(unstable)
+
+    def test_darwin_preflight_does_not_hide_snapshot_churn(self):
+        supervisor = object.__new__(gate._DarwinProcessSupervisor)
+        supervisor.baseline = frozenset()
+        supervisor._pids = mock.Mock(return_value=(123,))
+        supervisor._snapshot_identities = mock.Mock(return_value=((), True))
+
+        self.assertEqual(
+            supervisor._scan_tagged(include_baseline=True),
+            (0, True),
+        )
 
     @unittest.skipUnless(
         gate.platform.system() == "Linux",
@@ -1011,6 +1063,103 @@ class CodingGateTests(unittest.TestCase):
                                 except ProcessLookupError:
                                     pass
 
+                    relay_source = root / "fork-relay.c"
+                    relay_binary = root / "fork-relay"
+                    relay_source.write_text(
+                        "#include <fcntl.h>\n"
+                        "#include <stdint.h>\n"
+                        "#include <stdlib.h>\n"
+                        "#include <time.h>\n"
+                        "#include <unistd.h>\n"
+                        "static uint64_t now_ns(void) {\n"
+                        "  struct timespec value;\n"
+                        "  clock_gettime(CLOCK_MONOTONIC, &value);\n"
+                        "  return (uint64_t)value.tv_sec * 1000000000ull + value.tv_nsec;\n"
+                        "}\n"
+                        "int main(int argc, char **argv) {\n"
+                        "  uint64_t end = now_ns() + strtoull(argv[1], 0, 10);\n"
+                        "  while (now_ns() < end) {\n"
+                        "    pid_t child = fork();\n"
+                        "    if (child < 0) continue;\n"
+                        "    if (child > 0) _exit(0);\n"
+                        "    (void)setsid();\n"
+                        "  }\n"
+                        "  int marker = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0600);\n"
+                        "  if (marker >= 0) { write(marker, \"escaped\", 7); close(marker); }\n"
+                        "  return 0;\n"
+                        "}\n"
+                    )
+                    subprocess.run(
+                        (clang, "-O2", "-o", str(relay_binary), str(relay_source)),
+                        check=True,
+                        capture_output=True,
+                    )
+                    for attempt in range(20):
+                        attempt_root = root / f"fork-relay-{attempt}"
+                        attempt_workspace = attempt_root / "workspace"
+                        attempt_tool_home = attempt_root / "tool-home"
+                        attempt_tool_tmp = attempt_root / "tool-tmp"
+                        for path in (
+                            attempt_workspace,
+                            attempt_tool_home,
+                            attempt_tool_tmp,
+                        ):
+                            path.mkdir(parents=True)
+                        attempt_binary = attempt_workspace / "fork-relay"
+                        shutil.copy2(relay_binary, attempt_binary)
+                        attempt_contract = gate.build_model_source_isolation(
+                            sandbox_executable=shutil.which("codex"),
+                            workspace=attempt_workspace,
+                            source_root=ROOT,
+                            common_git_root=common_git,
+                            real_home=Path.home(),
+                            auth_file=auth,
+                            codex_home=codex_home,
+                            workers_root=gate.WORKER_ROOT,
+                            validation_roots=(validation,),
+                            output_roots=(output,),
+                            other_workspaces=(workspace, other),
+                            tool_home=attempt_tool_home,
+                            tool_tmp=attempt_tool_tmp,
+                        )
+                        process_attestation = gate._attest_process_boundary(
+                            attempt_contract
+                        )
+                        attempt_contract = replace(
+                            attempt_contract,
+                            _process_attestation=process_attestation,
+                        )
+                        relay_marker = attempt_workspace / "escaped"
+                        try:
+                            relay_execution = gate._run_model_execution(
+                                attempt_contract,
+                                attempt_contract.sandbox_command(
+                                    (
+                                        str(attempt_binary),
+                                        "500000000",
+                                        str(relay_marker),
+                                    )
+                                ),
+                                env=gate.validation_environment(
+                                    attempt_root / "environment"
+                                ),
+                                timeout_seconds=2,
+                            )
+                        except gate.InfrastructureError as exc:
+                            self.assertIn(
+                                "workspace changed during descendant cleanup",
+                                str(exc),
+                            )
+                        else:
+                            self.assertEqual(
+                                relay_execution.returncode, 0, relay_execution
+                            )
+                            self.assertFalse(relay_marker.exists())
+                        cleanup_check = gate._DarwinProcessSupervisor(
+                            attempt_contract.sandbox_tag
+                        )
+                        cleanup_check.close()
+
                 escaped = workspace / "detached-escaped"
                 pid_file = workspace / "detached-pid"
                 child = (
@@ -1101,6 +1250,147 @@ class CodingGateTests(unittest.TestCase):
         self.assertTrue(timeout.timed_out)
         self.assertTrue(output.output_limited)
         self.assertTrue(tree.tree_limited)
+
+    def test_bounded_runner_rejects_workspace_change_during_descendant_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "late-marker"
+
+            class MutatingSupervisor:
+                def launch(self, command):
+                    return tuple(command), (), None
+
+                def register(self, process, release_fd):
+                    return None
+
+                def poll(self, timeout=0):
+                    return None
+
+                def cleanup(self):
+                    marker.write_text("late")
+
+                def close(self):
+                    return None
+
+            with mock.patch.object(
+                gate, "_process_supervisor", return_value=MutatingSupervisor()
+            ):
+                with self.assertRaisesRegex(
+                    gate.InfrastructureError,
+                    "workspace changed during descendant cleanup",
+                ):
+                    gate.run_bounded(
+                        (sys.executable, "-c", "pass"),
+                        cwd=root,
+                        env=gate.validation_environment(root / "environment"),
+                        monitor_workspace=root,
+                        trusted_offline=True,
+                        require_process_supervision=True,
+                    )
+
+    def test_bounded_runner_does_not_use_path_based_workspace_fingerprints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            class StableSupervisor:
+                def launch(self, command):
+                    return tuple(command), (), None
+
+                def register(self, process, release_fd):
+                    return None
+
+                def poll(self, timeout=0):
+                    return None
+
+                def cleanup(self):
+                    return None
+
+                def close(self):
+                    return None
+
+            with (
+                mock.patch.object(
+                    gate, "_process_supervisor", return_value=StableSupervisor()
+                ),
+                mock.patch.object(
+                    gate,
+                    "_tree",
+                    side_effect=AssertionError("path-based workspace read"),
+                ),
+            ):
+                result = gate.run_bounded(
+                    (sys.executable, "-c", "pass"),
+                    cwd=root,
+                    env=gate.validation_environment(root / "environment"),
+                    monitor_workspace=root,
+                    trusted_offline=True,
+                    require_process_supervision=True,
+                )
+
+        self.assertEqual(result.returncode, 0)
+
+    def test_descriptor_workspace_fingerprint_rejects_concurrent_replacement(self):
+        for replacement_kind in ("regular", "symlink"):
+            with self.subTest(replacement_kind=replacement_kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                workspace = root / "workspace"
+                workspace.mkdir()
+                entry = workspace / "entry"
+                entry.write_text("inside")
+                outside = root / "outside"
+                outside.write_text("OUTSIDE_CONTENT_MUST_NOT_BE_READ")
+                replace_now = threading.Event()
+                replaced = threading.Event()
+
+                def replace_entry():
+                    if not replace_now.wait(5):
+                        return
+                    staged = root / "replacement"
+                    if replacement_kind == "symlink":
+                        staged.symlink_to(outside)
+                    else:
+                        staged.write_text(outside.read_text())
+                    os.replace(staged, entry)
+                    replaced.set()
+
+                original_stat = gate.os.stat
+
+                def synchronize_after_stat(path, *args, **kwargs):
+                    result = original_stat(path, *args, **kwargs)
+                    if (
+                        path == "entry"
+                        and kwargs.get("dir_fd") is not None
+                        and not replace_now.is_set()
+                    ):
+                        replace_now.set()
+                        if not replaced.wait(5):
+                            raise AssertionError("concurrent replacement did not run")
+                    return result
+
+                thread = threading.Thread(target=replace_entry)
+                thread.start()
+                manifest = None
+                error = None
+                try:
+                    with mock.patch.object(
+                        gate.os, "stat", synchronize_after_stat
+                    ):
+                        manifest = gate._descriptor_tree_manifest(
+                            workspace, include_root_git=True
+                        )
+                except gate.IntegrityError as exc:
+                    error = exc
+                finally:
+                    thread.join(5)
+
+                self.assertFalse(thread.is_alive())
+                self.assertTrue(replaced.is_set())
+                self.assertIsNotNone(
+                    error,
+                    f"race captured outside content: {manifest}",
+                )
+                if manifest is not None:
+                    self.assertNotIn(gate.sha256_file(outside), manifest.values())
 
 
 if __name__ == "__main__":

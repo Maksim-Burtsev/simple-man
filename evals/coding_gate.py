@@ -934,7 +934,9 @@ def _read_stable_file(fd: int) -> tuple[bytes, os.stat_result]:
     return b"".join(chunks), before
 
 
-def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
+def _descriptor_tree_manifest(
+    workspace: Path, *, include_root_git: bool
+) -> dict[str, str]:
     if workspace.is_symlink():
         raise IntegrityError("model workspace must not be a symlink")
     if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
@@ -950,7 +952,7 @@ def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
         nonlocal total, entries
         before = os.fstat(directory_fd)
         for name in sorted(os.listdir(directory_fd)):
-            if root and name == ".git":
+            if root and name == ".git" and not include_root_git:
                 continue
             entries += 1
             if entries > MAX_FILES:
@@ -995,6 +997,10 @@ def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
     finally:
         os.close(root_fd)
     return dict(sorted(files.items()))
+
+
+def _model_fixture_manifest(workspace: Path) -> dict[str, str]:
+    return _descriptor_tree_manifest(workspace, include_root_git=False)
 
 
 def _capture_production_files(
@@ -1154,6 +1160,7 @@ class _AuditToken(ctypes.Structure):
 class _DarwinIdentity:
     pid: int
     uid: int
+    real_uid: int
     start_seconds: int
     start_microseconds: int
     unique_id: int
@@ -1167,6 +1174,7 @@ class _DarwinTaggedProcess:
 
 
 class _DarwinProcessSupervisor:
+    _PROC_RUID_ONLY = 5
     _PROC_PIDT_BSDINFOWITHUNIQID = 18
     _SANDBOX_FILTER_PATH = 1
     _TASK_AUDIT_TOKEN = 15
@@ -1228,22 +1236,23 @@ class _DarwinProcessSupervisor:
                 "process supervision is INCONCLUSIVE: sandbox no-report flag is unavailable"
             ) from exc
         self.sandbox_filter = self._SANDBOX_FILTER_PATH | no_report
-        self.uid = os.geteuid()
-        if self.uid == 0:
+        self.real_uid = os.getuid()
+        self.effective_uid = os.geteuid()
+        if self.real_uid == 0 or self.effective_uid == 0:
             raise InfrastructureError(
                 "process supervision is INCONCLUSIVE for a root Darwin controller"
             )
         controller = self._identity(os.getpid())
-        if controller is None or controller.uid != self.uid:
+        if (
+            controller is None
+            or controller.real_uid != self.real_uid
+            or controller.uid != self.effective_uid
+        ):
             raise InfrastructureError(
                 "process supervision is INCONCLUSIVE: cannot identify controller"
             )
-        self.baseline = frozenset(self._same_uid_identities())
-        matches, unstable = self._scan_tagged(include_baseline=True)
-        if matches or unstable:
-            raise InfrastructureError(
-                "process supervision is INCONCLUSIVE: sandbox tag collision"
-            )
+        self.baseline = frozenset(self._stable_real_uid_snapshot())
+        self._preflight_no_tagged_processes()
 
     def _configure_spi(self) -> None:
         try:
@@ -1267,8 +1276,13 @@ class _DarwinProcessSupervisor:
             ctypes.c_char_p,
             ctypes.c_int,
         ]
-        self.proc.proc_listallpids.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        self.proc.proc_listallpids.restype = ctypes.c_int
+        self.proc.proc_listpids.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        self.proc.proc_listpids.restype = ctypes.c_int
         self.proc.proc_pidinfo.argtypes = [
             ctypes.c_int,
             ctypes.c_int,
@@ -1308,20 +1322,39 @@ class _DarwinProcessSupervisor:
         self.system.mach_port_deallocate.restype = ctypes.c_int
 
     def _pids(self) -> tuple[int, ...]:
-        capacity = self.proc.proc_listallpids(None, 0)
-        if capacity <= 0:
+        int_size = ctypes.sizeof(ctypes.c_int)
+        required_bytes = self.proc.proc_listpids(
+            self._PROC_RUID_ONLY, self.real_uid, None, 0
+        )
+        if required_bytes <= 0 or required_bytes % int_size:
             raise InfrastructureError(
                 "process supervision is INCONCLUSIVE: cannot list Darwin processes"
             )
+        capacity = required_bytes // int_size + 64
         for _ in range(3):
-            values = (ctypes.c_int * (capacity + 64))()
-            count = self.proc.proc_listallpids(values, ctypes.sizeof(values))
-            if count <= 0:
+            values = (ctypes.c_int * capacity)()
+            result_bytes = self.proc.proc_listpids(
+                self._PROC_RUID_ONLY,
+                self.real_uid,
+                values,
+                ctypes.sizeof(values),
+            )
+            if result_bytes <= 0 or result_bytes % int_size:
                 raise InfrastructureError(
                     "process supervision is INCONCLUSIVE: cannot list Darwin processes"
                 )
+            if result_bytes > ctypes.sizeof(values):
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: malformed Darwin process list"
+                )
+            count = result_bytes // int_size
             if count < len(values):
-                return tuple(pid for pid in values[:count] if pid > 0)
+                pids = tuple(pid for pid in values[:count] if pid > 0)
+                if not pids:
+                    raise InfrastructureError(
+                        "process supervision is INCONCLUSIVE: cannot list Darwin processes"
+                    )
+                return pids
             capacity *= 2
         raise InfrastructureError(
             "process supervision is INCONCLUSIVE: Darwin process list is unstable"
@@ -1345,19 +1378,42 @@ class _DarwinProcessSupervisor:
         return _DarwinIdentity(
             pid,
             int(info.pbsd.pbi_uid),
+            int(info.pbsd.pbi_ruid),
             int(info.pbsd.pbi_start_tvsec),
             int(info.pbsd.pbi_start_tvusec),
             int(info.p_uniqidentifier.p_uniqueid),
             int(info.p_uniqidentifier.p_idversion),
         )
 
-    def _same_uid_identities(self) -> tuple[_DarwinIdentity, ...]:
+    def _snapshot_identities(
+        self, pids: Sequence[int]
+    ) -> tuple[tuple[_DarwinIdentity, ...], bool]:
         identities = []
-        for pid in self._pids():
+        unstable = False
+        for pid in pids:
             identity = self._identity(pid)
-            if identity is not None and identity.uid == self.uid:
-                identities.append(identity)
-        return tuple(identities)
+            if identity is None or identity.real_uid != self.real_uid:
+                unstable = True
+                continue
+            identities.append(identity)
+        return tuple(identities), unstable
+
+    def _same_real_uid_snapshot(
+        self,
+    ) -> tuple[tuple[_DarwinIdentity, ...], bool]:
+        return self._snapshot_identities(self._pids())
+
+    def _stable_real_uid_snapshot(self) -> tuple[_DarwinIdentity, ...]:
+        deadline = time.monotonic() + 0.25
+        while True:
+            identities, unstable = self._same_real_uid_snapshot()
+            if not unstable:
+                return identities
+            if time.monotonic() >= deadline:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: Darwin process list is unstable"
+                )
+            time.sleep(0.001)
 
     def _sandbox_decision(self, pid: int, path: Path) -> int:
         ctypes.set_errno(0)
@@ -1398,10 +1454,10 @@ class _DarwinProcessSupervisor:
             int(self.bsm.audit_token_to_pidversion(token)),
         )
 
-    def _audit_token(self, identity: _DarwinIdentity) -> tuple[int, ...] | None:
+    def _audit_token_for_pid(self, pid: int) -> tuple[int, ...] | None:
         task = ctypes.c_uint32()
         if self.system.task_name_for_pid(
-            self.mach_task_self, identity.pid, ctypes.byref(task)
+            self.mach_task_self, pid, ctypes.byref(task)
         ) != 0:
             return None
         try:
@@ -1424,13 +1480,73 @@ class _DarwinProcessSupervisor:
                     "process supervision is INCONCLUSIVE: cannot release Mach task port"
                 )
 
+    def _audit_token(self, identity: _DarwinIdentity) -> tuple[int, ...] | None:
+        return self._audit_token_for_pid(identity.pid)
+
+    def _terminate_new_snapshot_processes(
+        self, pids: Sequence[int]
+    ) -> tuple[int, bool, frozenset[int]]:
+        baseline_pids = {identity.pid for identity in self.baseline}
+        matches = 0
+        unstable = False
+        terminated: set[int] = set()
+        for pid in pids:
+            if pid in baseline_pids:
+                continue
+            token = self._audit_token_for_pid(pid)
+            if token is None:
+                unstable = True
+                continue
+            token_pid, token_euid, token_pidversion = self._decode_audit_token(token)
+            if token_pid != pid:
+                unstable = True
+                continue
+            denied = self._sandbox_decision_by_token(token, self.tag_denied)
+            control = self._sandbox_decision_by_token(token, self.tag_control)
+            tagged = denied == 1 and control == 0
+            if tagged:
+                matches += 1
+            identity = self._identity(pid)
+            if (
+                identity is None
+                or identity.real_uid != self.real_uid
+                or identity.uid != token_euid
+                or identity.id_version != token_pidversion
+            ):
+                unstable = True
+                continue
+            if denied not in (0, 1) or control not in (0, 1):
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: audit-token tag query failed"
+                )
+            if not tagged:
+                continue
+            if self._signal_exact(_DarwinTaggedProcess(identity, token)):
+                terminated.add(pid)
+            else:
+                unstable = True
+        return matches, unstable, frozenset(terminated)
+
     def _scan_tagged(
         self, *, include_baseline: bool = False, terminate: bool = False
     ) -> tuple[int, bool]:
         matches = 0
-        unstable = False
         strict_churn = not include_baseline or terminate
-        for identity in self._same_uid_identities():
+        pids = self._pids()
+        if terminate:
+            fast_matches, fast_unstable, terminated = (
+                self._terminate_new_snapshot_processes(pids)
+            )
+            matches += fast_matches
+        else:
+            fast_unstable = False
+            terminated = frozenset()
+        identities, snapshot_unstable = self._snapshot_identities(
+            tuple(pid for pid in pids if pid not in terminated)
+        )
+        unstable = snapshot_unstable
+        unstable = unstable or fast_unstable
+        for identity in identities:
             if not include_baseline and identity in self.baseline:
                 continue
             denied = self._sandbox_decision(identity.pid, self.tag_denied)
@@ -1466,7 +1582,7 @@ class _DarwinProcessSupervisor:
             token_pid, token_euid, token_pidversion = self._decode_audit_token(token)
             if (
                 token_pid != identity.pid
-                or token_euid != self.uid
+                or token_euid != identity.uid
                 or token_pidversion != identity.id_version
             ):
                 if self._identity(identity.pid) != identity:
@@ -1492,6 +1608,22 @@ class _DarwinProcessSupervisor:
             ):
                 unstable = True
         return matches, unstable
+
+    def _preflight_no_tagged_processes(self) -> None:
+        deadline = time.monotonic() + 0.25
+        while True:
+            matches, unstable = self._scan_tagged(include_baseline=True)
+            if matches:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: sandbox tag collision"
+                )
+            if not unstable:
+                return
+            if time.monotonic() >= deadline:
+                raise InfrastructureError(
+                    "process supervision is INCONCLUSIVE: Darwin process list is unstable"
+                )
+            time.sleep(0.001)
 
     def _signal_exact(self, process: _DarwinTaggedProcess) -> bool:
         token = self._make_audit_token(process.audit_token)
@@ -1694,6 +1826,7 @@ def run_bounded(
     process: subprocess.Popen[bytes] | None = None
     group_cleaned = False
     supervisor_closed = False
+    workspace_after_group: dict[str, str] | None = None
     try:
         with os.fdopen(stdout_fd, "wb") as stdout, os.fdopen(stderr_fd, "wb") as stderr:
             try:
@@ -1748,7 +1881,9 @@ def run_bounded(
                     break
                 if monitor_workspace is not None:
                     try:
-                        _tree(monitor_workspace)
+                        _descriptor_tree_manifest(
+                            monitor_workspace, include_root_git=True
+                        )
                     except IntegrityError:
                         tree_limited = True
                         break
@@ -1760,9 +1895,29 @@ def run_bounded(
                 _kill_group(process)
             group_cleaned = True
             if supervisor is not None:
+                if monitor_workspace is not None:
+                    try:
+                        workspace_after_group = _descriptor_tree_manifest(
+                            monitor_workspace, include_root_git=True
+                        )
+                    except IntegrityError:
+                        tree_limited = True
                 supervisor.cleanup()
                 supervisor.close()
                 supervisor_closed = True
+                if workspace_after_group is not None:
+                    try:
+                        workspace_after_cleanup = _descriptor_tree_manifest(
+                            monitor_workspace, include_root_git=True
+                        )
+                    except IntegrityError as exc:
+                        raise InfrastructureError(
+                            "workspace changed during descendant cleanup"
+                        ) from exc
+                    if workspace_after_cleanup != workspace_after_group:
+                        raise InfrastructureError(
+                            "workspace changed during descendant cleanup"
+                        )
             stdout.flush()
             stderr.flush()
         stdout_bytes = stdout_path.read_bytes()
