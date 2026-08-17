@@ -918,7 +918,7 @@ FIXTURES = {
         root=FIXTURE_ROOT / "node-auth-api",
         production_paths=("src/middleware.js",),
         immutable_paths=("test/auth.test.js", "app.js", "runtime.js"),
-        command=("node", "--test", "test/auth.test.js"),
+        command=("node", "--test", "--test-reporter=spec", "test/auth.test.js"),
         expected_seed_failure="200 !== 401",
         reporter="node",
         canonical_test_ids=("accepts a valid session", "rejects an expired session"),

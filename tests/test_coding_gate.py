@@ -43,6 +43,17 @@ class CodingGateTests(unittest.TestCase):
 
         return self.validate_source(fixture, relative, transform)
 
+    def test_node_fixture_pins_spec_reporter(self):
+        self.assertEqual(
+            gate.FIXTURES["node-auth-api"].command,
+            (
+                "node",
+                "--test",
+                "--test-reporter=spec",
+                "test/auth.test.js",
+            ),
+        )
+
     def test_auth_strict_less_than_patch_passes_visible_test_but_fails_hidden_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "model"
