@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Benchmark policy arms under `evals/policies/`: `v0.2/` freezes the shipped
+  policy as the baseline arm, `v0.3/` holds candidate successors plus a
+  one-sentence generic-terse control. Candidates are **not** shipped; they are
+  promoted only if they clear the release gates on a live run.
+- `tests/test_policies.py` guards both directions: the frozen baseline must stay
+  byte-identical to the shipped policy, and a candidate must never silently
+  become the shipped policy.
 - CI status badge and this changelog.
 - Vendored copy of the exact external Caveman `SKILL.md` used as a comparison
   arm, under `evals/policies/external/`, so that comparison is auditable and
