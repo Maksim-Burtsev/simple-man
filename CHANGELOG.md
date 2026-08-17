@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Lean Claude Code benchmark under `evals/bench/`: a runner, a blind pairwise
+  judge, and a report that recomputes every number from the raw records. Runs on
+  a Claude subscription with no API key, and refuses to start if any Anthropic
+  credential in the environment could move the run onto API billing.
+- Benchmark corpus: 60 output cases across 12 categories and 30 activation
+  cases, in `evals/cases/bench-*.jsonl`, with guard tests for size, category
+  replication, language mix and cluster independence.
+- Make targets `bench-v3-dry-run`, `bench-v3`, `bench-v3-report`,
+  `bench-v3-check`.
 - Benchmark policy arms under `evals/policies/`: `v0.2/` freezes the shipped
   policy as the baseline arm, `v0.3/` holds candidate successors plus a
   one-sentence generic-terse control. Candidates are **not** shipped; they are

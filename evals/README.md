@@ -8,6 +8,44 @@ v2 release gates. "Token savings" can mean two different things:
 - `reference_compression`: Caveman README-style output compression, measured
   against a normal helpful baseline and output tokens only.
 
+## Claude Code benchmark (`evals/bench/`)
+
+The current benchmark. It runs against the `claude` CLI in headless mode and
+needs no API key: `--system-prompt-file` replaces Claude Code's default system
+prompt, so an arm measures its policy and nothing else, and `--tools ""` makes
+each answer case a single text-in/text-out turn.
+
+Five arms, each the same neutral prelude plus one policy file:
+
+| Arm | Policy |
+| --- | --- |
+| `N` | none — prelude only |
+| `A` | shipped v0.2 runtime policy |
+| `B` | v0.3 candidate |
+| `G` | one sentence of "be concise" — the control that matters |
+| `C` | vendored external Caveman skill |
+
+```bash
+make bench-v3-dry-run    # print the call plan, spend nothing
+make bench-v3            # run it
+make bench-v3-report     # rebuild report.md from the raw records
+make bench-v3-check      # fail if the committed report cannot be rebuilt
+```
+
+Billing is fail-closed on the subscription. `ANTHROPIC_API_KEY`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and `CLAUDE_CODE_OAUTH_TOKEN` all
+take precedence over the claude.ai login, so the runner refuses to start when
+any of them is set and strips them from every subprocess. `--bare` is never
+used: it forces API-key auth by design.
+
+Judging is blind by construction rather than by scanning — the judge payload
+carries the task and two answer texts, and never carries an arm label. Each pair
+is judged in both orderings and a win requires winning both; a split between
+orderings is recorded as a tie.
+
+The report is always recomputed from the raw JSONL. `make bench-v3-check` fails
+if a published number cannot be rebuilt from the evidence.
+
 ## Status: what you can actually run today
 
 **No canonical result snapshot is committed.** `evals/snapshots/` holds only a
