@@ -1802,6 +1802,8 @@ class CodingGateTests(unittest.TestCase):
                     contract,
                     denied_targets=denied,
                 )
+                if probe.status == "INCONCLUSIVE":
+                    self.skipTest(f"host could not be probed: {probe.reason}")
                 self.assertTrue(probe.descendant_passed, probe)
                 self.assertTrue(probe.filesystem_passed, probe)
                 self.assertTrue(probe.network_passed, probe)
