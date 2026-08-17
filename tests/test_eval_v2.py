@@ -389,6 +389,33 @@ class EvalV2Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.main(["answers", "--root", str(ROOT / "eval-v2-output"), "--fake", "--secret", "test-secret"])
 
+    def test_artifact_writes_handle_short_writes_and_zero_progress(self):
+        real_write = os.write
+
+        def short_write(descriptor, data):
+            return real_write(descriptor, data[: max(1, len(data) // 3)])
+
+        for exclusive in (False, True):
+            with self.subTest(exclusive=exclusive), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "artifact.json"
+                with mock.patch.object(runner.os, "write", side_effect=short_write):
+                    runner._write_json(
+                        path,
+                        {"schema_version": 1, "payload": "x" * 128},
+                        private=True,
+                        exclusive=exclusive,
+                    )
+                self.assertEqual(
+                    runner._read_json(path, private=True),
+                    {"schema_version": 1, "payload": "x" * 128},
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "attempt"
+            with mock.patch.object(runner.os, "write", return_value=0):
+                with self.assertRaises(OSError):
+                    runner.start_attempt(path, {"call_id": "call-zero-write"})
+
     def test_public_leak_scan_uses_dynamic_identifiers_secrets_and_paths(self):
         with self.assertRaises(ValueError):
             lib.assert_public_safe(

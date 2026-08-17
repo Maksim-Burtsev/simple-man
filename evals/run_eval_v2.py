@@ -126,6 +126,15 @@ def _exists(path: Path, *, private: bool) -> bool:
         os.close(parent)
 
 
+def _write_all(descriptor: int, data: bytes) -> None:
+    remaining = memoryview(data)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written <= 0:
+            raise OSError(errno.EIO, "artifact write made no progress")
+        remaining = remaining[written:]
+
+
 def _write_bytes(path: Path, data: bytes, *, private: bool, exclusive: bool = False) -> None:
     parent = _open_directory(path.parent, create=True, private=private)
     mode = 0o600 if private else 0o644
@@ -139,7 +148,7 @@ def _write_bytes(path: Path, data: bytes, *, private: bool, exclusive: bool = Fa
         if exclusive:
             descriptor = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode, dir_fd=parent)
             try:
-                os.write(descriptor, data)
+                _write_all(descriptor, data)
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
@@ -152,7 +161,7 @@ def _write_bytes(path: Path, data: bytes, *, private: bool, exclusive: bool = Fa
             except FileExistsError:
                 continue
             try:
-                os.write(descriptor, data)
+                _write_all(descriptor, data)
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
