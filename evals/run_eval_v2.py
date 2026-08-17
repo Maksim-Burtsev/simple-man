@@ -11,7 +11,7 @@ import stat
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import eval_v2_lib as lib
 
@@ -696,20 +696,51 @@ def _assert_completed_attempt_inventory(path: Path) -> None:
         raise ValueError("attempt artifact inventory mismatch")
 
 
-def _attempt_state(path: Path, expected_identity: dict[str, Any]) -> dict[str, Any]:
+def _attempt_state(
+    path: Path,
+    expected_identity: dict[str, Any],
+    *,
+    partial_raw_validator: Callable[[Path, dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     loaded = load_attempt(path)
     if loaded["identity"] != expected_identity:
         raise ValueError("attempt identity tampered")
     names = set(_directory_names(path, private=True))
     if loaded["status"] == "started":
-        if names != {"started.json"}:
+        if names not in ({"started.json"}, {"started.json", "raw.jsonl"}):
             raise ValueError("started attempt artifact inventory mismatch")
+        if "raw.jsonl" in names:
+            if partial_raw_validator is None:
+                raise ValueError("started attempt raw evidence is not expected")
+            partial_raw_validator(path / "raw.jsonl", expected_identity)
     elif loaded["status"] in {"failed", "interrupted"}:
-        if names != {"started.json", "result.json"}:
+        if names not in ({"started.json", "result.json"}, {"started.json", "raw.jsonl", "result.json"}):
             raise ValueError("consumed attempt artifact inventory mismatch")
+        if "raw.jsonl" in names:
+            if partial_raw_validator is None:
+                raise ValueError("consumed attempt raw evidence is not expected")
+            partial_raw_validator(path / "raw.jsonl", expected_identity)
+            raw_sha256 = loaded["result"].get("raw_sha256")
+            if raw_sha256 is not None and raw_sha256 != _sha(path / "raw.jsonl", private=True):
+                raise ValueError("consumed attempt raw hash mismatch")
     else:
         _assert_completed_attempt_inventory(path)
     return loaded
+
+
+def _validate_answer_content(payload: dict[str, Any], expected_identity: dict[str, Any]) -> None:
+    lib.require_exact_fields(payload, set(expected_identity) | ANSWER_METRICS, "answer payload")
+    if any(payload[key] != value for key, value in expected_identity.items()):
+        raise ValueError("answer identity tampered")
+    if payload["visible_output_tokens"] != payload["commentary_visible_tokens"] + payload["final_visible_tokens"] or payload["uncached_input_tokens"] != payload["input_tokens"] - payload["cached_input_tokens"]:
+        raise ValueError("answer metric derivation mismatch")
+
+
+def _validate_partial_answer_raw(path: Path, expected_identity: dict[str, Any]) -> None:
+    rows = _read_jsonl(path, private=True)
+    if len(rows) != 1:
+        raise ValueError("partial answer raw evidence mismatch")
+    _validate_answer_content(rows[0], expected_identity)
 
 
 def _load_answer_attempt(path: Path, expected_identity: dict[str, Any]) -> dict[str, Any]:
@@ -718,17 +749,14 @@ def _load_answer_attempt(path: Path, expected_identity: dict[str, Any]) -> dict[
         raise ValueError("answer attempt is not completed")
     result = loaded["result"]
     lib.require_exact_fields(result, set(expected_identity) | ANSWER_METRICS | {"raw_sha256"}, "answer result")
-    if any(result[key] != value for key, value in expected_identity.items()):
-        raise ValueError("answer identity tampered")
     raw_path = path / "raw.jsonl"
     rows = _read_jsonl(raw_path, private=True)
     if len(rows) != 1 or result["raw_sha256"] != _sha(raw_path, private=True):
         raise ValueError("answer raw evidence mismatch")
     payload = {key: value for key, value in result.items() if key != "raw_sha256"}
+    _validate_answer_content(payload, expected_identity)
     if lib.canonical_json(rows[0]) != lib.canonical_json(payload):
         raise ValueError("answer result does not reconstruct from raw")
-    if result["visible_output_tokens"] != result["commentary_visible_tokens"] + result["final_visible_tokens"] or result["uncached_input_tokens"] != result["input_tokens"] - result["cached_input_tokens"]:
-        raise ValueError("answer metric derivation mismatch")
     return result
 
 
@@ -752,7 +780,7 @@ def _answer_runs(root: Path, output_cases: list[dict[str, Any]], activation_case
         identity = dict(call)
         attempt = attempts / call["run_id"]
         if _exists(attempt, private=True):
-            state = _attempt_state(attempt, identity)
+            state = _attempt_state(attempt, identity, partial_raw_validator=_validate_partial_answer_raw)
             if state["status"] == "completed":
                 runs.append(_load_answer_attempt(attempt, identity))
             else:
@@ -998,20 +1026,32 @@ def _verify_judgment_commitment(root: Path, bundle: dict[str, Any], mapping: dic
     _verify_commitment(root / "private" / JUDGMENT_COMMITMENT, _judgment_commitment_value(root, bundle, mapping, plan, key))
 
 
+def _validate_judgment_content(payload: dict[str, Any], identity: dict[str, Any]) -> None:
+    lib.require_exact_fields(payload, {"pair_id", "judgment"}, "judge payload")
+    if payload["pair_id"] != identity["pair_id"]:
+        raise ValueError("judge identity tampered")
+    lib.validate_judgment(payload["judgment"])
+
+
+def _validate_partial_judgment_raw(path: Path, identity: dict[str, Any]) -> None:
+    rows = _read_jsonl(path, private=True)
+    if len(rows) != 1:
+        raise ValueError("partial judge raw evidence mismatch")
+    _validate_judgment_content(rows[0], identity)
+
+
 def _load_judgment_attempt(path: Path, identity: dict[str, Any]) -> dict[str, Any]:
     loaded = _attempt_state(path, identity)
     if loaded["status"] != "completed":
         raise ValueError("judge attempt is not completed")
     result = loaded["result"]
     lib.require_exact_fields(result, {"pair_id", "judgment", "raw_sha256"}, "judge result")
-    if result["pair_id"] != identity["pair_id"]:
-        raise ValueError("judge identity tampered")
-    lib.validate_judgment(result["judgment"])
     raw = path / "raw.jsonl"
     rows = _read_jsonl(raw, private=True)
     if len(rows) != 1 or result["raw_sha256"] != _sha(raw, private=True):
         raise ValueError("judge raw evidence mismatch")
     payload = {"pair_id": result["pair_id"], "judgment": result["judgment"]}
+    _validate_judgment_content(payload, identity)
     if lib.canonical_json(rows[0]) != lib.canonical_json(payload):
         raise ValueError("judge result does not reconstruct from raw")
     return payload
@@ -1039,7 +1079,7 @@ def _run_or_load_judges(root: Path, bundle: dict[str, Any], mapping: dict[str, A
         identity = _judge_identity(pair, bundle_sha256, plan, bundle["pairs"], mapping)
         path = directory / pair["pair_id"]
         if _exists(path, private=True):
-            state = _attempt_state(path, identity)
+            state = _attempt_state(path, identity, partial_raw_validator=_validate_partial_judgment_raw)
             if state["status"] == "completed":
                 rows.append(_load_judgment_attempt(path, identity))
             else:

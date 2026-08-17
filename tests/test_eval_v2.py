@@ -776,10 +776,17 @@ class EvalV2Tests(unittest.TestCase):
             for attempt, state in zip(attempts, states):
                 identity = runner.load_attempt(attempt)["identity"]
                 consumed.append(identity["call_id"])
-                (attempt / "raw.jsonl").unlink()
-                (attempt / "result.json").unlink()
-                if state != "started":
+                if state == "started":
+                    (attempt / "result.json").unlink()
+                elif state == "failed":
+                    result = json.loads((attempt / "result.json").read_text())
+                    result["status"] = "failed"
+                    (attempt / "result.json").write_text(lib.canonical_json(result) + "\n")
+                else:
+                    (attempt / "raw.jsonl").unlink()
+                    (attempt / "result.json").unlink()
                     runner.finish_attempt(attempt, {}, state)
+            partial_raw = (attempts[0] / "raw.jsonl").read_bytes()
             untouched = attempts[3]
             shutil.rmtree(untouched)
             (root / "private/mapping.json").unlink()
@@ -792,6 +799,7 @@ class EvalV2Tests(unittest.TestCase):
             self.assertEqual(set(first["spent_call_ids"]), set(consumed))
             self.assertTrue((untouched / "result.json").exists())
             self.assertFalse((attempts[0] / "result.json").exists())
+            self.assertEqual((attempts[0] / "raw.jsonl").read_bytes(), partial_raw)
             with mock.patch("run_eval_v2._fake_response", side_effect=AssertionError("spent call retried")):
                 second = runner.main(["answers", "--root", str(root), "--fake", "--secret", "test-secret"])
             self.assertEqual(second["status"], "incomplete")
@@ -809,16 +817,47 @@ class EvalV2Tests(unittest.TestCase):
             identity = runner._judge_identity(pair, runner._bundle_sha256(bundle), plan, bundle["pairs"], mapping)
             attempt = root / "private/judge-attempts" / pair["pair_id"]
             runner.start_attempt(attempt, identity)
+            partial = {"pair_id": pair["pair_id"], "judgment": runner._fake_judgment()}
+            partial_raw = (lib.canonical_json(partial) + "\n").encode()
+            (attempt / "raw.jsonl").write_bytes(partial_raw)
 
             result = runner.main(["judge", "--root", str(root), "--fake"])
             self.assertEqual(result["status"], "incomplete")
             self.assertTrue(result["unsealable"])
             self.assertEqual(result["spent_call_ids"], [identity["call_id"]])
             self.assertFalse((attempt / "result.json").exists())
+            self.assertEqual((attempt / "raw.jsonl").read_bytes(), partial_raw)
             self.assertFalse((root / "private/judgments.jsonl").exists())
             self.assertTrue((root / "private/judge-manifest.json").exists())
             with mock.patch("run_eval_v2._fake_judgment", side_effect=AssertionError("spent judge retried")):
                 self.assertEqual(runner.main(["judge", "--root", str(root), "--fake"])["status"], "incomplete")
+
+    def test_partial_attempts_reject_extra_tampered_and_bad_hash_artifacts(self):
+        answer_identity = {"call_id": "call-answer", "kind": "output"}
+        answer_payload = runner._answer_payload(answer_identity, "", "done")
+        judgment_identity = {"call_id": "call-judge", "pair_id": "pair-one"}
+        judgment_payload = {"pair_id": "pair-one", "judgment": runner._fake_judgment()}
+        specs = (
+            ("answer", answer_identity, answer_payload, runner._validate_partial_answer_raw),
+            ("judge", judgment_identity, judgment_payload, runner._validate_partial_judgment_raw),
+        )
+        for kind, identity, payload, validator in specs:
+            for corruption in ("extra", "content", "hash"):
+                with self.subTest(kind=kind, corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                    attempt = Path(directory) / "attempt"
+                    runner.start_attempt(attempt, identity)
+                    raw = attempt / "raw.jsonl"
+                    raw.write_text(lib.canonical_json(payload) + "\n")
+                    if corruption == "extra":
+                        (attempt / "extra.json").write_text("{}")
+                    elif corruption == "content":
+                        tampered = dict(payload)
+                        tampered["call_id" if kind == "answer" else "pair_id"] = "tampered"
+                        raw.write_text(lib.canonical_json(tampered) + "\n")
+                    else:
+                        runner.finish_attempt(attempt, {"raw_sha256": "0" * 64}, "failed")
+                    with self.assertRaises(ValueError):
+                        runner._attempt_state(attempt, identity, partial_raw_validator=validator)
 
     def test_public_inventory_is_exact_and_neutral_positions_are_left_right(self):
         with tempfile.TemporaryDirectory() as directory:
