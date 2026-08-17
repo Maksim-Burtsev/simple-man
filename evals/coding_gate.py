@@ -1826,7 +1826,12 @@ def _child_limits(cpu_seconds: int) -> None:
         cpu_hard if cpu_hard != resource.RLIM_INFINITY else cpu_seconds,
     )
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, cpu_limit))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_BYTES, MAX_FILE_BYTES))
+    _, file_hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    file_limit = min(
+        MAX_FILE_BYTES,
+        file_hard if file_hard != resource.RLIM_INFINITY else MAX_FILE_BYTES,
+    )
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
     _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     limit = min(128, hard if hard != resource.RLIM_INFINITY else 128)
     resource.setrlimit(resource.RLIMIT_NOFILE, (limit, limit))
@@ -2470,23 +2475,31 @@ class _LinuxProcessSupervisor:
 
     def cleanup(self) -> None:
         deadline = time.monotonic() + 1
+        quiet = 0
         while True:
+            known_before = len(self.known)
             self.poll()
             alive = {pid for pid in self.known if Path(f"/proc/{pid}").exists()}
-            if not alive:
-                return
-            for pid in alive:
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except PermissionError as exc:
-                    raise InfrastructureError("cannot kill supervised descendant") from exc
-            for pid in alive:
-                try:
-                    os.waitpid(pid, os.WNOHANG)
-                except (ChildProcessError, ProcessLookupError):
-                    pass
+            if alive:
+                quiet = 0
+                for pid in alive:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError as exc:
+                        raise InfrastructureError("cannot kill supervised descendant") from exc
+                for pid in alive:
+                    try:
+                        os.waitpid(pid, os.WNOHANG)
+                    except (ChildProcessError, ProcessLookupError):
+                        pass
+            elif len(self.known) != known_before:
+                quiet = 0
+            else:
+                quiet += 1
+                if quiet >= 2:
+                    return
             if time.monotonic() >= deadline:
                 raise InfrastructureError("supervised descendants survived cleanup")
             time.sleep(0.01)

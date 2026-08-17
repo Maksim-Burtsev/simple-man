@@ -1532,6 +1532,59 @@ class CodingGateTests(unittest.TestCase):
 
         self.assertIn(str(binary.resolve()), safe_path.split(os.pathsep))
 
+    def test_child_limits_clamp_file_size_to_inherited_hard_limit(self):
+        probe = (
+            "import resource,sys; "
+            f"sys.path.insert(0,{str(ROOT / 'evals')!r}); "
+            "import coding_gate as gate; "
+            "resource.setrlimit(resource.RLIMIT_FSIZE,(1024,1024)); "
+            "gate._child_limits(10); "
+            "print(*resource.getrlimit(resource.RLIMIT_FSIZE))"
+        )
+
+        result = subprocess.run(
+            (sys.executable, "-I", "-c", probe),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "1024 1024")
+
+    def test_linux_cleanup_resets_quiet_scans_during_adoption_churn(self):
+        supervisor = object.__new__(gate._LinuxProcessSupervisor)
+        supervisor.known = {101}
+        live = {203}
+        polls = 0
+
+        def poll(timeout=0):
+            nonlocal polls
+            polls += 1
+            if polls == 2:
+                supervisor.known.add(202)
+            elif polls == 3:
+                supervisor.known.add(203)
+
+        def exists(path):
+            return int(path.name) in live
+
+        def kill(pid, _signal):
+            live.discard(pid)
+
+        supervisor.poll = poll
+        with (
+            mock.patch.object(gate.Path, "exists", exists),
+            mock.patch.object(gate.os, "kill", side_effect=kill),
+            mock.patch.object(gate.os, "waitpid", return_value=(203, 0)),
+            mock.patch.object(gate.time, "sleep"),
+        ):
+            supervisor.cleanup()
+
+        self.assertFalse(live)
+        self.assertGreaterEqual(polls, 5)
+
     def test_bounded_runner_reaps_children_after_leader_exit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
