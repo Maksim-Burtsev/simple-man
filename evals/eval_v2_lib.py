@@ -349,6 +349,20 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
     aliases = "|".join(re.escape(alias) for alias in alias_values)
     identifiers = {_normalized(identifier) for identifier in private_ids or set()}
     roots = [unicodedata.normalize("NFKC", str(root)).casefold() for root in protected_roots or set()]
+    def contains_absolute_path(value: str) -> bool:
+        posix = re.compile(r"(?<![\w:/.])/(?!/)(?:[^/\s]+/)*[^/\s]+")
+        for match in posix.finditer(value):
+            prefix = value[:match.start()]
+            if re.search(r"\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+[`'\"]?$", prefix, re.IGNORECASE):
+                continue
+            if re.fullmatch(r"/\d+", match.group().rstrip(".,;:!?)]}'\"")):
+                continue
+            return True
+        return bool(
+            re.search(r"(?i)(?<![\w])[a-z]:[\\/](?:[^\s\\/]+[\\/]?)+", value)
+            or re.search(r"(?<![:\\/])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+", value)
+        )
+
     def walk(value: Any, *, top_level: bool = False) -> None:
         if isinstance(value, dict):
             for key, item in value.items():
@@ -372,7 +386,7 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
                 raise ValueError("public arm leak")
             if re.search(r"\bBearer\s+\S+|\b(?:api[_ -]?key|access[_ -]?token|password)\s*[:=]\s*\S+", raw, re.IGNORECASE):
                 raise ValueError("public secret leak")
-            if any(root and root in raw.casefold() for root in roots) or re.search(r"/(?:Users|home|private|var|tmp)/", raw, re.IGNORECASE):
+            if any(root and root in raw.casefold() for root in roots) or contains_absolute_path(raw):
                 raise ValueError("public path leak")
     walk(bundle, top_level=True)
 

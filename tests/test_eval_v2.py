@@ -428,6 +428,23 @@ class EvalV2Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             lib.assert_public_safe(bundle, arm_aliases=aliases)
 
+    def test_public_leak_scan_rejects_absolute_paths_but_allows_repo_relative_locations(self):
+        absolute_paths = (
+            "/etc/passwd",
+            "config: /opt/simple-man/config.json",
+            "/Volumes/evals/run.json",
+            r"C:\Users\name\.codex\auth.json",
+            "D:/evals/private.json",
+            r"\\server\share\evidence.json",
+            "//server/share/evidence.json",
+        )
+        for value in absolute_paths:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                lib.assert_public_safe({"location": value})
+        lib.assert_public_safe({
+            "locations": ["api/users.js:42", "GET /api/accounts/:id", "GET /v1/balance"],
+        })
+
     def test_holdout_validation_matches_nested_contract(self):
         with self.assertRaises(ValueError):
             lib.validate_holdout_case({"kind": "output", "category": "status"})
