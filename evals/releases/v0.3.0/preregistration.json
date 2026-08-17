@@ -1,0 +1,121 @@
+{
+  "arms": {
+    "A": {
+      "policy": "evals/policies/v0.2/simple_man_runtime.md",
+      "role": "shipped v0.2"
+    },
+    "B": {
+      "policy": "evals/policies/v0.3/B-runtime.md",
+      "role": "candidate"
+    },
+    "C": {
+      "policy": "evals/policies/external/caveman-SKILL.md",
+      "role": "external reference"
+    },
+    "G": {
+      "policy": "evals/policies/v0.3/generic-terse.md",
+      "role": "one-sentence control"
+    },
+    "N": {
+      "policy": null,
+      "role": "neutral control, prelude only"
+    }
+  },
+  "comparisons_judged": [
+    "B:A",
+    "B:G"
+  ],
+  "decision_rule": "B ships only if every gate holds. A failed gate is published, not patched. If B fails, the shipped v0.2 policy stays.",
+  "descriptions": {
+    "D0": "evals/policies/v0.2/description.txt",
+    "D1": "evals/policies/v0.3/D1-description.txt"
+  },
+  "gates": [
+    {
+      "name": "explicit_activation",
+      "op": "eq",
+      "threshold": 1.0
+    },
+    {
+      "name": "implicit_recall",
+      "op": "gte",
+      "threshold": 0.9
+    },
+    {
+      "name": "precision",
+      "op": "gte",
+      "threshold": 0.95
+    },
+    {
+      "name": "protected_near_miss_false_positives",
+      "op": "eq",
+      "threshold": 0
+    },
+    {
+      "name": "false_validation_or_lost_blocker",
+      "op": "eq",
+      "threshold": 0
+    },
+    {
+      "name": "retention_equal_or_better_than_A",
+      "op": "eq",
+      "threshold": true
+    },
+    {
+      "name": "blind_wins_minus_losses_vs_A",
+      "op": "gte",
+      "threshold": 0
+    },
+    {
+      "name": "blind_wins_minus_losses_vs_G",
+      "op": "gte",
+      "threshold": 0
+    },
+    {
+      "name": "median_output_reduction_vs_N",
+      "op": "gte",
+      "threshold": 0.15
+    },
+    {
+      "name": "bootstrap_95_lower_bound_vs_N",
+      "op": "gt",
+      "threshold": 0.05
+    },
+    {
+      "name": "median_output_reduction_vs_G",
+      "op": "gte",
+      "threshold": 0.05
+    }
+  ],
+  "input_sha256": {
+    "evals/cases/bench-activation.jsonl": "2a273e8c2fa7a3724a2df4f3e8c26d472f13e7195597c9acb04deca5c199623b",
+    "evals/cases/bench-output.jsonl": "8182ebe1e9ed88f8ec756df01157f4cd58c330894edb4f3eb675dc1f5432274b",
+    "evals/policies/external/caveman-SKILL.md": "1eddf7055618153869975678d9ff36635602a3aa333f8b4cc0787f12de75b6f8",
+    "evals/policies/v0.2/description.txt": "0bf0e2fe2ced1fcef911d20c26fdc5418786938510a7095ac8101c0260473729",
+    "evals/policies/v0.2/simple_man_runtime.md": "4deec7f8ae7e45a9b33ec01ddf2d1a5ca50d0e5b997b89aad37e5a8ab7148734",
+    "evals/policies/v0.3/B-runtime.md": "c1c3dd89a2dd1fa87ab8ae4d0a389da37cdf59238703c56ab7e7eb79605dc08f",
+    "evals/policies/v0.3/D1-description.txt": "f94d5c9ec172dc7ad4d02859269d451a3b68ed383abe638bd7b4a4d335ce2dee",
+    "evals/policies/v0.3/generic-terse.md": "f7cfda62d9bd4ca5497a007559965d7a474f581ce6bd75c1b02334e01e6a3972"
+  },
+  "planned_calls": {
+    "activation": 60,
+    "judge": 240,
+    "output": 300,
+    "total": 600
+  },
+  "purpose": "Fix the benchmark inputs before any live call so results cannot be selected after the fact.",
+  "registered_at_commit": "4877647b135204c54754813980e63613dd645e3c",
+  "release": "v0.3.0",
+  "runner": {
+    "bootstrap": {
+      "ci": 0.95,
+      "cluster": "case_id",
+      "iterations": 10000,
+      "seed": 20260817
+    },
+    "judge_model": "claude-haiku-4-5",
+    "model": "claude-sonnet-5",
+    "seed": "simple-man-v0.3"
+  },
+  "schema_version": 1
+}
