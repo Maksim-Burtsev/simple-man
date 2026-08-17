@@ -11,11 +11,11 @@ SAMPLE_SNAPSHOT ?= /tmp/simple-man-caveman-sample-results.json
 MODEL_ARG := $(if $(MODEL),--model $(MODEL),)
 LIMIT_ARG := $(if $(filter-out 0,$(LIMIT)),--limit $(LIMIT),)
 
-.PHONY: test package-check eval-foundation-check bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
+.PHONY: test package-check eval-foundation-check eval-gates-check eval-release-dry-run bench bench-check bench-dry-run bench-refresh bench-smoke bench-compare-sample bench-reference bench-reference-check bench-reference-dry-run bench-reference-refresh bench-reference-smoke
 
 test: package-check
 	$(PYTHON) -m unittest discover -s tests
-	$(PYTHON) -m py_compile evals/benchmark_lib.py evals/measure.py evals/run_codex.py evals/run_skill_comparison.py
+	PYTHONPYCACHEPREFIX=/tmp/simple-man-pycache $(PYTHON) -m py_compile evals/benchmark_lib.py evals/measure.py evals/run_codex.py evals/run_skill_comparison.py evals/eval_v2_lib.py evals/run_eval_v2.py evals/check_eval_v2.py evals/coding_gate.py evals/fixtures/skill-comparison/python-payment-ledger/app.py evals/fixtures/skill-comparison/python-payment-ledger/runtime.py evals/fixtures/skill-comparison/sqlite-rollout-runner/app.py evals/fixtures/skill-comparison/sqlite-rollout-runner/runtime.py
 	$(PYTHON) evals/run_codex.py --dry-run --limit 1
 	$(PYTHON) evals/run_codex.py --suite reference_compression --dry-run --limit 1
 
@@ -27,6 +27,13 @@ package-check:
 
 eval-foundation-check:
 	$(PYTHON) -m unittest tests/test_eval_foundation.py -v
+
+eval-gates-check:
+	$(PYTHON) -m unittest tests/test_eval_v2.py tests/test_coding_gate.py tests/test_eval_v2_gates.py -v
+	$(PYTHON) evals/check_eval_v2.py gates
+
+eval-release-dry-run:
+	$(PYTHON) evals/check_eval_v2.py release-dry-run
 
 bench:
 	$(PYTHON) evals/measure.py --snapshot $(BENCH_SNAPSHOT)

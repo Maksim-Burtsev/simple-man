@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "context": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/context"}},
+        {
+          "type": "object",
+          "propertyNames": {"not": {"enum": ["arm", "candidate", "policy", "winner", "mapping"]}},
+          "additionalProperties": {"$ref": "#/$defs/context"}
+        }
+      ]
+    },
+    "critical_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "groups"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "scope": {"enum": ["commentary", "final", "visible"]},
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}}
+        }
+      }
+    },
+    "forbidden_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "any_of"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "any_of": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}}
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exact_nonempty_lines": {"type": "integer", "minimum": 1},
+        "exact_paragraphs": {"type": "integer", "minimum": 1},
+        "min_words": {"type": "integer", "minimum": 1},
+        "max_words": {"type": "integer", "minimum": 1},
+        "exact_top_level_items": {"type": "integer", "minimum": 1},
+        "required_code_fence": {"type": "boolean"}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "cluster_id", "language", "category", "requested_shape", "prompt", "verified_context", "critical_facts", "forbidden_claims", "structure"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "kind": {"const": "output"},
+        "cluster_id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "language": {"enum": ["en", "ru"]},
+        "category": {"enum": ["status", "final", "review", "security", "setup", "diagnosis", "plan", "failed_validation", "destructive_risk", "detailed_override", "teaching_override", "creative_override"]},
+        "requested_shape": {"enum": ["compact", "normal", "detailed", "teaching", "creative"]},
+        "prompt": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "verified_context": {"type": "object", "propertyNames": {"not": {"enum": ["arm", "candidate", "policy", "winner", "mapping"]}}, "additionalProperties": {"$ref": "#/$defs/context"}},
+        "critical_facts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/critical_fact"}},
+        "forbidden_claims": {"type": "array", "items": {"$ref": "#/$defs/forbidden_claim"}},
+        "structure": {"$ref": "#/$defs/structure"}
+      },
+      "allOf": [
+        {"if": {"properties": {"requested_shape": {"const": "compact"}}}, "then": {"not": {"properties": {"structure": {"required": ["max_words"]}}}}}
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "language", "activation_class", "execution", "expected", "protected_near_miss", "prompt"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"},
+        "kind": {"const": "activation"},
+        "language": {"enum": ["en", "ru"]},
+        "activation_class": {"enum": ["explicit", "implicit", "negative"]},
+        "execution": {"enum": ["mechanical", "routed"]},
+        "expected": {"enum": ["activate", "do_not_activate"]},
+        "protected_near_miss": {"enum": [null, "detailed", "teaching", "creative"]},
+        "prompt": {"type": "string", "minLength": 1, "pattern": ".*\\S.*"}
+      },
+      "allOf": [
+        {"if": {"properties": {"activation_class": {"const": "explicit"}}}, "then": {"properties": {"execution": {"const": "mechanical"}, "expected": {"const": "activate"}}}},
+        {"if": {"properties": {"activation_class": {"const": "implicit"}}}, "then": {"properties": {"execution": {"const": "routed"}, "expected": {"const": "activate"}}}},
+        {"if": {"properties": {"activation_class": {"const": "negative"}}}, "then": {"properties": {"execution": {"const": "routed"}, "expected": {"const": "do_not_activate"}}}},
+        {"if": {"properties": {"protected_near_miss": {"enum": ["detailed", "teaching", "creative"]}}}, "then": {"properties": {"activation_class": {"const": "negative"}}}}
+      ]
+    }
+  ]
+}
