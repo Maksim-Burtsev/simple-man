@@ -31,9 +31,9 @@ except ImportError:  # pragma: no cover - live mode rejects unsupported platform
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = ROOT / "evals/fixtures/skill-comparison"
-WORKER_ROOT = ROOT / "evals/coding_workers"
 MAX_PATCH_BYTES = 256 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024
+MAX_INTERFACE_OUTPUT_BYTES = 64 * 1024
 MAX_TREE_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_FILES = 2_000
@@ -146,13 +146,16 @@ class FixtureSpec:
     key: str
     root: Path
     production_paths: tuple[str, ...]
-    immutable_tests: tuple[str, ...]
+    immutable_paths: tuple[str, ...]
     command: tuple[str, ...]
     expected_seed_failure: str
     reporter: str
     canonical_test_ids: tuple[str, ...]
-    worker: Path
-    worker_runtime: str
+    canonical_cases: tuple[HiddenCase, ...]
+    entrypoint: str
+    entrypoint_command: tuple[str, ...]
+    interface_paths: tuple[str, ...]
+    entrypoint_forbidden_literals: tuple[str, ...]
     hidden_cases: tuple[HiddenCase, ...]
 
 
@@ -188,7 +191,7 @@ class CanonicalResult:
 class HiddenResult:
     case_id: str
     passed: bool
-    validator_sha256: str
+    interface_sha256: str
     observation_sha256: str | None
     error: str | None
 
@@ -211,7 +214,11 @@ class ValidationResult:
 class SourceIsolation:
     sandbox_executable: str
     protected_roots: tuple[Path, ...]
+    model_writable_roots: tuple[Path, ...] = ()
     _process_attestation: _ProcessAttestation | None = field(
+        default=None, repr=False, compare=False
+    )
+    _model_contract: ModelSourceIsolation | None = field(
         default=None, repr=False, compare=False
     )
 
@@ -238,11 +245,27 @@ class SourceIsolation:
         resolved_executable = str(Path(executable).resolve())
         if resolved_executable != ready.sandbox_executable:
             raise IntegrityError("model and validation must use the same sandbox executable")
-        roots = tuple(dict.fromkeys(path.expanduser().resolve() for path in protected_roots))
-        required = (ROOT.resolve(), WORKER_ROOT.resolve(), Path.home().resolve())
+        model_writable_roots = (ready.workspace.resolve(),)
+        if any(path.is_symlink() or not path.is_dir() for path in model_writable_roots):
+            raise IntegrityError("attested model-writable roots are unavailable")
+        roots = tuple(
+            dict.fromkeys(
+                [
+                    *(path.expanduser().resolve() for path in protected_roots),
+                    *model_writable_roots,
+                ]
+            )
+        )
+        required = (ROOT.resolve(), Path.home().resolve())
         if any(not any(item == root or item.is_relative_to(root) for root in roots) for item in required):
-            raise IntegrityError("live source isolation must protect source, workers, and real home")
-        return cls(resolved_executable, roots, ready._process_attestation)
+            raise IntegrityError("live source isolation must protect source and real home")
+        return cls(
+            sandbox_executable=resolved_executable,
+            protected_roots=roots,
+            model_writable_roots=model_writable_roots,
+            _process_attestation=ready._process_attestation,
+            _model_contract=ready,
+        )
 
     def wrap(self, command: Sequence[str], workspace: Path) -> tuple[str, ...]:
         if platform.system() != "Darwin":
@@ -257,19 +280,44 @@ class SourceIsolation:
         ):
             raise InfrastructureError("live coding validation sandbox is unavailable")
         roots = tuple(path.expanduser().resolve() for path in self.protected_roots)
-        required = (ROOT.resolve(), WORKER_ROOT.resolve(), Path.home().resolve())
+        required = (ROOT.resolve(), Path.home().resolve())
         if any(
             not any(item == root or item.is_relative_to(root) for root in roots)
             for item in required
         ):
             raise IntegrityError("live source isolation contract is incomplete")
+        if not self.model_writable_roots or any(
+            not any(item == root or item.is_relative_to(root) for root in roots)
+            for item in self.model_writable_roots
+        ):
+            raise IntegrityError(
+                "live source isolation must protect attested model-writable roots"
+            )
+        model_contract = self._model_contract
+        if model_contract is None or not model_contract.ready:
+            raise InfrastructureError(
+                "live source isolation is INCONCLUSIVE without model readiness"
+            )
+        expected_model_roots = (model_contract.workspace.resolve(),)
+        if (
+            self.model_writable_roots != expected_model_roots
+            or model_contract.sandbox_executable != self.sandbox_executable
+            or model_contract._process_attestation != self._process_attestation
+        ):
+            raise IntegrityError(
+                "live source isolation changed the attested model workspace"
+            )
+        if any(path.is_symlink() or not path.is_dir() for path in expected_model_roots):
+            raise IntegrityError("attested model workspace is unavailable")
         if not self.process_boundary_proven:
             raise InfrastructureError(
                 "live coding isolation is INCONCLUSIVE without a proven process boundary"
             )
         resolved_workspace = workspace.resolve()
         if any(
-            resolved_workspace == root or resolved_workspace.is_relative_to(root)
+            resolved_workspace == root
+            or resolved_workspace.is_relative_to(root)
+            or root.is_relative_to(resolved_workspace)
             for root in roots
         ):
             raise IntegrityError("live validation workspace overlaps a protected root")
@@ -487,7 +535,6 @@ def build_model_source_isolation(
     real_home: Path,
     auth_file: Path,
     codex_home: Path,
-    workers_root: Path,
     validation_roots: Sequence[Path],
     output_roots: Sequence[Path],
     other_workspaces: Sequence[Path],
@@ -512,7 +559,6 @@ def build_model_source_isolation(
         ("home", (real_home.expanduser().resolve(),)),
         ("auth", (auth_file.expanduser().resolve(),)),
         ("codex_home", (codex_home.expanduser().resolve(),)),
-        ("workers", (workers_root.resolve(),)),
         ("validation", tuple(path.resolve() for path in validation_roots)),
         ("output", tuple(path.resolve() for path in output_roots)),
         ("other_workspace", tuple(path.resolve() for path in other_workspaces)),
@@ -598,6 +644,45 @@ def run_model_answer(
     )
 
 
+def _probe_model_write_scope(
+    contract: ModelSourceIsolation,
+    *,
+    env: Mapping[str, str],
+) -> bool:
+    with tempfile.TemporaryDirectory(
+        prefix="coding-gate-external-write-probe-"
+    ) as temporary:
+        external_root = Path(temporary).resolve()
+        designated = (contract.workspace, contract.tool_home, contract.tool_tmp)
+        if any(
+            external_root == root
+            or external_root.is_relative_to(root)
+            or root.is_relative_to(external_root)
+            for root in designated
+        ):
+            raise InfrastructureError("external write probe overlaps model runtime roots")
+        suffix = secrets.token_hex(8)
+        markers = (
+            contract.tool_home / f".write-probe-{suffix}",
+            contract.tool_tmp / f".write-probe-{suffix}",
+            external_root / "sidecar",
+        )
+        passed = True
+        try:
+            for marker in markers:
+                process = _run_model_execution(
+                    contract,
+                    contract.sandbox_command(("/usr/bin/touch", str(marker))),
+                    env=env,
+                    timeout_seconds=10,
+                )
+                passed = passed and _sandbox_denied(process) and not marker.exists()
+            return passed
+        finally:
+            for marker in markers:
+                marker.unlink(missing_ok=True)
+
+
 def probe_model_source_isolation(
     contract: ModelSourceIsolation,
     *,
@@ -655,6 +740,7 @@ def probe_model_source_isolation(
         )
         workspace_passed = allowed.returncode == 0 and marker.is_file()
         marker.unlink(missing_ok=True)
+        write_scope_passed = _probe_model_write_scope(attested, env=env)
         denied: set[str] = set()
         for category, target in denied_targets.items():
             process = _run_model_execution(
@@ -688,7 +774,9 @@ def probe_model_source_isolation(
             network_passed = _sandbox_denied(network)
         finally:
             server.close()
-    filesystem_passed = workspace_passed and denied == expected_categories
+    filesystem_passed = (
+        workspace_passed and write_scope_passed and denied == expected_categories
+    )
     ready = filesystem_passed and network_passed
     ready_contract = None
     if ready:
@@ -710,7 +798,7 @@ def probe_model_source_isolation(
         )
         ready_contract = replace(attested, _readiness_attestation=readiness)
     reason = (
-        "source, secret, workspace, network, and detached descendant probes passed"
+        "source, secret, write-scope, network, and detached descendant probes passed"
         if ready
         else "model source isolation profile probe failed"
     )
@@ -743,73 +831,383 @@ FIXTURES = {
         key="node-auth-api",
         root=FIXTURE_ROOT / "node-auth-api",
         production_paths=("src/middleware.js",),
-        immutable_tests=("test/auth.test.js",),
-        command=("npm", "test"),
+        immutable_paths=("test/auth.test.js", "app.js", "runtime.js"),
+        command=("node", "--test", "test/auth.test.js"),
         expected_seed_failure="200 !== 401",
         reporter="node",
         canonical_test_ids=("accepts a valid session", "rejects an expired session"),
-        worker=WORKER_ROOT / "node_auth_worker.js",
-        worker_runtime="node",
+        canonical_cases=(
+            HiddenCase(
+                "visible_valid",
+                {
+                    "now": 1_000,
+                    "sessions": [
+                        {"token": "ok", "userId": "u1", "expiresAt": 2_000}
+                    ],
+                    "headers": {"authorization": "Bearer ok"},
+                },
+                {"status": 200, "body": "hello u1"},
+            ),
+            HiddenCase(
+                "visible_past",
+                {
+                    "now": 5_000,
+                    "sessions": [
+                        {
+                            "token": "past",
+                            "userId": "u2",
+                            "expiresAt": 2_000,
+                        }
+                    ],
+                    "headers": {"authorization": "Bearer past"},
+                },
+                {"status": 401, "body": "expired session"},
+            ),
+        ),
+        entrypoint="app.js",
+        entrypoint_command=("node", "app.js"),
+        interface_paths=("app.js", "runtime.js"),
+        entrypoint_forbidden_literals=(
+            "future",
+            "boundary",
+            "expired",
+            "u1",
+            "1999",
+            "2000",
+            "2001",
+        ),
         hidden_cases=(
-            HiddenCase("future", {"now": 1_999, "expires_at": 2_000}, {"status": 200}),
-            HiddenCase("boundary", {"now": 2_000, "expires_at": 2_000}, {"status": 401}),
-            HiddenCase("expired", {"now": 2_001, "expires_at": 2_000}, {"status": 401}),
+            HiddenCase(
+                "future",
+                {
+                    "now": 1_999,
+                    "sessions": [
+                        {
+                            "token": "session",
+                            "userId": "u1",
+                            "expiresAt": 2_000,
+                        }
+                    ],
+                    "headers": {"authorization": "Bearer session"},
+                },
+                {"status": 200, "body": "hello u1"},
+            ),
+            HiddenCase(
+                "boundary",
+                {
+                    "now": 2_000,
+                    "sessions": [
+                        {
+                            "token": "session",
+                            "userId": "u1",
+                            "expiresAt": 2_000,
+                        }
+                    ],
+                    "headers": {"authorization": "Bearer session"},
+                },
+                {"status": 401, "body": "expired session"},
+            ),
+            HiddenCase(
+                "expired",
+                {
+                    "now": 2_001,
+                    "sessions": [
+                        {
+                            "token": "session",
+                            "userId": "u1",
+                            "expiresAt": 2_000,
+                        }
+                    ],
+                    "headers": {"authorization": "Bearer session"},
+                },
+                {"status": 401, "body": "expired session"},
+            ),
         ),
     ),
     "python-payment-ledger": FixtureSpec(
         key="python-payment-ledger",
         root=FIXTURE_ROOT / "python-payment-ledger",
         production_paths=("ledger.py",),
-        immutable_tests=("test_ledger.py",),
+        immutable_paths=("test_ledger.py", "app.py", "runtime.py"),
         command=("python3", "-m", "unittest", "-v"),
-        expected_seed_failure="'ch_2' != 'ch_1'",
+        expected_seed_failure="'provider_id': 'ch_2'",
         reporter="unittest",
-        canonical_test_ids=("test_retry_with_same_key_does_not_create_second_remote_charge",),
-        worker=WORKER_ROOT / "ledger_worker.py",
-        worker_runtime="python3",
+        canonical_test_ids=(
+            "test_gateway_target_uses_same_operation_schema",
+            "test_retry_with_same_key_does_not_create_second_remote_charge",
+        ),
+        canonical_cases=(
+            HiddenCase(
+                "visible_gateway",
+                {
+                    "operations": [
+                        {
+                            "target": "gateway",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ]
+                },
+                {
+                    "outcomes": [{"error": "GatewayTimeout"}],
+                    "remote_charges": [
+                        {
+                            "id": "ch_1",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ],
+                    "local_charges": [],
+                },
+            ),
+            HiddenCase(
+                "visible_retry",
+                {
+                    "operations": [
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                    ]
+                },
+                {
+                    "outcomes": [
+                        {"error": "GatewayTimeout"},
+                        {
+                            "result": {
+                                "provider_id": "ch_1",
+                                "customer_id": "cust_123",
+                                "amount_cents": 5000,
+                                "idempotency_key": "order-1",
+                            }
+                        },
+                    ],
+                    "remote_charges": [
+                        {
+                            "id": "ch_1",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ],
+                    "local_charges": [
+                        {
+                            "provider_id": "ch_1",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ],
+                },
+            ),
+        ),
+        entrypoint="app.py",
+        entrypoint_command=("python3", "app.py"),
+        interface_paths=("app.py", "runtime.py"),
+        entrypoint_forbidden_literals=(
+            "timeout_retry_repeat",
+            "independent_second_key",
+            "replay_old_after_new",
+            "GatewayTimeout",
+            "cust_123",
+            "order-1",
+            "order-2",
+            "ch_1",
+            "ch_2",
+            "5000",
+        ),
         hidden_cases=(
             HiddenCase(
                 "timeout_retry_repeat",
-                {"scenario": "timeout_retry_repeat"},
                 {
-                    "errors": ["GatewayTimeout"],
-                    "replay_equal": True,
-                    "remote_count": 1,
-                    "local_count": 1,
-                    "remote_keys": ["order-1"],
-                    "local_keys": ["order-1"],
-                    "remote_amounts": [5000],
-                    "local_amounts": [5000],
-                    "local_customers": ["cust_123"],
-                    "provider_mapping_valid": True,
+                    "operations": [
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                    ]
+                },
+                {
+                    "outcomes": [
+                        {"error": "GatewayTimeout"},
+                        {
+                            "result": {
+                                "provider_id": "ch_1",
+                                "customer_id": "cust_123",
+                                "amount_cents": 5000,
+                                "idempotency_key": "order-1",
+                            }
+                        },
+                        {
+                            "result": {
+                                "provider_id": "ch_1",
+                                "customer_id": "cust_123",
+                                "amount_cents": 5000,
+                                "idempotency_key": "order-1",
+                            }
+                        },
+                    ],
+                    "remote_charges": [
+                        {
+                            "id": "ch_1",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ],
+                    "local_charges": [
+                        {
+                            "provider_id": "ch_1",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        }
+                    ],
                 },
             ),
             HiddenCase(
                 "independent_second_key",
-                {"scenario": "independent_second_key"},
                 {
-                    "errors": ["GatewayTimeout"],
-                    "distinct_charge": True,
-                    "remote_count": 2,
-                    "local_count": 2,
-                    "remote_keys": ["order-1", "order-2"],
-                    "local_keys": ["order-1", "order-2"],
-                    "remote_amounts": [5000, 5000],
-                    "local_amounts": [5000, 5000],
-                    "local_customers": ["cust_123", "cust_123"],
-                    "provider_mapping_valid": True,
+                    "operations": [
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "ledger",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-2",
+                        },
+                    ]
+                },
+                {
+                    "outcomes": [
+                        {"error": "GatewayTimeout"},
+                        {
+                            "result": {
+                                "provider_id": "ch_1",
+                                "customer_id": "cust_123",
+                                "amount_cents": 5000,
+                                "idempotency_key": "order-1",
+                            }
+                        },
+                        {
+                            "result": {
+                                "provider_id": "ch_2",
+                                "customer_id": "cust_123",
+                                "amount_cents": 5000,
+                                "idempotency_key": "order-2",
+                            }
+                        },
+                    ],
+                    "remote_charges": [
+                        {
+                            "id": "ch_1",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "id": "ch_2",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-2",
+                        },
+                    ],
+                    "local_charges": [
+                        {
+                            "provider_id": "ch_1",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "provider_id": "ch_2",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-2",
+                        },
+                    ],
                 },
             ),
             HiddenCase(
                 "replay_old_after_new",
-                {"scenario": "replay_old_after_new"},
                 {
-                    "errors": ["GatewayTimeout"],
-                    "replay_equal": True,
-                    "distinct_second": True,
-                    "remote_count": 2,
-                    "remote_keys": ["order-1", "order-2"],
-                    "remote_amounts": [5000, 5000],
+                    "operations": [
+                        {
+                            "target": "gateway",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "gateway",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "target": "gateway",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-2",
+                        },
+                        {
+                            "target": "gateway",
+                            "customer_id": "cust_123",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                    ]
+                },
+                {
+                    "outcomes": [
+                        {"error": "GatewayTimeout"},
+                        {"result": {"id": "ch_1", "amount_cents": 5000}},
+                        {"result": {"id": "ch_2", "amount_cents": 5000}},
+                        {"result": {"id": "ch_1", "amount_cents": 5000}},
+                    ],
+                    "remote_charges": [
+                        {
+                            "id": "ch_1",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-1",
+                        },
+                        {
+                            "id": "ch_2",
+                            "amount_cents": 5000,
+                            "idempotency_key": "order-2",
+                        },
+                    ],
+                    "local_charges": [],
                 },
             ),
         ),
@@ -818,40 +1216,128 @@ FIXTURES = {
         key="sqlite-rollout-runner",
         root=FIXTURE_ROOT / "sqlite-rollout-runner",
         production_paths=("rollout.py",),
-        immutable_tests=("test_rollout.py",),
+        immutable_paths=("test_rollout.py", "app.py", "runtime.py"),
         command=("python3", "-m", "unittest", "-v"),
         expected_seed_failure="no such column: expires_at",
         reporter="unittest",
         canonical_test_ids=("test_backup_runs_before_drop_column_migration",),
-        worker=WORKER_ROOT / "sqlite_worker.py",
-        worker_runtime="python3",
+        canonical_cases=(
+            HiddenCase(
+                "visible_schema",
+                {
+                    "setup": [
+                        {
+                            "sql": """
+                                CREATE TABLE legacy_sessions (
+                                    id INTEGER PRIMARY KEY,
+                                    user_id TEXT NOT NULL,
+                                    expires_at TEXT NOT NULL
+                                )
+                            """,
+                        },
+                        {
+                            "sql": """
+                                INSERT INTO legacy_sessions
+                                    (id, user_id, expires_at)
+                                VALUES (?, ?, ?)
+                            """,
+                            "rows": [[1, "u1", "2026-06-01T00:00:00Z"]],
+                        },
+                    ],
+                    "queries": [
+                        {
+                            "name": "columns",
+                            "sql": "PRAGMA table_info(legacy_sessions)",
+                        }
+                    ],
+                },
+                {
+                    "result": {
+                        "backup": [[1, "u1", "2026-06-01T00:00:00Z"]]
+                    },
+                    "queries": {
+                        "columns": [
+                            [0, "id", "INTEGER", 0, None, 1],
+                            [1, "user_id", "TEXT", 1, None, 0],
+                        ]
+                    },
+                },
+            ),
+        ),
+        entrypoint="app.py",
+        entrypoint_command=("python3", "app.py"),
+        interface_paths=("app.py", "runtime.py"),
+        entrypoint_forbidden_literals=(
+            "preserve_rows_and_note",
+            "note",
+            "u1",
+            "u2",
+            "2026-06-01T00:00:00Z",
+            "2026-07-01T00:00:00Z",
+            "first",
+            "second",
+        ),
         hidden_cases=(
             HiddenCase(
                 "preserve_rows_and_note",
                 {
-                    "rows": [
-                        [2, "u2", "2026-07-01T00:00:00Z", "second"],
-                        [1, "u1", "2026-06-01T00:00:00Z", "first"],
-                    ]
+                    "setup": [
+                        {
+                            "sql": """
+                                CREATE TABLE legacy_sessions (
+                                    id INTEGER PRIMARY KEY,
+                                    user_id TEXT NOT NULL,
+                                    expires_at TEXT NOT NULL,
+                                    note TEXT NOT NULL
+                                )
+                            """,
+                        },
+                        {
+                            "sql": """
+                                INSERT INTO legacy_sessions
+                                    (id, user_id, expires_at, note)
+                                VALUES (?, ?, ?, ?)
+                            """,
+                            "rows": [
+                                [2, "u2", "2026-07-01T00:00:00Z", "second"],
+                                [1, "u1", "2026-06-01T00:00:00Z", "first"],
+                            ],
+                        },
+                    ],
+                    "queries": [
+                        {
+                            "name": "table_info",
+                            "sql": "PRAGMA table_info(legacy_sessions)",
+                        },
+                        {
+                            "name": "rows",
+                            "sql": (
+                                "SELECT id, user_id, note FROM legacy_sessions "
+                                "ORDER BY id"
+                            ),
+                        },
+                    ],
                 },
                 {
-                    "backup": [
-                        [1, "u1", "2026-06-01T00:00:00Z"],
-                        [2, "u2", "2026-07-01T00:00:00Z"],
-                    ],
-                    "columns": ["id", "user_id", "note"],
-                    "schema": [
-                        {"name": "id", "type": "INTEGER", "notnull": 0, "default": None, "pk": 1},
-                        {"name": "user_id", "type": "TEXT", "notnull": 1, "default": None, "pk": 0},
-                        {"name": "note", "type": "TEXT", "notnull": 1, "default": None, "pk": 0},
-                    ],
-                    "rows": [[1, "u1", "first"], [2, "u2", "second"]],
+                    "result": {
+                        "backup": [
+                            [1, "u1", "2026-06-01T00:00:00Z"],
+                            [2, "u2", "2026-07-01T00:00:00Z"],
+                        ]
+                    },
+                    "queries": {
+                        "table_info": [
+                            [0, "id", "INTEGER", 0, None, 1],
+                            [1, "user_id", "TEXT", 1, None, 0],
+                            [2, "note", "TEXT", 1, None, 0],
+                        ],
+                        "rows": [[1, "u1", "first"], [2, "u2", "second"]],
+                    },
                 },
             ),
         ),
     ),
 }
-WORKERS = tuple(spec.worker for spec in FIXTURES.values())
 
 
 def canonical_json(value: Any) -> str:
@@ -2144,8 +2630,8 @@ def collect_patch(spec: FixtureSpec, workspace: Path, baseline: str) -> Patch:
     if not changed:
         raise IntegrityError("production patch is empty")
     changed_set = set(changed)
-    if not changed_set.isdisjoint(spec.immutable_tests):
-        raise IntegrityError("baseline tests are immutable")
+    if not changed_set.isdisjoint(spec.immutable_paths):
+        raise IntegrityError("fixture contract paths are immutable")
     if not changed_set.issubset(spec.production_paths):
         raise IntegrityError("patch changes non-production fixture paths")
     captured = _capture_production_files(
@@ -2231,48 +2717,80 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise IntegrityError("worker JSON contains duplicate keys")
+            raise IntegrityError("entrypoint JSON contains duplicate keys")
         result[key] = value
     return result
 
 
-def parse_worker_output(case: HiddenCase, stdout: str, stderr: str) -> Mapping[str, Any]:
+def parse_entrypoint_output(stdout: str, stderr: str) -> Mapping[str, Any]:
     if stderr.strip():
-        raise IntegrityError("worker wrote to stderr")
+        raise IntegrityError("entrypoint wrote to stderr")
     lines = stdout.splitlines()
     if len(lines) != 1:
-        raise IntegrityError("worker must emit exactly one JSON line")
+        raise IntegrityError("entrypoint must emit exactly one JSON line")
     try:
         envelope = json.loads(lines[0], object_pairs_hook=_strict_object)
     except (json.JSONDecodeError, IntegrityError) as exc:
-        raise IntegrityError("worker emitted invalid JSON") from exc
+        raise IntegrityError("entrypoint emitted invalid JSON") from exc
     if not isinstance(envelope, dict) or set(envelope) != {
         "schema_version",
-        "case_id",
         "observation",
     }:
-        raise IntegrityError("worker envelope schema mismatch")
-    if envelope["schema_version"] != 1 or envelope["case_id"] != case.case_id:
-        raise IntegrityError("worker envelope identity mismatch")
+        raise IntegrityError("entrypoint envelope schema mismatch")
+    if envelope["schema_version"] != 1:
+        raise IntegrityError("entrypoint envelope version mismatch")
     observation = envelope["observation"]
     if not isinstance(observation, dict):
-        raise IntegrityError("worker observation must be an object")
+        raise IntegrityError("entrypoint observation must be an object")
     return observation
 
 
-def _inject_worker(source: Path, destination: Path) -> None:
-    if not source.is_file() or source.is_symlink():
-        raise IntegrityError("hidden validator source is invalid")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(destination, flags, 0o400)
+def _interface_sha256(spec: FixtureSpec) -> str:
+    relative = Path(spec.entrypoint)
+    if (
+        relative.is_absolute()
+        or not relative.parts
+        or ".." in relative.parts
+        or relative.as_posix() != spec.entrypoint
+        or spec.entrypoint not in spec.immutable_paths
+        or spec.entrypoint in spec.production_paths
+        or not spec.entrypoint_command
+        or spec.entrypoint_command[-1] != spec.entrypoint
+        or spec.entrypoint not in spec.interface_paths
+        or not set(spec.interface_paths).issubset(spec.immutable_paths)
+        or not set(spec.interface_paths).isdisjoint(spec.production_paths)
+    ):
+        raise IntegrityError(f"invalid fixture entrypoint contract: {spec.key}")
     try:
-        with os.fdopen(descriptor, "wb") as target:
-            target.write(source.read_bytes())
-    except BaseException:
-        destination.unlink(missing_ok=True)
-        raise
+        manifest = _tree(spec.root)
+        captured = _capture_production_files(
+            spec.root,
+            spec.interface_paths,
+            manifest,
+        )
+        sources = []
+        for path in spec.interface_paths:
+            item = captured[path]
+            if item is None:
+                raise IntegrityError(f"invalid fixture interface: {spec.key}")
+            content, _ = item
+            sources.append(content.decode("utf-8"))
+    except (KeyError, OSError, UnicodeError) as exc:
+        raise IntegrityError(f"unreadable fixture interface: {spec.key}") from exc
+    forbidden = tuple(
+        case.case_id for case in (*spec.canonical_cases, *spec.hidden_cases)
+    ) + tuple(spec.entrypoint_forbidden_literals)
+    if any(value and value in source for value in forbidden for source in sources):
+        raise IntegrityError(f"fixture interface contains hidden oracle data: {spec.key}")
+    return _manifest_sha256({path: manifest[path] for path in spec.interface_paths})
+
+
+def _opaque_workspace(root: Path) -> Path:
+    for _ in range(100):
+        candidate = root / secrets.token_hex(16)
+        if not candidate.exists() and not candidate.is_symlink():
+            return candidate
+    raise InfrastructureError("cannot allocate opaque validation workspace")
 
 
 def _replay_production_patch(
@@ -2305,57 +2823,44 @@ def _replay_production_patch(
     return patched_manifest
 
 
-def run_hidden_cases(
+def _run_interface_case(
     spec: FixtureSpec,
+    case: HiddenCase,
     production_patch: str,
-    validation_root: Path,
     *,
-    env: Mapping[str, str],
-    isolation: SourceIsolation | None = None,
-    trusted_offline: bool = False,
-) -> tuple[HiddenResult, ...]:
-    if isolation is not None and trusted_offline:
-        raise IntegrityError("choose live isolation or trusted offline validation")
-    if isolation is None and not trusted_offline:
-        raise IntegrityError("hidden validation requires source isolation or explicit fixture trust")
-    if (
-        spec.worker == FIXTURE_ROOT
-        or spec.worker.is_relative_to(FIXTURE_ROOT)
-        or not spec.worker.is_file()
-        or spec.worker.is_symlink()
-    ):
-        raise IntegrityError("hidden validator must live outside the fixture root")
-    if validation_root.exists() or validation_root.is_symlink():
-        raise IntegrityError("hidden validation root must be fresh")
-    validation_root.mkdir(parents=True)
-    worker_hash = sha256_file(spec.worker)
-    results: list[HiddenResult] = []
-    for index, case in enumerate(spec.hidden_cases, 1):
-        if {"schema_version", "case_id"}.intersection(case.request):
-            raise IntegrityError("hidden request contains reserved fields")
-        workspace = validation_root / f"case-{index:02d}"
+    interface_sha256: str,
+    isolation: SourceIsolation | None,
+    trusted_offline: bool,
+) -> tuple[CommandResult, Mapping[str, Any] | None, str | None]:
+    if {"schema_version", "case_id", "expected"}.intersection(case.request):
+        raise IntegrityError("interface request contains reserved fields")
+    with tempfile.TemporaryDirectory(prefix=secrets.token_hex(16)) as temporary:
+        run_root = Path(temporary)
+        environment_root = run_root / secrets.token_hex(16)
+        environment_root.mkdir()
+        env = validation_environment(environment_root)
+        workspace = _opaque_workspace(run_root)
         pristine = _replay_production_patch(
             spec,
             production_patch,
             workspace,
             env=env,
         )
-        suffix = spec.worker.suffix
-        destination = workspace / f"._validator_{secrets.token_hex(16)}{suffix}"
-        _inject_worker(spec.worker, destination)
-        request = {"schema_version": 1, "case_id": case.case_id, **case.request}
-        try:
-            execution = run_bounded(
-                (spec.worker_runtime, destination.name),
-                cwd=workspace,
-                env=env,
-                input_text=canonical_json(request) + "\n",
-                monitor_workspace=workspace,
-                isolation=isolation,
-                trusted_offline=trusted_offline,
-            )
-        finally:
-            destination.unlink(missing_ok=True)
+        replayed_interface = _manifest_sha256(
+            {path: pristine[path] for path in spec.interface_paths}
+        )
+        if replayed_interface != interface_sha256:
+            raise IntegrityError("fixture interface changed before execution")
+        execution = run_bounded(
+            spec.entrypoint_command,
+            cwd=workspace,
+            env=env,
+            input_text=canonical_json(case.request) + "\n",
+            monitor_workspace=workspace,
+            isolation=isolation,
+            trusted_offline=trusted_offline,
+            max_output_bytes=MAX_INTERFACE_OUTPUT_BYTES,
+        )
         observation: Mapping[str, Any] | None = None
         error: str | None = None
         if (
@@ -2364,14 +2869,37 @@ def run_hidden_cases(
             or execution.output_limited
             or execution.tree_limited
         ):
-            error = "worker did not complete within the execution contract"
+            error = "entrypoint did not complete within the execution contract"
         else:
             try:
-                observation = parse_worker_output(case, execution.stdout, execution.stderr)
+                observation = parse_entrypoint_output(
+                    execution.stdout, execution.stderr
+                )
             except IntegrityError as exc:
                 error = str(exc)
         if _tree(workspace) != pristine:
-            raise IntegrityError("hidden validation changed the patched fixture")
+            raise IntegrityError("interface execution changed the patched fixture")
+        return execution, observation, error
+
+
+def _run_hidden_cases(
+    spec: FixtureSpec,
+    production_patch: str,
+    *,
+    isolation: SourceIsolation | None = None,
+    trusted_offline: bool = False,
+) -> tuple[HiddenResult, ...]:
+    interface_hash = _interface_sha256(spec)
+    results: list[HiddenResult] = []
+    for case in spec.hidden_cases:
+        _, observation, error = _run_interface_case(
+            spec,
+            case,
+            production_patch,
+            interface_sha256=interface_hash,
+            isolation=isolation,
+            trusted_offline=trusted_offline,
+        )
         observed_hash = (
             sha256_bytes(canonical_json(observation).encode("utf-8"))
             if observation is not None
@@ -2381,12 +2909,37 @@ def run_hidden_cases(
             HiddenResult(
                 case_id=case.case_id,
                 passed=error is None and observation == case.expected,
-                validator_sha256=worker_hash,
+                interface_sha256=interface_hash,
                 observation_sha256=observed_hash,
                 error=error,
             )
         )
     return tuple(results)
+
+
+def run_hidden_cases(
+    spec: FixtureSpec,
+    production_patch: str,
+    validation_root: Path,
+    *,
+    isolation: SourceIsolation | None = None,
+    trusted_offline: bool = False,
+) -> tuple[HiddenResult, ...]:
+    if isolation is not None and trusted_offline:
+        raise IntegrityError("choose live isolation or trusted offline validation")
+    if isolation is None and not trusted_offline:
+        raise IntegrityError(
+            "hidden validation requires source isolation or explicit fixture trust"
+        )
+    if validation_root.exists() or validation_root.is_symlink():
+        raise IntegrityError("hidden validation root must be fresh")
+    validation_root.mkdir(parents=True)
+    return _run_hidden_cases(
+        spec,
+        production_patch,
+        isolation=isolation,
+        trusted_offline=trusted_offline,
+    )
 
 
 def validate_patch(
@@ -2407,40 +2960,70 @@ def validate_patch(
     if validation_root.exists() or validation_root.is_symlink():
         raise IntegrityError("validation root must be fresh")
     validation_root.mkdir(parents=True)
-    with tempfile.TemporaryDirectory(prefix="coding-gate-validation-") as temporary:
-        env = validation_environment(Path(temporary))
-        canonical_root = validation_root / "canonical"
-        canonical_manifest = _replay_production_patch(
-            spec,
-            production_patch,
-            canonical_root,
-            env=env,
-        )
-        execution = run_bounded(
-            spec.command,
-            cwd=canonical_root,
-            env=env,
-            monitor_workspace=canonical_root,
-            isolation=isolation,
-            trusted_offline=trusted_offline,
-        )
-        output = (execution.stdout + "\n" + execution.stderr).encode("utf-8")
-        canonical = CanonicalResult(
-            passed=_canonical_passed(spec, execution),
-            returncode=execution.returncode,
-            output_sha256=sha256_bytes(output),
-            timed_out=execution.timed_out,
-            output_limited=execution.output_limited,
-            tree_limited=execution.tree_limited,
-        )
-        if _tree(canonical_root) != canonical_manifest:
-            raise IntegrityError("canonical execution mutated the patched fixture")
-        hidden = (
-            run_hidden_cases(
+    interface_hash = _interface_sha256(spec)
+    with tempfile.TemporaryDirectory(prefix=secrets.token_hex(16)) as temporary:
+        output = b""
+        interface_passed = True
+        interface_timed_out = False
+        interface_output_limited = False
+        interface_tree_limited = False
+        for case in spec.canonical_cases:
+            interface, observation, error = _run_interface_case(
+                spec,
+                case,
+                production_patch,
+                interface_sha256=interface_hash,
+                isolation=isolation,
+                trusted_offline=trusted_offline,
+            )
+            output += (interface.stdout + "\n" + interface.stderr).encode("utf-8")
+            interface_passed = (
+                interface_passed
+                and error is None
+                and observation == case.expected
+            )
+            interface_timed_out = interface_timed_out or interface.timed_out
+            interface_output_limited = (
+                interface_output_limited or interface.output_limited
+            )
+            interface_tree_limited = interface_tree_limited or interface.tree_limited
+        execution = CommandResult(1, "", "", 0)
+        if interface_passed:
+            run_root = Path(temporary)
+            environment_root = run_root / secrets.token_hex(16)
+            environment_root.mkdir()
+            env = validation_environment(environment_root)
+            canonical_root = _opaque_workspace(run_root)
+            canonical_manifest = _replay_production_patch(
                 spec,
                 production_patch,
-                validation_root / "hidden",
+                canonical_root,
                 env=env,
+            )
+            execution = run_bounded(
+                spec.command,
+                cwd=canonical_root,
+                env=env,
+                monitor_workspace=canonical_root,
+                isolation=isolation,
+                trusted_offline=trusted_offline,
+            )
+            output += (execution.stdout + "\n" + execution.stderr).encode("utf-8")
+            if _tree(canonical_root) != canonical_manifest:
+                raise IntegrityError("canonical execution mutated the patched fixture")
+        passed = interface_passed and _canonical_passed(spec, execution)
+        canonical = CanonicalResult(
+            passed=passed,
+            returncode=execution.returncode if execution.returncode else (0 if passed else 1),
+            output_sha256=sha256_bytes(output),
+            timed_out=execution.timed_out or interface_timed_out,
+            output_limited=execution.output_limited or interface_output_limited,
+            tree_limited=execution.tree_limited or interface_tree_limited,
+        )
+        hidden = (
+            _run_hidden_cases(
+                spec,
+                production_patch,
                 isolation=isolation,
                 trusted_offline=trusted_offline,
             )
@@ -2451,22 +3034,24 @@ def validate_patch(
 
 
 def self_check() -> dict[str, Any]:
-    workers = tuple(path for path in WORKER_ROOT.glob("*") if path.is_file())
-    if len(FIXTURES) != 3 or set(workers) != set(WORKERS):
-        raise IntegrityError("coding gate requires exactly three fixtures and workers")
+    if len(FIXTURES) != 3:
+        raise IntegrityError("coding gate requires exactly three fixtures")
     for spec in FIXTURES.values():
-        if not spec.hidden_cases or not set(spec.immutable_tests).isdisjoint(spec.production_paths):
+        if (
+            not spec.canonical_cases
+            or not spec.hidden_cases
+            or not set(spec.immutable_paths).isdisjoint(spec.production_paths)
+        ):
             raise IntegrityError(f"invalid fixture contract: {spec.key}")
         _tree(spec.root)
-        if not spec.worker.is_file() or spec.worker.is_symlink():
-            raise IntegrityError(f"invalid hidden validator: {spec.key}")
-        if spec.worker.is_relative_to(spec.root):
-            raise IntegrityError(f"hidden validator is inside fixture: {spec.key}")
+        _interface_sha256(spec)
+        if any("scenario" in case.request for case in spec.hidden_cases):
+            raise IntegrityError(f"hidden request uses scenario labels: {spec.key}")
     with tempfile.TemporaryDirectory(prefix="coding-gate-self-check-") as temporary:
         root = Path(temporary)
         for spec in FIXTURES.values():
             prepare_model_workspace(spec, root / spec.key)
-    return {"passed": True, "fixtures": len(FIXTURES), "workers": len(workers)}
+    return {"passed": True, "fixtures": len(FIXTURES), "entrypoints": len(FIXTURES)}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

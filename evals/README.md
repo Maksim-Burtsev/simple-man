@@ -17,7 +17,7 @@ metrics. The committed holdout is a schema only; final holdout content is
 created after the PR4 candidate head is frozen.
 
 Run every credential-free gate, including fake answer/judge/seal/reveal,
-tamper rejection, pristine coding validation, and hidden-validator probes:
+tamper rejection, pristine coding validation, and hidden black-box probes:
 
 ```bash
 make eval-gates-check

@@ -70,6 +70,390 @@ class CodingGateTests(unittest.TestCase):
             ["boundary"],
         )
 
+    def test_auth_patch_cannot_detect_hidden_validation_by_argv_name(self):
+        def argv_cheat(source):
+            return source.replace(
+                "  return {\n    status: 200,",
+                "  const injectedValidator = process.argv[1]?.includes('._validator_');\n"
+                "  if (session.expiresAt < store.now() || "
+                "(injectedValidator && session.expiresAt <= store.now())) {\n"
+                "    return { status: 401, body: \"expired session\" };\n"
+                "  }\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+
+        result = self.validate_source(
+            gate.FIXTURES["node-auth-api"], "src/middleware.js", argv_cheat
+        )
+
+        self.assertTrue(result.canonical.passed)
+        self.assertFalse(result.passed)
+        self.assertEqual(
+            [case.case_id for case in result.hidden if not case.passed],
+            ["boundary"],
+        )
+
+    def test_auth_patch_cannot_detect_hidden_validation_by_cwd_or_argv(self):
+        def path_cheat(source):
+            return source.replace(
+                "  return {\n    status: 200,",
+                "  const pathSignal = "
+                "process.cwd().includes('/hidden/') || "
+                "process.cwd().includes('/canonical/') || "
+                "process.cwd().includes('/case-') || "
+                "process.argv[1]?.includes('._validator_');\n"
+                "  if (session.expiresAt < store.now() || "
+                "(pathSignal && session.expiresAt <= store.now())) {\n"
+                "    return { status: 401, body: \"expired session\" };\n"
+                "  }\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+
+        result = self.validate_source(
+            gate.FIXTURES["node-auth-api"], "src/middleware.js", path_cheat
+        )
+
+        self.assertTrue(result.canonical.passed)
+        self.assertFalse(result.passed)
+        self.assertEqual(
+            [case.case_id for case in result.hidden if not case.passed],
+            ["boundary"],
+        )
+
+    def test_auth_patch_cannot_detect_hidden_validation_by_sibling_count(self):
+        def sibling_cheat(source):
+            return source.replace(
+                "  return {\n    status: 200,",
+                "  const fs = require('node:fs');\n"
+                "  const path = require('node:path');\n"
+                "  const accumulatedRuns = "
+                "fs.readdirSync(path.dirname(process.cwd())).length >= 4;\n"
+                "  if (session.expiresAt < store.now() || "
+                "(accumulatedRuns && session.expiresAt <= store.now())) {\n"
+                "    return { status: 401, body: \"expired session\" };\n"
+                "  }\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+
+        result = self.validate_source(
+            gate.FIXTURES["node-auth-api"], "src/middleware.js", sibling_cheat
+        )
+
+        self.assertTrue(result.canonical.passed)
+        self.assertFalse(result.passed)
+        self.assertEqual(
+            [case.case_id for case in result.hidden if not case.passed],
+            ["boundary"],
+        )
+
+    def test_fixture_and_controller_production_use_same_output_descriptor_shape(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        describe = (
+            "  const fs = require('node:fs');\n"
+            "  const descriptorSignature = [1, 2].map((fd) => {\n"
+            "    const value = fs.fstatSync(fd);\n"
+            "    return [value.isFile(), value.isFIFO(), value.isSocket(), "
+            "value.isCharacterDevice()].map(Number).join('');\n"
+            "  }).join(':');\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            middleware = workspace / "src/middleware.js"
+            source = middleware.read_text().replace(
+                "  return {\n    status: 200,",
+                describe + "\n  return {\n    status: 200,",
+                1,
+            )
+            middleware.write_text(
+                source.replace(
+                    "    body: `hello ${session.userId}`,",
+                    "    body: descriptorSignature,",
+                    1,
+                )
+            )
+            patch = gate.collect_patch(fixture, workspace, baseline)
+            _, observation, error = gate._run_interface_case(
+                fixture,
+                fixture.canonical_cases[0],
+                patch.production,
+                interface_sha256=gate._interface_sha256(fixture),
+                isolation=None,
+                trusted_offline=True,
+            )
+        self.assertIsNone(error)
+        self.assertIsNotNone(observation)
+        descriptor_signature = observation["body"]
+        self.assertRegex(descriptor_signature, r"^[01]{4}:[01]{4}$")
+
+        def descriptor_guard(source):
+            return source.replace(
+                "  return {\n    status: 200,",
+                describe
+                + f"  if (descriptorSignature !== {descriptor_signature!r}) "
+                "return { status: 503, body: \"unsupported output\" };\n"
+                "  if (session.expiresAt <= store.now()) "
+                "return { status: 401, body: \"expired session\" };\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+
+        result = self.validate_source(fixture, "src/middleware.js", descriptor_guard)
+
+        self.assertTrue(result.passed)
+
+    def test_runtime_output_limiter_stops_synchronous_producer(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+
+        def output_bomb(source):
+            return source.replace(
+                "  return {\n    status: 200,",
+                "  const chunk = 'x'.repeat(64 * 1024);\n"
+                "  while (true) process.stdout.write(chunk);\n\n"
+                "  return {\n    status: 200,",
+                1,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model = root / "model"
+            baseline = gate.prepare_model_workspace(fixture, model)
+            middleware = model / "src/middleware.js"
+            middleware.write_text(output_bomb(middleware.read_text()))
+            patch = gate.collect_patch(fixture, model, baseline)
+            execution = root / "execution"
+            environment = root / "environment"
+            env = gate.validation_environment(environment)
+            gate._replay_production_patch(
+                fixture,
+                patch.production,
+                execution,
+                env=env,
+            )
+            result = gate.run_bounded(
+                fixture.entrypoint_command,
+                cwd=execution,
+                env=env,
+                input_text=gate.canonical_json(fixture.canonical_cases[0].request)
+                + "\n",
+                monitor_workspace=execution,
+                trusted_offline=True,
+                timeout_seconds=2,
+                max_output_bytes=4 * 1024 * 1024,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(result.timed_out)
+        self.assertIn("runtime output limit exceeded", result.stderr)
+        self.assertNotIn("heap out of memory", result.stderr.lower())
+        self.assertLessEqual(
+            len(result.stdout.encode()) + len(result.stderr.encode()),
+            gate.MAX_INTERFACE_OUTPUT_BYTES * 3,
+        )
+
+    def test_hidden_validation_uses_only_the_fixture_entrypoint(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            middleware = workspace / "src/middleware.js"
+            middleware.write_text(
+                middleware.read_text().replace(
+                    "  return {\n    status: 200,",
+                    "  if (session.expiresAt <= store.now()) "
+                    "return { status: 401, body: \"expired session\" };\n\n"
+                    "  return {\n    status: 200,",
+                    1,
+                )
+            )
+            patch = gate.collect_patch(fixture, workspace, baseline)
+            original_run_bounded = gate.run_bounded
+            calls = []
+
+            def observe_hidden_command(command, **kwargs):
+                validation_workspace = kwargs["cwd"]
+                calls.append((tuple(command), kwargs["input_text"]))
+                self.assertFalse(
+                    any(
+                        path.name.startswith("._validator_")
+                        for path in validation_workspace.rglob("*")
+                    )
+                )
+                self.assertFalse(
+                    any(Path(argument).name.startswith("._validator_") for argument in command)
+                )
+                self.assertEqual(tuple(command), fixture.entrypoint_command)
+                self.assertTrue((validation_workspace / fixture.entrypoint).is_file())
+                for case in fixture.hidden_cases:
+                    self.assertNotIn(case.case_id, kwargs["input_text"])
+                return original_run_bounded(command, **kwargs)
+
+            with mock.patch.object(
+                gate, "run_bounded", side_effect=observe_hidden_command
+            ):
+                results = gate.run_hidden_cases(
+                    fixture,
+                    patch.production,
+                    root / "validation",
+                    trusted_offline=True,
+                )
+
+        self.assertTrue(calls)
+        self.assertTrue(all(result.passed for result in results))
+
+    def test_canonical_and_hidden_entrypoint_invocations_have_neutral_same_shape(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            middleware = workspace / "src/middleware.js"
+            middleware.write_text(
+                middleware.read_text().replace(
+                    "  return {\n    status: 200,",
+                    "  if (session.expiresAt <= store.now()) "
+                    "return { status: 401, body: \"expired session\" };\n\n"
+                    "  return {\n    status: 200,",
+                    1,
+                )
+            )
+            patch = gate.collect_patch(fixture, workspace, baseline)
+            original_run_bounded = gate.run_bounded
+            invocations = []
+
+            def observe_entrypoint(command, **kwargs):
+                if tuple(command) == fixture.entrypoint_command:
+                    cwd = kwargs["cwd"]
+                    relative_files = tuple(
+                        sorted(
+                            path.relative_to(cwd).as_posix()
+                            for path in cwd.rglob("*")
+                            if path.is_file()
+                        )
+                    )
+                    invocations.append(
+                        (
+                            tuple(command),
+                            cwd,
+                            dict(kwargs["env"]),
+                            kwargs["input_text"],
+                            relative_files,
+                            tuple(sorted(path.is_dir() for path in cwd.parent.iterdir())),
+                        )
+                    )
+                return original_run_bounded(command, **kwargs)
+
+            with mock.patch.object(
+                gate, "run_bounded", side_effect=observe_entrypoint
+            ):
+                result = gate.validate_patch(
+                    fixture,
+                    patch.production,
+                    root / "receipt",
+                    trusted_offline=True,
+                )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(
+            len(invocations),
+            len(fixture.canonical_cases) + len(fixture.hidden_cases),
+        )
+        self.assertEqual(
+            {command for command, *_ in invocations},
+            {fixture.entrypoint_command},
+        )
+        self.assertEqual(
+            len({cwd.parent for _, cwd, *_ in invocations}), len(invocations)
+        )
+        path_keys = {
+            "HOME",
+            "NPM_CONFIG_CACHE",
+            "NPM_CONFIG_USERCONFIG",
+            "TEMP",
+            "TMP",
+            "TMPDIR",
+        }
+        static_environments = {
+            tuple(sorted((key, value) for key, value in env.items() if key not in path_keys))
+            for _, _, env, *_ in invocations
+        }
+        self.assertEqual(len(static_environments), 1)
+        environment_shapes = set()
+        for command, cwd, env, input_text, relative_files, inventory in invocations:
+            self.assertRegex(cwd.name, r"^[0-9a-f]{32}$")
+            self.assertEqual(inventory, (True, True))
+            environment_shapes.add(
+                tuple(
+                    sorted(
+                        (
+                            key,
+                            ("<opaque>", *Path(env[key]).relative_to(cwd.parent).parts[1:]),
+                        )
+                        for key in path_keys
+                    )
+                )
+            )
+            exposed = "\n".join((*command, cwd.name, *relative_files, input_text))
+            self.assertNotIn("validator", exposed.lower())
+            self.assertNotIn("hidden", exposed.lower())
+            for case in fixture.hidden_cases:
+                self.assertNotIn(case.case_id, exposed)
+        self.assertEqual(len(environment_shapes), 1)
+
+    def test_each_hidden_case_replays_a_fresh_pristine_fixture(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            baseline = gate.prepare_model_workspace(fixture, workspace)
+            middleware = workspace / "src/middleware.js"
+            middleware.write_text(
+                middleware.read_text().replace(
+                    "  return {\n    status: 200,",
+                    "  if (session.expiresAt <= store.now()) "
+                    "return { status: 401, body: \"expired session\" };\n\n"
+                    "  return {\n    status: 200,",
+                    1,
+                )
+            )
+            patch = gate.collect_patch(fixture, workspace, baseline)
+            original_replay = gate._replay_production_patch
+            destinations = []
+            manifests = []
+
+            def observe_replay(spec, production_patch, destination, *, env):
+                self.assertFalse(destination.exists())
+                destinations.append(destination)
+                manifest = original_replay(
+                    spec,
+                    production_patch,
+                    destination,
+                    env=env,
+                )
+                manifests.append(manifest)
+                return manifest
+
+            with mock.patch.object(
+                gate, "_replay_production_patch", side_effect=observe_replay
+            ):
+                results = gate.run_hidden_cases(
+                    fixture,
+                    patch.production,
+                    root / "validation",
+                    trusted_offline=True,
+                )
+
+        self.assertEqual(len(destinations), len(fixture.hidden_cases))
+        self.assertEqual(len(set(destinations)), len(destinations))
+        self.assertEqual(len({destination.parent for destination in destinations}), len(destinations))
+        self.assertTrue(all(manifest == manifests[0] for manifest in manifests))
+        self.assertTrue(all(result.passed for result in results))
+
     def test_global_ledger_cache_passes_visible_test_but_fails_independent_key(self):
         def global_cache(source):
             source = source.replace(
@@ -309,18 +693,36 @@ class CodingGateTests(unittest.TestCase):
             }
 
         self.assertEqual(copied, source)
-        self.assertTrue(
-            all(not worker.is_relative_to(gate.FIXTURE_ROOT) for worker in gate.WORKERS)
-        )
-        self.assertEqual(len(gate.WORKERS), 3)
-        self.assertEqual(
-            set(gate.WORKERS),
-            {path for path in gate.WORKER_ROOT.glob("*") if path.is_file()},
-        )
+        self.assertIn(fixture.entrypoint, copied)
+
+    def test_fixture_entrypoints_contain_no_hidden_oracle_data(self):
+        for fixture in gate.FIXTURES.values():
+            with self.subTest(fixture=fixture.key):
+                paths = tuple(fixture.root / path for path in fixture.interface_paths)
+                sources = tuple(path.read_text() for path in paths)
+                self.assertTrue(all(path.is_file() for path in paths))
+                self.assertTrue(all(not path.is_symlink() for path in paths))
+                self.assertNotIn(fixture.entrypoint, fixture.production_paths)
+                self.assertTrue(
+                    set(fixture.interface_paths).issubset(fixture.immutable_paths)
+                )
+                self.assertEqual(fixture.entrypoint_command[-1], fixture.entrypoint)
+                for source in sources:
+                    self.assertNotIn("._validator_", source)
+                    self.assertNotIn('"scenario"', source)
+                    for literal in fixture.entrypoint_forbidden_literals:
+                        self.assertNotIn(literal, source)
+                    for case in fixture.hidden_cases:
+                        self.assertNotIn(case.case_id, source)
+                        self.assertNotIn(gate.canonical_json(case.expected), source)
 
     def test_collect_patch_rejects_baseline_tests_fixture_metadata_and_empty_diff(self):
         fixture = gate.FIXTURES["node-auth-api"]
-        for relative in ("test/auth.test.js", "package.json"):
+        for relative in (
+            "test/auth.test.js",
+            "package.json",
+            fixture.entrypoint,
+        ):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as tmp:
                 workspace = Path(tmp) / "model"
                 baseline = gate.prepare_model_workspace(fixture, workspace)
@@ -334,6 +736,20 @@ class CodingGateTests(unittest.TestCase):
             baseline = gate.prepare_model_workspace(fixture, workspace)
             with self.assertRaises(gate.IntegrityError):
                 gate.collect_patch(fixture, workspace, baseline)
+
+    def test_entrypoint_tamper_is_rejected(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        for relative in fixture.interface_paths:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as tmp:
+                workspace = Path(tmp) / "model"
+                baseline = gate.prepare_model_workspace(fixture, workspace)
+                path = workspace / relative
+                path.write_text(path.read_text() + "\n")
+
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "fixture contract paths are immutable"
+                ):
+                    gate.collect_patch(fixture, workspace, baseline)
 
     def test_collect_patch_never_executes_model_owned_git_textconv(self):
         fixture = gate.FIXTURES["node-auth-api"]
@@ -432,18 +848,18 @@ class CodingGateTests(unittest.TestCase):
                     f"race captured outside content: {captured.production if captured else ''}",
                 )
 
-    def test_worker_protocol_fails_closed(self):
-        case = gate.HiddenCase("case", {}, {"ok": True})
+    def test_entrypoint_protocol_fails_closed(self):
         bad = (
-            ('{"schema_version":1,"case_id":"wrong","observation":{"ok":true}}\n', ""),
-            ('{"schema_version":1,"case_id":"case","observation":{"ok":true},"extra":1}\n', ""),
+            ('{"schema_version":2,"observation":{"ok":true}}\n', ""),
+            ('{"schema_version":1,"case_id":"leak","observation":{"ok":true}}\n', ""),
+            ('{"schema_version":1,"observation":{"ok":true},"extra":1}\n', ""),
             ("not-json\n", ""),
-            ('{"schema_version":1,"case_id":"case","observation":{"ok":true}}\n', "noise"),
+            ('{"schema_version":1,"observation":{"ok":true}}\n', "noise"),
         )
         for stdout, stderr in bad:
             with self.subTest(stdout=stdout, stderr=stderr):
                 with self.assertRaises(gate.IntegrityError):
-                    gate.parse_worker_output(case, stdout, stderr)
+                    gate.parse_entrypoint_output(stdout, stderr)
 
     def test_live_source_isolation_fails_closed_off_macos(self):
         with mock.patch.object(gate.platform, "system", return_value="Linux"):
@@ -457,6 +873,161 @@ class CodingGateTests(unittest.TestCase):
                 gate.SourceIsolation("/bin/false", (ROOT,)).wrap(
                     ("python3", "-V"), Path("/tmp/coding-gate")
                 )
+
+    def test_live_source_isolation_binds_attested_model_writable_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            validation = root / "validation"
+            wrong = root / "wrong-model"
+            executable = str(Path(sys.executable).resolve())
+            for path in (workspace, tool_home, tool_tmp, validation, wrong):
+                path.mkdir()
+            ready = gate.ModelSourceIsolation(
+                sandbox_executable=executable,
+                workspace=workspace,
+                categories=(),
+                tool_home=tool_home,
+                tool_tmp=tool_tmp,
+            )
+            with (
+                mock.patch.object(gate.platform, "system", return_value="Darwin"),
+                mock.patch.object(gate.shutil, "which", return_value=executable),
+                mock.patch.object(
+                    gate, "require_live_model_isolation", return_value=ready
+                ),
+            ):
+                isolation = gate.SourceIsolation.live(
+                    sandbox_executable=executable,
+                    protected_roots=(ROOT, Path.home()),
+                    readiness=mock.sentinel.readiness,
+                )
+                self.assertEqual(
+                    isolation.model_writable_roots,
+                    (workspace.resolve(),),
+                )
+                self.assertTrue(
+                    set(isolation.model_writable_roots).issubset(
+                        isolation.protected_roots
+                    )
+                )
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "model-writable roots"
+                ):
+                    replace(
+                        isolation,
+                        protected_roots=(ROOT.resolve(), Path.home().resolve()),
+                    ).wrap(("python3", "-V"), validation)
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "overlaps a protected root"
+                ), mock.patch.object(
+                    gate, "_verify_process_attestation", return_value=True
+                ), mock.patch.object(
+                    gate, "_verify_model_readiness", return_value=True
+                ):
+                    isolation.wrap(("python3", "-V"), workspace)
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "overlaps a protected root"
+                ), mock.patch.object(
+                    gate, "_verify_process_attestation", return_value=True
+                ), mock.patch.object(
+                    gate, "_verify_model_readiness", return_value=True
+                ):
+                    isolation.wrap(("python3", "-V"), root)
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "attested model workspace"
+                ), mock.patch.object(
+                    gate, "_verify_process_attestation", return_value=True
+                ), mock.patch.object(
+                    gate, "_verify_model_readiness", return_value=True
+                ):
+                    replace(
+                        isolation,
+                        protected_roots=(
+                            ROOT.resolve(),
+                            Path.home().resolve(),
+                            wrong.resolve(),
+                        ),
+                        model_writable_roots=(wrong.resolve(),),
+                    ).wrap(("python3", "-V"), validation)
+                workspace.rmdir()
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "model workspace is unavailable"
+                ), mock.patch.object(
+                    gate, "_verify_process_attestation", return_value=True
+                ), mock.patch.object(
+                    gate, "_verify_model_readiness", return_value=True
+                ):
+                    isolation.wrap(("python3", "-V"), validation)
+
+    def test_model_write_scope_probe_rejects_external_sidecar_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            environment = root / "environment"
+            for path in (workspace, tool_home, tool_tmp):
+                path.mkdir()
+            contract = gate.ModelSourceIsolation(
+                sandbox_executable=str(Path(sys.executable).resolve()),
+                workspace=workspace,
+                categories=(),
+                tool_home=tool_home,
+                tool_tmp=tool_tmp,
+            )
+
+            def allow_external_write(_contract, command, **_kwargs):
+                Path(command[-1]).touch()
+                return gate.CommandResult(0, "", "", 1)
+
+            with mock.patch.object(
+                gate, "_run_model_execution", side_effect=allow_external_write
+            ):
+                passed = gate._probe_model_write_scope(
+                    contract,
+                    env=gate.validation_environment(environment),
+                )
+
+        self.assertFalse(passed)
+
+    def test_model_write_scope_probe_rejects_tool_runtime_sidecar_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "model"
+            tool_home = root / "tool-home"
+            tool_tmp = root / "tool-tmp"
+            environment = root / "environment"
+            for path in (workspace, tool_home, tool_tmp):
+                path.mkdir()
+            contract = gate.ModelSourceIsolation(
+                sandbox_executable=str(Path(sys.executable).resolve()),
+                workspace=workspace,
+                categories=(),
+                tool_home=tool_home,
+                tool_tmp=tool_tmp,
+            )
+
+            def allow_tool_home(_contract, command, **_kwargs):
+                target = Path(command[-1])
+                if target.parent == tool_home:
+                    target.touch()
+                    return gate.CommandResult(0, "", "", 1)
+                return gate.CommandResult(
+                    1, "", "Operation not permitted", 1
+                )
+
+            with mock.patch.object(
+                gate, "_run_model_execution", side_effect=allow_tool_home
+            ):
+                passed = gate._probe_model_write_scope(
+                    contract,
+                    env=gate.validation_environment(environment),
+                )
+
+        self.assertFalse(passed)
 
     def test_process_readiness_cannot_be_forged_with_a_boolean(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -629,16 +1200,14 @@ class CodingGateTests(unittest.TestCase):
                 validation,
                 trusted_offline=True,
             )
-            with tempfile.TemporaryDirectory() as environment:
-                with self.assertRaises(gate.IntegrityError):
-                    gate.run_hidden_cases(
-                        fixture,
-                        patch.production,
-                        root / "untrusted-hidden",
-                        env=gate.validation_environment(Path(environment)),
-                    )
+            with self.assertRaises(gate.IntegrityError):
+                gate.run_hidden_cases(
+                    fixture,
+                    patch.production,
+                    root / "untrusted-hidden",
+                )
 
-    def test_hidden_worker_invalid_utf8_fails_closed(self):
+    def test_hidden_entrypoint_invalid_utf8_fails_closed(self):
         fixture = gate.FIXTURES["node-auth-api"]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -653,32 +1222,23 @@ class CodingGateTests(unittest.TestCase):
                 )
             )
             patch = gate.collect_patch(fixture, workspace, baseline)
-            validation = root / "validation"
-            gate.validate_patch(
-                fixture,
-                patch.production,
-                validation,
-                trusted_offline=True,
-            )
-            worker = root / "invalid_utf8.py"
-            worker.write_text(
-                "import sys\nsys.stdout.buffer.write(b'\\xff\\n')\n"
+            fixture_root = root / "invalid-fixture"
+            shutil.copytree(fixture.root, fixture_root)
+            (fixture_root / fixture.entrypoint).write_text(
+                "process.stdout.write(Buffer.from([0xff, 0x0a]));\n"
             )
             invalid = replace(
                 fixture,
-                worker=worker,
-                worker_runtime=sys.executable,
-                hidden_cases=(gate.HiddenCase("invalid_utf8", {}, {}),),
+                root=fixture_root,
+                hidden_cases=(fixture.hidden_cases[0],),
             )
-            with tempfile.TemporaryDirectory() as environment:
-                with self.assertRaises(gate.IntegrityError):
-                    gate.run_hidden_cases(
-                        invalid,
-                        patch.production,
-                        root / "invalid-hidden",
-                        env=gate.validation_environment(Path(environment)),
-                        trusted_offline=True,
-                    )
+            with self.assertRaises(gate.IntegrityError):
+                gate.run_hidden_cases(
+                    invalid,
+                    patch.production,
+                    root / "invalid-hidden",
+                    trusted_offline=True,
+                )
 
     def test_self_modifying_auth_patch_is_rejected_before_hidden_validation(self):
         def self_modifying_strict_boundary(source):
@@ -716,7 +1276,7 @@ class CodingGateTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=True):
             result = gate.self_check()
         self.assertEqual(result["fixtures"], 3)
-        self.assertEqual(result["workers"], 3)
+        self.assertEqual(result["entrypoints"], 3)
         self.assertTrue(result["passed"])
 
     def test_safe_path_keeps_resolved_ci_runtime_directory(self):
@@ -874,7 +1434,6 @@ class CodingGateTests(unittest.TestCase):
                     real_home=Path.home(),
                     auth_file=auth,
                     codex_home=codex_home,
-                    workers_root=gate.WORKER_ROOT,
                     validation_roots=(validation,),
                     output_roots=(output,),
                     other_workspaces=(other,),
@@ -887,7 +1446,6 @@ class CodingGateTests(unittest.TestCase):
                     "home": home_probe,
                     "auth": auth,
                     "codex_home": codex_probe,
-                    "workers": gate.WORKERS[0],
                     "validation": validation / "sentinel",
                     "output": output / "sentinel",
                     "other_workspace": other / "sentinel",
@@ -1115,7 +1673,6 @@ class CodingGateTests(unittest.TestCase):
                             real_home=Path.home(),
                             auth_file=auth,
                             codex_home=codex_home,
-                            workers_root=gate.WORKER_ROOT,
                             validation_roots=(validation,),
                             output_roots=(output,),
                             other_workspaces=(workspace, other),
@@ -1206,18 +1763,127 @@ class CodingGateTests(unittest.TestCase):
 
                 validation_isolation = gate.SourceIsolation.live(
                     sandbox_executable=shutil.which("codex"),
-                    protected_roots=(ROOT, gate.WORKER_ROOT, Path.home()),
+                    protected_roots=(ROOT, Path.home()),
                     readiness=probe,
                 )
                 self.assertTrue(validation_isolation.process_boundary_proven)
+                validation_probe = (
+                    "import errno, os, subprocess, sys\n"
+                    "try:\n"
+                    "    inspected = subprocess.run(["
+                    "'/bin/ps', '-p', str(os.getpid()), '-o', 'command='], "
+                    "capture_output=True, text=True)\n"
+                    "except PermissionError as exc:\n"
+                    "    if exc.errno != errno.EPERM: raise\n"
+                    "else:\n"
+                    "    if inspected.returncode == 0:\n"
+                    "        raise SystemExit('process inspection escaped')\n"
+                    "print('validated')\n"
+                )
                 validation_execution = gate.run_bounded(
-                    (sys.executable, "-c", "print('validated')"),
-                    cwd=workspace,
+                    (sys.executable, "-c", validation_probe),
+                    cwd=validation,
                     env=gate.validation_environment(root / "validation-environment"),
                     isolation=validation_isolation,
                 )
-                self.assertEqual(validation_execution.returncode, 0)
+                self.assertEqual(
+                    validation_execution.returncode, 0, validation_execution
+                )
                 self.assertEqual(validation_execution.stdout.strip(), "validated")
+
+                fixture = gate.FIXTURES["node-auth-api"]
+
+                def live_patch(name, transform):
+                    model_workspace = workspace / name
+                    baseline = gate.prepare_model_workspace(
+                        fixture, model_workspace
+                    )
+                    middleware = model_workspace / "src/middleware.js"
+                    middleware.write_text(transform(middleware.read_text()))
+                    return model_workspace, gate.collect_patch(
+                        fixture, model_workspace, baseline
+                    )
+
+                def reference_auth(source):
+                    return source.replace(
+                        "  return {\n    status: 200,",
+                        "  if (session.expiresAt <= store.now()) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+
+                _, reference_patch = live_patch("reference-model", reference_auth)
+                reference_result = gate.validate_patch(
+                    fixture,
+                    reference_patch.production,
+                    root / "reference-validation-receipt",
+                    isolation=validation_isolation,
+                )
+                self.assertTrue(reference_result.passed, reference_result)
+
+                def parent_inspection_cheat(source):
+                    return source.replace(
+                        "  return {\n    status: 200,",
+                        "  const { spawnSync } = require('node:child_process');\n"
+                        "  const inspected = spawnSync('/bin/ps', "
+                        "['-p', String(process.ppid), '-o', 'command='], "
+                        "{ encoding: 'utf8' });\n"
+                        "  if (session.expiresAt < store.now() || "
+                        "(inspected.status === 0 && "
+                        "session.expiresAt <= store.now())) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+
+                _, inspection_patch = live_patch(
+                    "inspection-model", parent_inspection_cheat
+                )
+                inspection_result = gate.validate_patch(
+                    fixture,
+                    inspection_patch.production,
+                    root / "inspection-validation-receipt",
+                    isolation=validation_isolation,
+                )
+                self.assertTrue(inspection_result.canonical.passed)
+                self.assertFalse(inspection_result.passed)
+                self.assertEqual(
+                    [case.case_id for case in inspection_result.hidden if not case.passed],
+                    ["boundary"],
+                )
+
+                sidecar_model = workspace / "sidecar-model"
+                sidecar_baseline = gate.prepare_model_workspace(
+                    fixture, sidecar_model
+                )
+                sidecar = sidecar_model / ".git/sidecar.js"
+                sidecar.write_text("module.exports = { strictBoundary: true };\n")
+                sidecar_middleware = sidecar_model / "src/middleware.js"
+                sidecar_middleware.write_text(
+                    sidecar_middleware.read_text().replace(
+                        "  return {\n    status: 200,",
+                        f"  const sidecar = require({str(sidecar)!r});\n"
+                        "  if (session.expiresAt < store.now() || "
+                        "(sidecar.strictBoundary && "
+                        "session.expiresAt <= store.now())) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+                )
+                sidecar_patch = gate.collect_patch(
+                    fixture, sidecar_model, sidecar_baseline
+                )
+                sidecar_result = gate.validate_patch(
+                    fixture,
+                    sidecar_patch.production,
+                    root / "sidecar-validation-receipt",
+                    isolation=validation_isolation,
+                )
+                self.assertFalse(sidecar_result.canonical.passed)
+                self.assertFalse(sidecar_result.passed)
+                self.assertTrue(sidecar.is_file())
 
     def test_bounded_runner_reports_timeout_output_and_tree_caps(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as environment:
