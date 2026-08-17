@@ -380,7 +380,8 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
         if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
             raise ValueError("public text leak")
         contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:[-_ ]?up)"
-        if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_:= ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+        contextual_separator = r"(?:[\W_]{1,6}|\s+is\s+)"
+        if aliases and re.search(rf"\b(?:{contextual_labels})\b{contextual_separator}(?:{aliases})\b", raw, re.IGNORECASE):
             raise ValueError("public arm leak")
         long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
         if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):

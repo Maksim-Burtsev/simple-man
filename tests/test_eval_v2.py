@@ -429,6 +429,7 @@ class EvalV2Tests(unittest.TestCase):
             "candidate B", "policy C", "winner B", "baseline A", "control C",
             "runner-up B", "candidate=B", "arm=B", "winner=B", "policy=B",
             "baseline=B", "control=B", "variant=B", "treatment=B", "runner_up=B",
+            "candidate (B)", "arm [B]", "variant `B`", "policy → B", "baseline is B",
         ):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 lib.assert_public_safe({"note": value}, arm_aliases=aliases)
