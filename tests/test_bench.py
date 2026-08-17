@@ -159,7 +159,7 @@ class BenchHarnessTests(unittest.TestCase):
             self.assertTrue((out / name).is_file(), name)
 
         summary = bench_report.build(
-            out, ROOT / "evals/cases/output-dev.jsonl", ROOT / "evals/cases/activation-dev.jsonl"
+            out, ROOT / "evals/cases/bench-output.jsonl", ROOT / "evals/cases/bench-activation.jsonl"
         )
         self.assertEqual(summary["meta"]["cli"], "9.9.9 (Fake Claude)")
         self.assertTrue(summary["pairwise"])
@@ -214,6 +214,66 @@ class BenchHarnessTests(unittest.TestCase):
         for arm in bench.ARMS:
             self.assertNotIn(f'"{arm}"', blob)
         self.assertNotIn("arm", blob)
+
+
+class CorpusTests(unittest.TestCase):
+    """The corpus is the benchmark. Guard its shape, not just its syntax."""
+
+    OUTPUT = ROOT / "evals" / "cases" / "bench-output.jsonl"
+    ACTIVATION = ROOT / "evals" / "cases" / "bench-activation.jsonl"
+
+    def setUp(self):
+        self.output = bench.load_cases(self.OUTPUT)
+        self.activation = bench.load_cases(self.ACTIVATION)
+
+    def test_corpus_is_large_enough_for_a_clustered_bootstrap(self):
+        self.assertGreaterEqual(len(self.output), 60)
+        self.assertGreaterEqual(len(self.activation), 30)
+
+    def test_every_output_category_has_replication(self):
+        counts = {}
+        for case in self.output:
+            counts[case["category"]] = counts.get(case["category"], 0) + 1
+        self.assertEqual(len(counts), 12, counts)
+        for category, count in counts.items():
+            with self.subTest(category=category):
+                self.assertGreaterEqual(count, 4, f"{category} has no replication")
+
+    def test_both_languages_are_well_represented(self):
+        russian = sum(1 for case in self.output if case["language"] == "ru")
+        self.assertGreaterEqual(russian / len(self.output), 0.3)
+
+    def test_clusters_are_unique_so_bootstrap_resamples_independent_units(self):
+        clusters = [case["cluster_id"] for case in self.output]
+        self.assertEqual(len(clusters), len(set(clusters)))
+
+    def test_override_categories_do_not_request_a_compact_shape(self):
+        for case in self.output:
+            if case["category"].endswith("_override"):
+                with self.subTest(case=case["id"]):
+                    self.assertNotEqual(case["requested_shape"], "compact")
+
+    def test_no_prompt_mentions_the_benchmark_or_the_skill(self):
+        """A prompt that names the thing under test would cue the model."""
+        banned = ("simple man", "benchmark", "token budget", "compression policy")
+        for case in self.output + self.activation:
+            lowered = case["prompt"].lower()
+            # explicit-invocation activation cases must name the skill by design
+            explicit = "$simple-man" in lowered
+            for word in banned:
+                with self.subTest(case=case["id"], word=word):
+                    self.assertNotIn(word, lowered)
+            if not explicit:
+                with self.subTest(case=case["id"]):
+                    self.assertNotIn("simple-man", lowered)
+
+    def test_activation_classes_stay_balanced_enough_to_measure_precision(self):
+        negatives = [c for c in self.activation if c["activation_class"] == "negative"]
+        positives = [c for c in self.activation if c["expected"] == "activate"]
+        self.assertGreaterEqual(len(negatives), 10)
+        self.assertGreaterEqual(len(positives), 10)
+        protected = {c["protected_near_miss"] for c in negatives} - {None}
+        self.assertEqual(protected, {"detailed", "teaching", "creative"})
 
 
 class ReportMathTests(unittest.TestCase):

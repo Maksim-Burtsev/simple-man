@@ -457,9 +457,9 @@ def main(argv: list[str] | None = None) -> int:
         help="arm pair to judge blind, e.g. B:A (repeatable)",
     )
     parser.add_argument("--seed", default="simple-man-v0.3")
-    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/output-dev.jsonl")
+    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/bench-output.jsonl")
     parser.add_argument(
-        "--activation-cases", type=Path, default=ROOT / "evals/cases/activation-dev.jsonl"
+        "--activation-cases", type=Path, default=ROOT / "evals/cases/bench-activation.jsonl"
     )
     parser.add_argument("--max-calls", type=int, required=True)
     parser.add_argument("--limit", type=int, default=0, help="use only the first N cases")

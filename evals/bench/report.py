@@ -336,9 +336,9 @@ def build(directory: Path, cases_path: Path, activation_path: Path) -> dict[str,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/output-dev.jsonl")
+    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/bench-output.jsonl")
     parser.add_argument(
-        "--activation-cases", type=Path, default=ROOT / "evals/cases/activation-dev.jsonl"
+        "--activation-cases", type=Path, default=ROOT / "evals/cases/bench-activation.jsonl"
     )
     parser.add_argument("--write", type=Path, help="write the rendered report here")
     parser.add_argument("--check", type=Path, help="fail unless this file matches a fresh rebuild")
