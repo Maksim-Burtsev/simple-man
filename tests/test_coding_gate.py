@@ -809,8 +809,10 @@ class CodingGateTests(unittest.TestCase):
             'const value = "src/middleware.js";',
             'const value = "/api/users/:id";',
             'const value = "/v1/accounts";',
+            'const value = `/api/users/${userId}`;',
             'const value = "https://example.com/api";',
             'const value = /tmp/;',
+            'const value = /[\'\"]/g;',
             '// example only: "/private/tmp/not-executed"\n  const value = "ok";',
         )
         for addition in allowed:
@@ -829,6 +831,39 @@ class CodingGateTests(unittest.TestCase):
                 patch = gate.collect_patch(fixture, workspace, baseline)
 
                 self.assertTrue(patch.production.strip())
+
+    def test_collect_patch_rejects_relative_model_git_dependency(self):
+        fixture = gate.FIXTURES["node-auth-api"]
+        for sidecar_present in (False, True):
+            with (
+                self.subTest(sidecar_present=sidecar_present),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                workspace = Path(tmp) / "model"
+                baseline = gate.prepare_model_workspace(fixture, workspace)
+                if sidecar_present:
+                    (workspace / ".git/sidecar.js").write_text(
+                        "module.exports = true;\n", encoding="utf-8"
+                    )
+                middleware = workspace / "src/middleware.js"
+                middleware.write_text(
+                    middleware.read_text().replace(
+                        "  return {\n    status: 200,",
+                        "  let authoredWorkspace = true;\n"
+                        "  try { require('../.git/sidecar.js'); } "
+                        "catch (_) { authoredWorkspace = false; }\n"
+                        "  if (session.expiresAt < store.now() || "
+                        "(!authoredWorkspace && session.expiresAt <= store.now())) "
+                        "return { status: 401, body: \"expired session\" };\n\n"
+                        "  return {\n    status: 200,",
+                        1,
+                    )
+                )
+
+                with self.assertRaisesRegex(
+                    gate.IntegrityError, "model-only path"
+                ):
+                    gate.collect_patch(fixture, workspace, baseline)
 
     def test_collect_patch_rejects_python_raw_absolute_path_literal(self):
         fixture = gate.FIXTURES["python-payment-ledger"]

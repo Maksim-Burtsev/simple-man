@@ -1643,6 +1643,60 @@ def _added_line_numbers(original: str, current: str) -> frozenset[int]:
     return frozenset(added)
 
 
+def _javascript_regex_end(source: str, start: int) -> int | None:
+    cursor = start - 1
+    while cursor >= 0 and source[cursor].isspace():
+        cursor -= 1
+    if cursor >= 0:
+        previous = source[cursor]
+        can_start = previous in "([{:;,=!?&|~"
+        if previous == ">":
+            before = cursor - 1
+            while before >= 0 and source[before].isspace():
+                before -= 1
+            can_start = before >= 0 and source[before] == "="
+        if previous.isalnum() or previous in "_$":
+            end = cursor + 1
+            while cursor >= 0 and (source[cursor].isalnum() or source[cursor] in "_$"):
+                cursor -= 1
+            can_start = source[cursor + 1 : end] in {
+                "await",
+                "case",
+                "delete",
+                "in",
+                "instanceof",
+                "new",
+                "of",
+                "return",
+                "throw",
+                "typeof",
+                "void",
+                "yield",
+            }
+        if not can_start:
+            return None
+    cursor = start + 1
+    character_class = False
+    while cursor < len(source):
+        character = source[cursor]
+        if character == "\n":
+            return None
+        if character == "\\" and cursor + 1 < len(source):
+            cursor += 2
+            continue
+        if character == "[":
+            character_class = True
+        elif character == "]":
+            character_class = False
+        elif character == "/" and not character_class:
+            cursor += 1
+            while cursor < len(source) and source[cursor].isalpha():
+                cursor += 1
+            return cursor
+        cursor += 1
+    return None
+
+
 def _source_string_literals(
     source: str, *, python_source: bool
 ) -> tuple[tuple[str, frozenset[int]], ...]:
@@ -1677,6 +1731,12 @@ def _source_string_literals(
             block_comment = True
             index += 2
             continue
+        if not python_source and character == "/":
+            regex_end = _javascript_regex_end(source, index)
+            if regex_end is not None:
+                line += source[index:regex_end].count("\n")
+                index = regex_end
+                continue
         if character not in quotes:
             index += 1
             continue
@@ -1741,7 +1801,7 @@ def _normalized_literal(value: str) -> str:
 def _allowed_route(value: str) -> bool:
     return bool(
         re.fullmatch(
-            r"/(?:api(?:/|$)|v[0-9]+(?:/|$))[A-Za-z0-9_./:{}?&=%-]*",
+            r"/(?:api(?:/|$)|v[0-9]+(?:/|$))[A-Za-z0-9_./:${}?&=%-]*",
             value,
         )
     ) and ".." not in value
@@ -1781,6 +1841,8 @@ def _reject_local_path_literals(
             if any(alias in literal for alias in aliases):
                 raise IntegrityError("production patch contains model workspace path")
             inspected = re.sub(r"(?i)https?://[^\s'\"`]+", "", literal)
+            if re.search(r"(?:^|[\\/])\.git(?:[\\/]|$)", inspected):
+                raise IntegrityError("production patch contains model-only path")
             if file_uri.search(inspected) or windows_or_unc.search(inspected):
                 raise IntegrityError("production patch contains local absolute path")
             for match in posix_path.finditer(inspected):
