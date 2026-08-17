@@ -336,3 +336,32 @@ class ReportMathTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JudgmentParsingTests(unittest.TestCase):
+    """A verbose rationale must not discard an otherwise valid judgment."""
+
+    def _payload(self, rationale):
+        return json.dumps({
+            "quality": "left", "naturalness": "tie",
+            "flags": {"left": [], "right": []}, "rationale": rationale,
+        })
+
+    def test_over_long_rationale_is_truncated_not_rejected(self):
+        judgment = bench._parse_judgment(self._payload("x" * 5000))
+        self.assertEqual(judgment["quality"], "left")
+        self.assertLessEqual(len(judgment["rationale"]), bench.MAX_RATIONALE)
+
+    def test_fenced_json_is_accepted(self):
+        judgment = bench._parse_judgment("```json\n" + self._payload("fine") + "\n```")
+        self.assertEqual(judgment["naturalness"], "tie")
+
+    def test_non_json_is_still_rejected(self):
+        with self.assertRaises(ValueError):
+            bench._parse_judgment("I prefer the left answer.")
+
+    def test_invalid_choice_is_still_rejected(self):
+        bad = json.dumps({"quality": "middle", "naturalness": "tie",
+                          "flags": {"left": [], "right": []}, "rationale": "r"})
+        with self.assertRaises(ValueError):
+            bench._parse_judgment(bad)

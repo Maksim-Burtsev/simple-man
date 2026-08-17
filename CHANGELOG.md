@@ -46,10 +46,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the code under test, so it now skips instead of failing. The test is skipped
   on Linux CI, so this failure was only ever visible locally on macOS.
 
-### Notes
+### Results
 
-- Public benchmark claims are intentionally absent until a run against a pinned
-  model with a committed snapshot lands.
+- First published benchmark: 600 live calls on `claude-sonnet-5`, evidence in
+  `evals/releases/v0.3.0/`. The shipped policy produces 53.9% fewer output
+  tokens than no policy (95% CI 43.8–66.8%), and the report is rebuilt from the
+  raw records by `make bench-v3-check`.
+- Reported honestly: compression costs facts. No policy retains the most
+  required facts (71.7%); every compression arm retains fewer. The policies
+  recover that on obeying an explicitly requested output shape.
+- The v0.3 candidate **did not ship**. It cleared 10 of 11 preregistered gates
+  but lost blind preference to a one-sentence "be concise" control, 9 wins to
+  23, concentrated in categories where the user asked for length. Published
+  rather than patched.
 
 ## [0.2.0] - 2026-08-01
 

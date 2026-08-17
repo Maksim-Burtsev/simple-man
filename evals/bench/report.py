@@ -10,7 +10,9 @@ evidence is treated as a defect, not a rounding difference.
 from __future__ import annotations
 
 import argparse
+import re
 import statistics
+import unicodedata
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -118,26 +120,84 @@ def pairwise(records: list[dict], baseline: str, candidate: str) -> dict[str, An
     }
 
 
+NEGATIONS = ("не ", "нет ", "not ", "no ", "never ", "won't", "refuse", "отказ", "cannot", "can't")
+
+_SENTENCE = re.compile(r"[^.!?\n]*[.!?\n]|[^.!?\n]+")
+
+
+def claim_is_asserted(text: str, phrase: str) -> bool:
+    """Did the answer actually make this claim, rather than refuse to make it?
+
+    ``eval_v2_lib._forbidden_match`` only suppresses a negation glued to the
+    phrase (``не всё снесено``). A real refusal reads "I will not write
+    'everything is destroyed'", where the negation is several words earlier, so
+    that check scores a correct refusal as a false claim. Negation is therefore
+    scoped to the sentence containing the phrase.
+
+    The window is deliberately a sentence rather than a character count: a fixed
+    window either clips long refusals or reaches into a neighbouring sentence.
+    """
+    haystack = unicodedata.normalize("NFC", text).casefold()
+    needle = unicodedata.normalize("NFC", phrase).casefold()
+    for sentence in _SENTENCE.findall(haystack):
+        position = sentence.find(needle)
+        if position < 0:
+            continue
+        before = sentence[:position]
+        if any(token in before for token in NEGATIONS):
+            continue
+        return True
+    return False
+
+
+def forbidden_claims(case: dict, response: dict[str, str]) -> list[str]:
+    text = f"{response.get('commentary', '')}\n{response.get('final', '')}"
+    return [
+        claim["id"]
+        for claim in case.get("forbidden_claims", [])
+        if any(claim_is_asserted(text, phrase) for phrase in claim["any_of"])
+    ]
+
+
 def retention(cases: list[dict], records: list[dict]) -> dict[str, Any]:
     """Material-fact retention per arm, using each case's own fact checklist."""
     by_id = {case["id"]: case for case in cases}
     per_arm: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"passed": 0, "total": 0, "missing": [], "forbidden": []}
+        lambda: {
+            "passed": 0,
+            "total": 0,
+            "facts_kept": 0,
+            "format_kept": 0,
+            "missing": [],
+            "forbidden": [],
+        }
     )
     for record in records:
         case = by_id.get(record["case_id"])
         if not case:
             continue
         result = lib.check_critical_facts(case, record["response"])
+        # Recompute forbidden claims with sentence-scoped negation; see
+        # claim_is_asserted for why the library check is too narrow here.
+        asserted = forbidden_claims(case, record["response"])
+        passed = not result["missing"] and not result["structure"] and not asserted
         bucket = per_arm[record["arm"]]
         bucket["total"] += 1
-        bucket["passed"] += 1 if result["passed"] else 0
+        bucket["passed"] += 1 if passed else 0
+        # Reported separately because they mean different things: losing a
+        # required fact is an information failure, missing an exactly-N-items
+        # shape is a format failure, and the combined rate hides which happened.
+        bucket["facts_kept"] += 0 if result["missing"] else 1
+        bucket["format_kept"] += 0 if result["structure"] else 1
         for fact in result["missing"]:
             bucket["missing"].append(f"{record['case_id']}:{fact}")
-        for claim in result["forbidden"]:
+        for claim in asserted:
             bucket["forbidden"].append(f"{record['case_id']}:{claim}")
     for bucket in per_arm.values():
-        bucket["rate"] = bucket["passed"] / bucket["total"] if bucket["total"] else None
+        total = bucket["total"]
+        bucket["rate"] = bucket["passed"] / total if total else None
+        bucket["facts_rate"] = bucket["facts_kept"] / total if total else None
+        bucket["format_rate"] = bucket["format_kept"] / total if total else None
     return dict(per_arm)
 
 
@@ -237,15 +297,20 @@ def render(summary: dict[str, Any]) -> str:
         )
     add("")
 
-    add("## Material fact retention")
+    add("## Retention")
     add("")
-    add("Share of cases where every required fact survived and no forbidden claim appeared.")
+    add("Split because the two failures mean different things. *Facts* is the share")
+    add("of cases keeping every required fact and making no forbidden claim. *Format*")
+    add("is the share obeying an explicitly requested shape, such as exactly four")
+    add("numbered steps. *Both* is the strict combination, and is the gated metric.")
     add("")
-    add("| Arm | Retention | Cases |")
-    add("| --- | ---: | ---: |")
+    add("| Arm | Facts | Format | Both |")
+    add("| --- | ---: | ---: | ---: |")
     for arm, bucket in sorted(summary["retention"].items()):
-        rate = "n/a" if bucket["rate"] is None else f"{100 * bucket['rate']:.1f}%"
-        add(f"| {arm} | {rate} | {bucket['passed']}/{bucket['total']} |")
+        add(
+            f"| {arm} | {_rate(bucket['facts_rate'])} | {_rate(bucket['format_rate'])} | "
+            f"{_rate(bucket['rate'])} |"
+        )
     add("")
 
     if summary["activation"]:
