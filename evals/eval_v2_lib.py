@@ -354,6 +354,10 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
     aliases = "|".join(re.escape(alias) for alias in alias_values)
     identifiers = {_normalized(identifier) for identifier in private_ids or set()}
     roots = [unicodedata.normalize("NFKC", str(root)).casefold() for root in protected_roots or set()]
+    sensitive_key_suffixes = (
+        "authorization", "secret", "password", "apikey", "token",
+        "credential", "credentials", "privatekey",
+    )
     def contains_absolute_path(value: str) -> bool:
         if re.search(r"\bfile:(?:/+|[a-z]:[\\/])", value, re.IGNORECASE):
             return True
@@ -390,7 +394,11 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
         if isinstance(value, dict):
             for key, item in value.items():
                 normalized = _normalized(key)
-                if normalized in forbidden or (normalized == "mapping" and not (top_level and key == "mapping_commitment")):
+                if (
+                    normalized in forbidden
+                    or any(normalized.endswith(suffix) for suffix in sensitive_key_suffixes)
+                    or (normalized == "mapping" and not (top_level and key == "mapping_commitment"))
+                ):
                     raise ValueError("public identity leak")
                 scan_text(key)
                 walk(item)

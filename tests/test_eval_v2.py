@@ -439,6 +439,9 @@ class EvalV2Tests(unittest.TestCase):
             "access_token",
             "token",
             "credentials",
+            "OPENAI_API_KEY",
+            "SIMPLE_MAN_PASSWORD",
+            "github_token",
         )
         for key in unsafe_keys:
             with self.subTest(key=key), self.assertRaises(ValueError):
