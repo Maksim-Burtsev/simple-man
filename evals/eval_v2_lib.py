@@ -229,11 +229,20 @@ def balanced_schedule(cases: list[dict[str, Any]], arms: tuple[str, ...], secret
     return schedule
 
 
-def balanced_sides(cases: list[dict[str, Any]], secret: bytes | str) -> dict[str, bool]:
-    # A keyed ordering is the preregistered odd-stratum coin: alternating it
-    # keeps every singleton stratum random while global left/right differs by at most one.
+def balanced_sides(
+    cases: list[dict[str, Any]],
+    secret: bytes | str,
+    *,
+    stratum_id: str | None = None,
+) -> dict[str, bool]:
     ordered = sorted(cases, key=lambda case: hmac_digest(secret, {"side_coin": case["id"]}))
-    return {case["id"]: index % 2 == 0 for index, case in enumerate(ordered)}
+    parity = int(hmac_digest(secret, {
+        "side_parity": {
+            "stratum_id": stratum_id,
+            "members": sorted(case["id"] for case in cases),
+        },
+    }), 16) & 1
+    return {case["id"]: (index + parity) % 2 == 0 for index, case in enumerate(ordered)}
 
 
 def build_private_mapping(
@@ -296,7 +305,7 @@ def build_private_mapping(
             for slot_comparison, selector, _, _ in slots
             if slot_comparison == comparison_id
         ]
-        sides.update(balanced_sides(side_keys, secret))
+        sides.update(balanced_sides(side_keys, secret, stratum_id=comparison_id))
     pairs: dict[str, Any] = {}
     for comparison_id, selector, baseline_arm, candidate_arm in slots:
         identity = (selector["case_id"], selector["trial"], selector["model"], selector["effort"], selector["cli"])
@@ -355,7 +364,8 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
             text = _normalized(raw)
             if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
                 raise ValueError("public text leak")
-            if aliases and re.search(rf"\b(?:arm|variant|treatment)\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+            contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:-| )up"
+            if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
                 raise ValueError("public arm leak")
             long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
             if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):

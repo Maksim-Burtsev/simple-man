@@ -229,12 +229,16 @@ class EvalV2Tests(unittest.TestCase):
             {"comparison_id": "fifteen", "baseline_arm": "A", "candidate_arm": "B", "run_selectors": [selector(case) for case in cases]},
             {"comparison_id": "one", "baseline_arm": "generic", "candidate_arm": "C", "run_selectors": [selector(cases[0])]},
         ]
-        for secret in ("balance-1", "balance-2", "balance-3"):
+        singleton_positions = set()
+        for secret in tuple(f"balance-{number}" for number in range(1, 17)):
             mapping = lib.build_private_mapping(cases, runs, secret, comparisons=comparisons)
             for comparison in comparisons:
                 pairs = [pair for pair in mapping["pairs"].values() if pair["comparison_id"] == comparison["comparison_id"]]
                 baseline_left = sum(pair["left"]["arm"] == comparison["baseline_arm"] for pair in pairs)
                 self.assertLessEqual(abs(baseline_left - (len(pairs) - baseline_left)), 1)
+                if comparison["comparison_id"] == "one":
+                    singleton_positions.add(bool(baseline_left))
+        self.assertEqual(singleton_positions, {False, True})
 
     def test_balanced_schedule_has_exact_ordinal_balance(self):
         cases = [{"id": f"case-{number}"} for number in range(12)]
@@ -391,6 +395,38 @@ class EvalV2Tests(unittest.TestCase):
                 {"pairs": [{"response_A": {"final": "ARM-A Bearer live_token api_key=live_token /Users/name/repo call_private_123"}}]},
                 arm_aliases={"A", "B"}, private_ids={"call_private_123"}, protected_roots={Path("/Users/name")},
             )
+
+    def test_public_leak_scan_rejects_contextual_aliases_in_values_and_bundles(self):
+        aliases = {"A", "B", "C"}
+        for value in ("candidate B", "policy C", "winner B", "baseline A", "control C", "runner-up B"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                lib.assert_public_safe({"note": value}, arm_aliases=aliases)
+        lib.assert_public_safe(
+            {"note": "The candidate before policy review remains under baseline controls."},
+            arm_aliases=aliases,
+        )
+
+        cases = [{"id": "one", "category": "status", "language": "en", "prompt": "p", "verified_context": {}}]
+        selector = {"case_id": "one", "trial": 1, "model": "m", "effort": "e", "cli": "cli"}
+        runs = [
+            {**selector, "arm": arm, "run_id": f"one-{arm}", "commentary": "", "final": arm}
+            for arm in ("A", "B")
+        ]
+        mapping = lib.build_private_mapping(
+            cases,
+            runs,
+            "context-test",
+            comparisons=[{
+                "comparison_id": "context",
+                "baseline_arm": "A",
+                "candidate_arm": "B",
+                "run_selectors": [selector],
+            }],
+        )
+        bundle = lib.build_public_bundle(cases, runs, mapping)
+        bundle["pairs"][0]["prompt"] = "candidate B"
+        with self.assertRaises(ValueError):
+            lib.assert_public_safe(bundle, arm_aliases=aliases)
 
     def test_holdout_validation_matches_nested_contract(self):
         with self.assertRaises(ValueError):
