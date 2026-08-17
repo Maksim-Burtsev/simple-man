@@ -425,7 +425,11 @@ class EvalV2Tests(unittest.TestCase):
 
     def test_public_leak_scan_rejects_contextual_aliases_in_values_and_bundles(self):
         aliases = {"A", "B", "C"}
-        for value in ("candidate B", "policy C", "winner B", "baseline A", "control C", "runner-up B"):
+        for value in (
+            "candidate B", "policy C", "winner B", "baseline A", "control C",
+            "runner-up B", "candidate=B", "arm=B", "winner=B", "policy=B",
+            "baseline=B", "control=B", "variant=B", "treatment=B", "runner_up=B",
+        ):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 lib.assert_public_safe({"note": value}, arm_aliases=aliases)
         unsafe_keys = (
@@ -484,6 +488,9 @@ class EvalV2Tests(unittest.TestCase):
             "//server/share/evidence.json",
             "file:///etc/passwd",
             "file:///C:/Users/name/.codex/auth.json",
+            "path:/Users/name/repo",
+            "cwd:/tmp/foo",
+            "source:/opt/app",
         )
         for value in absolute_paths:
             with self.subTest(value=value), self.assertRaises(ValueError):

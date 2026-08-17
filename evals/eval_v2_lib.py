@@ -361,7 +361,7 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
     def contains_absolute_path(value: str) -> bool:
         if re.search(r"\bfile:(?:/+|[a-z]:[\\/])", value, re.IGNORECASE):
             return True
-        posix = re.compile(r"(?<![\w:/.])/(?!/)(?:[^/\s]+/)*[^/\s]+")
+        posix = re.compile(r"(?<![\w/.])/(?!/)(?:[^/\s]+/)*[^/\s]+")
         for match in posix.finditer(value):
             prefix = value[:match.start()]
             if re.search(r"\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+[`'\"]?$", prefix, re.IGNORECASE):
@@ -379,8 +379,8 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
         text = _normalized(raw)
         if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
             raise ValueError("public text leak")
-        contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:-| )up"
-        if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+        contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:[-_ ]?up)"
+        if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_:= ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
             raise ValueError("public arm leak")
         long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
         if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):
