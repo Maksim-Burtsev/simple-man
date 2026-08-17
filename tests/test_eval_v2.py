@@ -428,6 +428,21 @@ class EvalV2Tests(unittest.TestCase):
         for value in ("candidate B", "policy C", "winner B", "baseline A", "control C", "runner-up B"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 lib.assert_public_safe({"note": value}, arm_aliases=aliases)
+        unsafe_keys = (
+            "candidate B",
+            "policy C",
+            "/Users/name/private/repo",
+            r"C:\Users\name\auth.json",
+            "api_key=secret",
+            "password",
+            "api_key",
+            "access_token",
+            "token",
+            "credentials",
+        )
+        for key in unsafe_keys:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                lib.assert_public_safe({key: "value"}, arm_aliases=aliases)
         lib.assert_public_safe(
             {"note": "The candidate before policy review remains under baseline controls."},
             arm_aliases=aliases,

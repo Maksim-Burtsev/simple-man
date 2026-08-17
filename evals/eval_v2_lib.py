@@ -344,7 +344,12 @@ def _normalized(value: str) -> str:
 
 
 def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None = None, private_ids: set[str] | None = None, protected_roots: set[Path] | None = None) -> None:
-    forbidden = {"arm", "candidate", "winner", "runid", "private", "authorization", "secret", "responsea", "responseb"}
+    forbidden = {
+        "arm", "candidate", "winner", "runid", "private", "authorization",
+        "secret", "responsea", "responseb", "password", "apikey",
+        "accesstoken", "refreshtoken", "authtoken", "token", "credential",
+        "credentials", "clientsecret", "privatekey",
+    }
     alias_values = sorted(alias for alias in arm_aliases or {"A", "B"} if alias)
     aliases = "|".join(re.escape(alias) for alias in alias_values)
     identifiers = {_normalized(identifier) for identifier in private_ids or set()}
@@ -365,31 +370,35 @@ def assert_public_safe(bundle: dict[str, Any], *, arm_aliases: set[str] | None =
             or re.search(r"(?<![:\\/])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+", value)
         )
 
+    def scan_text(value: str) -> None:
+        raw = unicodedata.normalize("NFKC", value)
+        text = _normalized(raw)
+        if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
+            raise ValueError("public text leak")
+        contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:-| )up"
+        if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
+            raise ValueError("public arm leak")
+        long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
+        if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):
+            raise ValueError("public arm leak")
+        if re.search(r"\bBearer\s+\S+|\b(?:api[_ -]?key|access[_ -]?token|password)\s*[:=]\s*\S+", raw, re.IGNORECASE):
+            raise ValueError("public secret leak")
+        if any(root and root in raw.casefold() for root in roots) or contains_absolute_path(raw):
+            raise ValueError("public path leak")
+
     def walk(value: Any, *, top_level: bool = False) -> None:
         if isinstance(value, dict):
             for key, item in value.items():
                 normalized = _normalized(key)
                 if normalized in forbidden or (normalized == "mapping" and not (top_level and key == "mapping_commitment")):
                     raise ValueError("public identity leak")
+                scan_text(key)
                 walk(item)
         elif isinstance(value, list):
             for item in value:
                 walk(item)
         elif isinstance(value, str):
-            raw = unicodedata.normalize("NFKC", value)
-            text = _normalized(raw)
-            if identifiers.intersection({text}) or any(identifier and identifier in text for identifier in identifiers):
-                raise ValueError("public text leak")
-            contextual_labels = r"arm|variant|treatment|candidate|policy|winner|baseline|control|runner(?:-| )up"
-            if aliases and re.search(rf"\b(?:{contextual_labels})\b\s*[-_: ]*\s*(?:{aliases})\b", raw, re.IGNORECASE):
-                raise ValueError("public arm leak")
-            long_aliases = "|".join(re.escape(alias) for alias in alias_values if len(_normalized(alias)) > 1)
-            if long_aliases and re.search(rf"\b(?:{long_aliases})\b", raw, re.IGNORECASE):
-                raise ValueError("public arm leak")
-            if re.search(r"\bBearer\s+\S+|\b(?:api[_ -]?key|access[_ -]?token|password)\s*[:=]\s*\S+", raw, re.IGNORECASE):
-                raise ValueError("public secret leak")
-            if any(root and root in raw.casefold() for root in roots) or contains_absolute_path(raw):
-                raise ValueError("public path leak")
+            scan_text(value)
     walk(bundle, top_level=True)
 
 
