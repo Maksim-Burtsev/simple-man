@@ -13,23 +13,21 @@ Invoke it explicitly with `$simple-man`, or let the agent activate it from the r
 ## Codex Plugin
 
 ```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
 codex plugin add simple-man@simple-man
 ```
 
-The pinned v0.2.0 plugin makes the skill available in Codex; it does not enable the always-on policy. Its manifest still uses an always-on label. The source manifest for upcoming v0.3 fixes that label; PR5 will update the release pin.
+The pinned v0.3.1 plugin makes the skill available in Codex; it does not enable the always-on policy.
 
 ## Always-on Codex policy
 
-Released v0.2.0 installer:
+Released v0.3.1 installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
 ```
 
-That pinned installer writes `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`, always installs to `${CODEX_HOME:-$HOME/.codex}/skills/simple-man`, and keeps `simple-man.backup` on rerun.
-
-Source/upcoming v0.3 installer contract (available from a trusted checkout with `bash install.sh`; PR5 will update the release pin):
+Installer contract:
 
 - installs the skill to the first matching target below
 - writes a managed Simple Man block into `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`

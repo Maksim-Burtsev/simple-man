@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-18
+
 ### Changed — the shipped policy
 
 - The shipped policy is now the measured v0.3.1 candidate (`B2`), promoted by an
@@ -26,6 +28,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README repackaged as the project's front page: the opening states why the
+  skill exists — reading agents all day means wading through praise, apologies,
+  recaps and unrequested suggestions — and introduces the captain as the
+  character behind the icon. Real captured before/after pairs from the v0.3.1
+  records are shown in full, the benchmark section is reduced to Simple Man
+  against no policy, and controls, methodology and the honest session-cost
+  paragraph move into collapsible blocks.
+- `assets/pipeline.svg`: a diagram of the benchmark pipeline, each of the six
+  stages carrying the mechanism that prevents massaging the numbers.
+  `assets/benchmark.svg` restyled to match, and `assets/social-preview.png`
+  added for link previews.
+- Pinned release references now point at v0.3.1: the always-on installer, the
+  Codex plugin marketplace ref, and the plugin manifest version.
 - README repositioned around the measured identity — cut the chatter, keep the
   work: quality table first, honest session-cost section citing JetBrains'
   caveman measurement, examples replaced with equal-work pairs from the v0.3.1
@@ -101,5 +116,6 @@ Initial packaged release: portable Agent Skill, Codex plugin package, always-on
 installer, and the compact runtime policy surfaces (`AGENTS.md`, `CLAUDE.md`,
 `GEMINI.md`) generated from `AGENTS.md.snippet`.
 
-[Unreleased]: https://github.com/Maksim-Burtsev/simple-man/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Maksim-Burtsev/simple-man/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Maksim-Burtsev/simple-man/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/Maksim-Burtsev/simple-man/releases/tag/v0.2.0

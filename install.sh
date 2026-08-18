@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RAW_BASE="${SIMPLE_MAN_RAW_BASE:-https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0}"
+RAW_BASE="${SIMPLE_MAN_RAW_BASE:-https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1}"
 BEGIN_MARKER="<!-- simple-man-always-on-begin -->"
 END_MARKER="<!-- simple-man-always-on-end -->"
 
