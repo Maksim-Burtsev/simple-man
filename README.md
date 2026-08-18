@@ -400,21 +400,24 @@ project-level setup.
 ## Benchmark: Simple Man vs no policy
 
 <p align="center">
-  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms." width="720">
+  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
 </p>
 
 | **−32.4% output** | **0 facts lost** |
 | --- | --- |
 | Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
 
-How it's measured: every case ships a checklist of required facts and
-forbidden claims, and a judge that never sees arm labels checks which survive
-in each answer. Two preregistered live runs on `claude-sonnet-5`, 1,793 calls,
-all raw records committed under [`evals/releases/`](./evals/releases/). Every
-published number is rebuilt from the raw records by `make bench-v3-check`, and
-gates and inputs are preregistered by commit before the first call
-([v0.3.1](./evals/releases/v0.3.1/preregistration.json)) — a test rehashes
-every pinned input so the corpus cannot be edited after the fact.
+This is not a vibe check — every step of the pipeline is built so the numbers
+cannot be massaged:
+
+<p align="center">
+  <img src="assets/pipeline.svg" alt="How the benchmark works: preregistered gates and corpus, hidden validators and a blind holdout wave, five arms on the same model and prompt, blind pairwise judging in both orderings, every number rebuilt from raw records in CI, and failures published rather than hidden.">
+</p>
+
+Two preregistered live runs on `claude-sonnet-5`, 1,793 calls, all raw records
+committed under [`evals/releases/`](./evals/releases/) — preregistered by
+commit ([v0.3.1](./evals/releases/v0.3.1/preregistration.json)), rebuilt by
+`make bench-v3-check`.
 
 <details>
 <summary>Full comparison table, controls, methodology, and what did not ship</summary>
