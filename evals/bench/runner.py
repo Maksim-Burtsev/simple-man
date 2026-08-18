@@ -32,6 +32,13 @@ import eval_v2_lib as lib  # noqa: E402
 from run_codex import CONTROL_INSTRUCTIONS  # noqa: E402
 
 POLICIES = ROOT / "evals" / "policies"
+CASES = ROOT / "evals" / "cases"
+
+DEFAULT_OUTPUT_CASES = [CASES / "bench-output.jsonl", CASES / "bench-output-holdout.jsonl"]
+DEFAULT_ACTIVATION_CASES = [
+    CASES / "bench-activation.jsonl",
+    CASES / "bench-activation-holdout.jsonl",
+]
 
 #: Arm name -> policy file appended to the shared prelude. ``None`` is the bare
 #: control: the prelude alone, with no communication policy at all.
@@ -135,11 +142,18 @@ NO_TOOLS_NOTE = (
 BENCH_PRELUDE = f"{CONTROL_INSTRUCTIONS}\n{NO_TOOLS_NOTE}"
 
 
-def system_prompt(arm: str) -> str:
+def system_prompt(arm: str, *, tools: bool = False) -> str:
+    """Shared prelude plus the arm's policy.
+
+    ``tools`` selects the prelude: answer cases run with tools disabled and are
+    told so, while the coding phase has real tools and must not be told it has
+    none, or the model writes instructions instead of editing files.
+    """
+    prelude = CONTROL_INSTRUCTIONS if tools else BENCH_PRELUDE
     policy = ARMS[arm]
     if policy is None:
-        return BENCH_PRELUDE
-    return f"{BENCH_PRELUDE}\n\n{policy.read_text().strip()}"
+        return prelude
+    return f"{prelude}\n\n{policy.read_text().strip()}"
 
 
 def policy_tokens(arm: str) -> int:
@@ -157,6 +171,7 @@ def call_claude(
     tools: str = "",
     cwd: Path | None = None,
     extra_args: Iterable[str] = (),
+    extra_env: dict[str, str] | None = None,
     timeout: int = 600,
 ) -> dict[str, Any]:
     """One headless turn. Returns the parsed CLI result envelope plus latency."""
@@ -178,12 +193,15 @@ def call_claude(
             "--no-session-persistence",
             *extra_args,
         ]
+        env = clean_env()
+        if extra_env:
+            env.update(extra_env)
         started = time.monotonic()
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            env=clean_env(),
+            env=env,
             cwd=str(cwd) if cwd else None,
             timeout=timeout,
         )
@@ -229,15 +247,38 @@ def usage_metrics(envelope: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
-    """Load cases without the fixed-count assertions of the v2 loaders."""
+    """Load cases without the fixed-count assertions of the v2 loaders.
+
+    ``wave`` marks which corpus round a case belongs to, so dev and holdout can
+    be reported separately. The upstream validator rejects unknown fields, so it
+    is removed before validation and restored afterwards.
+    """
     cases = lib.strict_jsonl(path)
     seen: set[str] = set()
     for case in cases:
+        wave = case.pop("wave", "dev")
         lib.validate_holdout_case(case)
+        case["wave"] = wave
         if case["id"] in seen:
             raise ValueError(f"duplicate case id {case['id']}")
         seen.add(case["id"])
     return cases
+
+
+def select_cases(
+    cases: list[dict[str, Any]],
+    *,
+    categories: tuple[str, ...] = (),
+    waves: tuple[str, ...] = (),
+    limit: int = 0,
+) -> list[dict[str, Any]]:
+    chosen = [
+        case
+        for case in cases
+        if (not categories or case.get("category") in categories)
+        and (not waves or case.get("wave") in waves)
+    ]
+    return chosen[:limit] if limit else chosen
 
 
 def _key(record: dict[str, Any]) -> tuple:
@@ -458,11 +499,26 @@ def run_judge_phase(
             model=model,
         )
         raw = envelope.get("result") or ""
+        judgment, error, attempts = None, None, 1
         try:
             judgment = _parse_judgment(raw)
-            error = None
         except ValueError as exc:
-            judgment, error = None, str(exc)[:200]
+            # One retry: a malformed envelope is a formatting slip, and silently
+            # dropping the pair thins the corpus unevenly, since the judge is
+            # likelier to slip on the cases it has most to say about.
+            error = str(exc)[:200]
+            attempts = 2
+            envelope = call_claude(
+                JUDGE_PROMPT.format(payload=lib.canonical_json(payload)),
+                system=JUDGE_SYSTEM,
+                model=model,
+            )
+            raw = envelope.get("result") or ""
+            try:
+                judgment = _parse_judgment(raw)
+                error = None
+            except ValueError as retry_exc:
+                error = str(retry_exc)[:200]
         append(
             out,
             {
@@ -477,6 +533,7 @@ def run_judge_phase(
                 "right_arm": right_arm if first_is_left else left_arm,
                 "judgment": judgment,
                 "parse_error": error,
+                "attempts": attempts,
                 "raw": None if judgment else raw[:4000],
                 "model": model,
                 "cli": identity["cli"],
@@ -489,9 +546,135 @@ def run_judge_phase(
     return len(work)
 
 
+CODING_PROMPT = """This repository has a failing test suite.
+
+Run the tests to see the failure, find the root cause, and fix it by editing only
+these production files: {production}
+
+Do not modify {immutable} — those files are fixed.
+
+Run `{command}` again to confirm the suite passes, then report what you changed."""
+
+
+def run_coding_phase(
+    fixtures: list[str],
+    arms: list[str],
+    *,
+    out: Path,
+    model: str,
+    identity: dict[str, Any],
+    dry_run: bool,
+    workers: int = 1,
+) -> int:
+    """Real coding work per arm, validated against hidden tests the model never sees.
+
+    This is the only phase that answers "same work quality" with something other
+    than an opinion: the patch either makes the pristine suite and the hidden
+    cases pass, or it does not. Tools are enabled here, unlike the answer phases.
+    """
+    import tempfile
+
+    sys.path.insert(0, str(ROOT / "evals"))
+    import coding_gate as gate
+
+    done = load_done(out)
+    work = [
+        (name, arm)
+        for name in fixtures
+        for arm in arms
+        if ("coding", name, arm) not in done
+    ]
+    if dry_run:
+        return len(work)
+
+    def one(item: tuple[str, str]) -> None:
+        name, arm = item
+        spec = gate.FIXTURES[name]
+        with tempfile.TemporaryDirectory(prefix=f"sm-coding-{name}-") as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            baseline = gate.prepare_model_workspace(spec, workspace)
+            prompt = CODING_PROMPT.format(
+                production=", ".join(f"`{path}`" for path in spec.production_paths),
+                immutable=", ".join(f"`{path}`" for path in spec.immutable_paths),
+                command=" ".join(spec.command),
+            )
+            error = None
+            try:
+                envelope = call_claude(
+                    prompt,
+                    system=system_prompt(arm, tools=True),
+                    model=model,
+                    tools="Read,Edit,Write,Bash,Glob,Grep",
+                    cwd=workspace,
+                    extra_args=("--permission-mode", "bypassPermissions", "--max-turns", "40"),
+                    # Running the suite would otherwise litter the workspace with
+                    # __pycache__, which collect_patch reads as edits outside the
+                    # production paths and rejects the whole patch over.
+                    extra_env={"PYTHONDONTWRITEBYTECODE": "1"},
+                    timeout=900,
+                )
+            except RuntimeError as exc:
+                error = str(exc)[:300]
+                envelope = {"result": "", "usage": {}, "latency_ms": 0}
+
+            passed = None
+            detail = None
+            if error is None:
+                try:
+                    patch = gate.collect_patch(spec, workspace, baseline)
+                    result = gate.validate_patch(
+                        spec, patch.production, root / "validation", trusted_offline=True
+                    )
+                    passed = result.passed
+                    detail = {
+                        "canonical_passed": result.canonical.passed,
+                        "hidden_passed": [h.passed for h in result.hidden],
+                        "patch_sha256": result.patch_sha256,
+                        "changed_paths": list(patch.changed_paths),
+                    }
+                except Exception as exc:  # a rejected patch is a result, not a crash
+                    passed = False
+                    # Record what the model actually touched. "Changed a
+                    # non-production path" means very different things for a
+                    # scratch file and for an edited test, and the distinction
+                    # decides whether the harness or the arm is at fault.
+                    status = subprocess.run(
+                        ["git", "status", "--porcelain", "-uall"],
+                        cwd=str(workspace),
+                        capture_output=True,
+                        text=True,
+                        env=clean_env(),
+                    ).stdout.strip()
+                    detail = {
+                        "validation_error": str(exc)[:300],
+                        "worktree_status": status[:600],
+                    }
+
+        append(
+            out,
+            {
+                "phase": "coding",
+                "case_id": name,
+                "arm": arm,
+                "passed": passed,
+                "detail": detail,
+                "call_error": error,
+                "model": model,
+                "cli": identity["cli"],
+                "cost_usd": envelope.get("total_cost_usd"),
+                "final": (envelope.get("result") or "")[:2000],
+                **usage_metrics(envelope),
+            },
+        )
+
+    run_concurrently(work, one, workers=workers)
+    return len(work)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("output", "activation", "judge", "all"))
+    parser.add_argument("phase", choices=("output", "activation", "judge", "coding", "all"))
     parser.add_argument("--model", default="claude-sonnet-5")
     parser.add_argument("--judge-model", default="claude-haiku-4-5")
     parser.add_argument("--claude", default="claude")
@@ -506,19 +689,42 @@ def main(argv: list[str] | None = None) -> int:
         help="arm pair to judge blind, e.g. B:A (repeatable)",
     )
     parser.add_argument("--seed", default="simple-man-v0.3")
-    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/bench-output.jsonl")
     parser.add_argument(
-        "--activation-cases", type=Path, default=ROOT / "evals/cases/bench-activation.jsonl"
+        "--output-cases", type=Path, action="append", dest="output_cases",
+        help="output case file; repeat to combine corpus waves",
+    )
+    parser.add_argument(
+        "--activation-cases", type=Path, action="append", dest="activation_cases",
     )
     parser.add_argument("--max-calls", type=int, required=True)
     parser.add_argument("--limit", type=int, default=0, help="use only the first N cases")
     parser.add_argument("--workers", type=int, default=6, help="concurrent calls")
+    parser.add_argument(
+        "--category", action="append", dest="categories", help="restrict to a category"
+    )
+    parser.add_argument("--wave", action="append", dest="waves", help="restrict to a corpus wave")
+    parser.add_argument("--coding-arm", action="append", dest="coding_arms")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    def cases_from(path: Path) -> list[dict[str, Any]]:
-        cases = load_cases(path)
-        return cases[: args.limit] if args.limit else cases
+    output_case_files = args.output_cases or DEFAULT_OUTPUT_CASES
+    activation_case_files = args.activation_cases or DEFAULT_ACTIVATION_CASES
+
+    def cases_from(paths: list[Path]) -> list[dict[str, Any]]:
+        combined: list[dict[str, Any]] = []
+        for path in paths:
+            combined.extend(load_cases(path))
+        seen: set[str] = set()
+        for case in combined:
+            if case["id"] in seen:
+                raise ValueError(f"duplicate case id across files: {case['id']}")
+            seen.add(case["id"])
+        return select_cases(
+            combined,
+            categories=tuple(args.categories or ()),
+            waves=tuple(args.waves or ()),
+            limit=args.limit,
+        )
 
     arms = args.arms or list(ARMS)
     descriptions = args.descriptions or list(DESCRIPTIONS)
@@ -540,7 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         total = 0
         if args.phase in ("output", "all"):
             total += run_output_phase(
-                cases_from(args.output_cases),
+                cases_from(output_case_files),
                 arms,
                 out=out_path,
                 model=args.model,
@@ -550,7 +756,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.phase in ("activation", "all"):
             total += run_activation_phase(
-                cases_from(args.activation_cases),
+                cases_from(activation_case_files),
                 descriptions,
                 out=args.output_dir / "activation.jsonl",
                 model=args.model,
@@ -558,11 +764,23 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=dry,
                 workers=args.workers,
             )
+        if args.phase in ("coding", "all"):
+            import coding_gate as gate
+
+            total += run_coding_phase(
+                sorted(gate.FIXTURES),
+                args.coding_arms or ["N", "A", "B", "G"],
+                out=args.output_dir / "coding.jsonl",
+                model=args.model,
+                identity=identity,
+                dry_run=dry,
+                workers=min(args.workers, 3),
+            )
         if args.phase in ("judge", "all"):
             answers = lib.strict_jsonl(out_path) if out_path.exists() else []
             for comparison in comparisons:
                 total += run_judge_phase(
-                    cases_from(args.output_cases),
+                    cases_from(output_case_files),
                     answers,
                     comparison,
                     out=args.output_dir / "judge.jsonl",

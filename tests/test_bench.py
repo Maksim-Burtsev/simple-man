@@ -365,3 +365,105 @@ class JudgmentParsingTests(unittest.TestCase):
                           "flags": {"left": [], "right": []}, "rationale": "r"})
         with self.assertRaises(ValueError):
             bench._parse_judgment(bad)
+
+
+class CorpusSelectionTests(unittest.TestCase):
+    def _case(self, cid, category, wave="dev"):
+        return {"id": cid, "category": category, "wave": wave}
+
+    def setUp(self):
+        self.cases = [
+            self._case("a", "review"),
+            self._case("b", "security"),
+            self._case("c", "review", "holdout-v2"),
+            self._case("d", "plan", "holdout-v2"),
+        ]
+
+    def test_category_filter(self):
+        picked = bench.select_cases(self.cases, categories=("review",))
+        self.assertEqual([c["id"] for c in picked], ["a", "c"])
+
+    def test_wave_filter(self):
+        picked = bench.select_cases(self.cases, waves=("holdout-v2",))
+        self.assertEqual([c["id"] for c in picked], ["c", "d"])
+
+    def test_filters_compose_and_limit_applies_last(self):
+        picked = bench.select_cases(
+            self.cases, categories=("review", "plan"), waves=("holdout-v2",), limit=1
+        )
+        self.assertEqual([c["id"] for c in picked], ["c"])
+
+    def test_no_filter_keeps_everything(self):
+        self.assertEqual(len(bench.select_cases(self.cases)), 4)
+
+
+class HoldoutCorpusTests(unittest.TestCase):
+    """The holdout wave is the answer to "was the policy tuned to the test set"."""
+
+    def setUp(self):
+        self.holdout = bench.load_cases(ROOT / "evals/cases/bench-output-holdout.jsonl")
+        self.dev = bench.load_cases(ROOT / "evals/cases/bench-output.jsonl")
+        self.act_holdout = bench.load_cases(
+            ROOT / "evals/cases/bench-activation-holdout.jsonl"
+        )
+
+    def test_holdout_cases_are_tagged_and_dev_defaults(self):
+        self.assertTrue(self.holdout)
+        for case in self.holdout:
+            self.assertEqual(case["wave"], "holdout-v2")
+        for case in self.dev:
+            self.assertEqual(case["wave"], "dev")
+
+    def test_holdout_covers_every_category(self):
+        categories = {case["category"] for case in self.holdout}
+        self.assertEqual(len(categories), 12, categories)
+
+    def test_ids_and_clusters_never_collide_across_waves(self):
+        self.assertFalse({c["id"] for c in self.holdout} & {c["id"] for c in self.dev})
+        self.assertFalse(
+            {c["cluster_id"] for c in self.holdout} & {c["cluster_id"] for c in self.dev}
+        )
+
+    def test_activation_holdout_keeps_protected_near_misses(self):
+        negatives = [c for c in self.act_holdout if c["activation_class"] == "negative"]
+        self.assertGreaterEqual(len(negatives), 5)
+        self.assertTrue({c["protected_near_miss"] for c in negatives} - {None})
+
+    def test_dev_corpus_is_unchanged_so_the_first_run_stays_reproducible(self):
+        """The v0.3.0 preregistration pins this file; growth goes in a new file."""
+        self.assertEqual(len(self.dev), 60)
+
+
+class CodingResultTests(unittest.TestCase):
+    def _record(self, arm, case_id, passed):
+        return {"phase": "coding", "arm": arm, "case_id": case_id, "passed": passed}
+
+    def test_pass_rate_and_named_failures(self):
+        results = bench_report.coding_results([
+            self._record("B", "node-auth-api", True),
+            self._record("B", "python-payment-ledger", False),
+            self._record("N", "node-auth-api", True),
+        ])
+        self.assertEqual(results["B"]["passed"], 1)
+        self.assertEqual(results["B"]["failures"], ["python-payment-ledger"])
+        self.assertAlmostEqual(results["B"]["rate"], 0.5)
+        self.assertEqual(results["N"]["rate"], 1.0)
+
+    def test_a_missing_pass_flag_counts_as_a_failure(self):
+        results = bench_report.coding_results([
+            {"phase": "coding", "arm": "B", "case_id": "x", "passed": None},
+        ])
+        self.assertEqual(results["B"]["passed"], 0)
+
+
+class CodingPromptTests(unittest.TestCase):
+    def test_coding_prelude_does_not_claim_tools_are_absent(self):
+        """The answer phases say "you have no tools"; saying that with tools
+        enabled makes the model write instructions instead of editing files."""
+        self.assertIn(bench.NO_TOOLS_NOTE, bench.system_prompt("B", tools=False))
+        self.assertNotIn(bench.NO_TOOLS_NOTE, bench.system_prompt("B", tools=True))
+
+    def test_coding_prelude_still_carries_the_arm_policy(self):
+        prompt = bench.system_prompt("B", tools=True)
+        self.assertIn("Simple Man", prompt)
+        self.assertNotIn("Simple Man", bench.system_prompt("N", tools=True))
