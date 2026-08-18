@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README repositioned around the measured identity — cut the chatter, keep the
+  work: quality table first, honest session-cost section citing JetBrains'
+  caveman measurement, examples replaced with equal-work pairs from the v0.3.1
+  run showing findings that carry their fix.
+- Coding-phase session token totals in the benchmark report, labelled as an
+  illustration at n=3.
+- `evals/README.md` records the gate lessons for the next preregistration and
+  the deferred SkillsBench measurement leg.
+
 - Lean Claude Code benchmark under `evals/bench/`: a runner, a blind pairwise
   judge, and a report that recomputes every number from the raw records. Runs on
   a Claude subscription with no API key, and refuses to start if any Anthropic

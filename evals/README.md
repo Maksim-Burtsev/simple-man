@@ -20,8 +20,9 @@ Five arms, each the same neutral prelude plus one policy file:
 | Arm | Policy |
 | --- | --- |
 | `N` | none — prelude only |
-| `A` | shipped v0.2 runtime policy |
-| `B` | v0.3 candidate |
+| `A` | frozen v0.2 policy (shipped before the v0.3.1 promotion) |
+| `B` | first v0.3 candidate — failed its gates, never shipped |
+| `B2` | second candidate — promoted to the shipped policy in v0.3.1 |
 | `G` | one sentence of "be concise" — the control that matters |
 | `C` | vendored external Caveman skill |
 
@@ -45,6 +46,24 @@ orderings is recorded as a tie.
 
 The report is always recomputed from the raw JSONL. `make bench-v3-check` fails
 if a published number cannot be rebuilt from the evidence.
+
+## Lessons for the next preregistration
+
+Recorded here so the next gate table is written before any results exist:
+
+1. `winner_coding_failures` must be **relative to the no-policy control**, not an
+   absolute zero. In v0.3.1 every arm including no-policy failed the same
+   fixture, so the absolute gate measured fixture difficulty and failed the
+   candidate for something no policy controls.
+2. Add an explicit **beats-what-is-shipped** gate. Both v0.3 gate tables asked
+   only whether the candidate beats a generic control; neither asked whether it
+   beats the policy users actually have, which turned out to be the decision
+   that mattered.
+3. Keep the vs-generic-control comparison as an **informative** metric, not a
+   shipping gate: it measures marketing claims, not user benefit.
+4. The next measurement leg worth paying for is real-agent sessions at scale:
+   SkillsBench via the open Harbor harness, same protocol JetBrains used for
+   caveman (86 tasks, A/B, 3 runs). Deferred by owner decision, not forgotten.
 
 ## Status: what you can actually run today
 

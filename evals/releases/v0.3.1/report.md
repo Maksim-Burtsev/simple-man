@@ -58,12 +58,18 @@ then the patch is replayed against a pristine copy and against hidden
 cases the model never saw. This is the only measurement here that does
 not depend on anyone's opinion.
 
-| Arm | Passed | Failed fixtures |
-| --- | ---: | --- |
-| A | 2/3 | python-payment-ledger |
-| B2 | 2/3 | python-payment-ledger |
-| G | 2/3 | python-payment-ledger |
-| N | 2/3 | python-payment-ledger |
+| Arm | Passed | Failed fixtures | Session output tokens |
+| --- | ---: | --- | ---: |
+| A | 2/3 | python-payment-ledger | 6,379 |
+| B2 | 2/3 | python-payment-ledger | 6,980 |
+| G | 2/3 | python-payment-ledger | 11,650 |
+| N | 2/3 | python-payment-ledger | 8,798 |
+
+Session totals cover the whole agentic run with tools, which is where
+real spend lives — unlike the single-turn answer phases above. At three
+sessions per arm this is an illustration, not a claim; it is consistent
+with public measurements that terseness policies change real session
+cost by single-digit percentages, not headline output ratios.
 
 ## Dev and holdout separately
 
