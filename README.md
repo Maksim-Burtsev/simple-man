@@ -511,5 +511,3 @@ target-project activation files, not the source of the skill.
 ## License
 
 MIT — see [LICENSE](./LICENSE).
-
-*This README follows its own policy.*
