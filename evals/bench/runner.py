@@ -46,6 +46,7 @@ ARMS: dict[str, Path | None] = {
     "N": None,
     "A": POLICIES / "v0.2" / "simple_man_runtime.md",
     "B": POLICIES / "v0.3" / "B-runtime.md",
+    "B2": POLICIES / "v0.3" / "B2-runtime.md",
     "G": POLICIES / "v0.3" / "generic-terse.md",
     "C": POLICIES / "external" / "caveman-SKILL.md",
 }
