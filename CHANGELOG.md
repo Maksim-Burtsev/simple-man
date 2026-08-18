@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Results
 
+- Second benchmark run: 848 live calls, evidence in `evals/releases/v0.3.1/`.
+  Adds a coding phase, a 24-case holdout wave written blind, and harder
+  activation cases. The second candidate cleared 9 of 12 gates and **did not
+  ship**: it beats the shipped policy decisively (blind preference 48–8, fact
+  retention 66.7% vs 57.1%) but finishes level with a one-sentence control.
+- The harder activation corpus finally separates the two skill descriptions: the
+  shipped one scores 90% precision and lets two protected-category requests
+  through, while the trigger-focused candidate scores 100% across the board.
+
 - First published benchmark: 600 live calls on `claude-sonnet-5`, evidence in
   `evals/releases/v0.3.0/`. The shipped policy produces 53.9% fewer output
   tokens than no policy (95% CI 43.8–66.8%), and the report is rebuilt from the

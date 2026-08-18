@@ -202,40 +202,50 @@ Agent-specific dotdir rule files are not committed here. They are target-project
 
 ## Benchmark
 
-600 live calls on `claude-sonnet-5`, 60 output cases across 12 categories plus
-30 activation cases, 38% of them Russian. Raw records, report and gate results
-are committed in [`evals/releases/v0.3.0/`](./evals/releases/v0.3.0/report.md),
-and `make bench-v3-check` fails if any published number cannot be rebuilt from
-them.
+Two live runs on `claude-sonnet-5`, 1,448 calls total, all evidence committed
+under [`evals/releases/`](./evals/releases/). `make bench-v3-check` fails if any
+published number cannot be rebuilt from the raw records, and a test enforces that
+for every release, not just the newest.
+
+Latest run: 84 output cases across 12 categories, 40 activation cases, 3 coding
+fixtures, 38% of prompts Russian.
 
 Five arms, each the same neutral prelude plus one policy: **N** none, **A** the
-shipped policy, **B** a candidate, **G** one sentence of "be concise", **C** the
+shipped policy, **B2** a candidate, **G** one sentence of "be concise", **C** the
 external Caveman skill.
 
-| Arm | Output vs no policy | 95% CI | Facts kept | Requested format kept |
+| Arm | Output vs no policy | 95% CI | Facts kept | Format kept |
 | --- | ---: | --- | ---: | ---: |
-| A (shipped) | −53.9% | [−43.8%, −66.8%] | 61.7% | 80.0% |
-| B (candidate) | −52.4% | [−41.7%, −61.6%] | 66.7% | 80.0% |
-| C (Caveman) | −47.9% | [−33.4%, −57.8%] | 61.7% | 78.3% |
-| G ("be concise") | −26.2% | [−20.4%, −35.8%] | 68.3% | 76.7% |
-| N (none) | — | — | 71.7% | 73.3% |
+| A (shipped) | −66.3% | [−53.5%, −71.8%] | 57.1% | 82.1% |
+| C (Caveman) | −40.3% | [−27.7%, −51.1%] | 59.5% | 82.1% |
+| G ("be concise") | −33.4% | [−23.9%, −37.4%] | 67.9% | 82.1% |
+| B2 (candidate) | −32.4% | [−23.2%, −43.8%] | 66.7% | 81.0% |
+| N (none) | — | — | 66.7% | 76.2% |
 
-Read honestly, that says two things. Compression roughly halves output length and
-holds up under a clustered bootstrap. It also **costs facts**: no policy retains
-the most, and every compression arm retains fewer. The policies buy that back on
-obeying an explicitly requested shape.
+The trade is visible in that table and we publish it rather than hide it: the
+shipped policy is by far the shortest **and** keeps the fewest required facts.
+Compression is not free.
 
-The v0.3 candidate **did not ship**. It cleared 10 of 11 preregistered gates but
-lost blind preference to the one-sentence control, 9 wins to 23, concentrated in
-the categories where the user asked for length and it compressed anyway. That
-outcome is published rather than patched — see
-[`gates.md`](./evals/releases/v0.3.0/gates.md).
+On coding fixtures every arm scores 2 of 3, including the arm with no policy —
+the policy neither helps nor harms real task success here.
 
-Gates and inputs were [preregistered](./evals/releases/v0.3.0/preregistration.json)
-by commit before the first call, and a test rehashes every pinned input so the
-corpus cannot be edited afterwards.
+**Neither candidate shipped.** The first cleared 10 of 11 preregistered gates,
+the second 9 of 12. The second beats the shipped policy decisively — blind
+preference 48 wins to 8, fact retention 66.7% against 57.1% — but finishes level
+with one sentence of "be concise": 19 wins to 20, and 0.3% longer. For this model
+and corpus, a 337-word policy and one sentence land in the same place. Full
+reasoning, including a gate we specified wrong, is in
+[`gates.md`](./evals/releases/v0.3.1/gates.md).
 
-Older Codex-based suites and what still runs offline are described in
+The holdout wave, written by authors who had seen neither the earlier results nor
+any candidate, tracks the development corpus closely (+35.3% versus +27.4%
+against no policy), so nothing here was tuned to the set it was developed on.
+
+Gates and inputs are
+[preregistered](./evals/releases/v0.3.1/preregistration.json) by commit before
+the first call, and a test rehashes every pinned input.
+
+Older Codex-based suites and what runs offline are described in
 [`evals/README.md`](./evals/README.md).
 
 ## Recommended usage
