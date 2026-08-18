@@ -19,6 +19,8 @@ sys.path.insert(0, str(ROOT / "evals" / "bench"))
 
 import report as bench_report  # noqa: E402
 
+#: Defaults for the first release; a preregistration may name different arms,
+#: which is why evaluate() reads them from it rather than from this file.
 CANDIDATE = "B"
 BASELINE = "A"
 CONTROL = "N"
@@ -38,29 +40,38 @@ def _compare(op: str, value: Any, threshold: Any) -> bool:
     raise ValueError(f"unknown operator {op!r}")
 
 
-def measure(summary: dict[str, Any]) -> dict[str, Any]:
+def measure(summary: dict[str, Any], prereg: dict[str, Any] | None = None) -> dict[str, Any]:
     """Reduce the report summary to the values the gate table names."""
+    prereg = prereg or {}
+    candidate = prereg.get("candidate_arm", CANDIDATE)
+    baseline = prereg.get("baseline_arm", BASELINE)
+    control = prereg.get("control_arm", CONTROL)
+    generic = prereg.get("generic_arm", GENERIC)
+    description = prereg.get("candidate_description", CANDIDATE_DESCRIPTION)
+
     pairwise = {(row["baseline"], row["candidate"]): row for row in summary["pairwise"]}
     retention = summary["retention"]
-    activation = summary["activation"].get(CANDIDATE_DESCRIPTION, {})
+    activation = summary["activation"].get(description, {})
     blind = summary["blind"]["comparisons"]
+    coding = summary.get("coding", {})
 
-    def reduction(baseline: str) -> float | None:
-        row = pairwise.get((baseline, CANDIDATE))
+    def reduction(against: str) -> float | None:
+        row = pairwise.get((against, candidate))
         return row["median_reduction"] if row else None
 
-    def lower_bound(baseline: str) -> float | None:
-        row = pairwise.get((baseline, CANDIDATE))
+    def lower_bound(against: str) -> float | None:
+        row = pairwise.get((against, candidate))
         return row["ci_low"] if row else None
 
     def margin(comparison: str, opponent: str) -> int | None:
         bucket = blind.get(comparison)
         if not bucket:
             return None
-        return bucket["wins"].get(CANDIDATE, 0) - bucket["wins"].get(opponent, 0)
+        return bucket["wins"].get(candidate, 0) - bucket["wins"].get(opponent, 0)
 
-    candidate_retention = retention.get(CANDIDATE, {}).get("rate")
-    baseline_retention = retention.get(BASELINE, {}).get("rate")
+    candidate_retention = retention.get(candidate, {}).get("rate")
+    baseline_retention = retention.get(baseline, {}).get("rate")
+    candidate_coding = coding.get(candidate)
 
     return {
         "explicit_activation": activation.get("explicit_accuracy"),
@@ -71,22 +82,26 @@ def measure(summary: dict[str, Any]) -> dict[str, Any]:
             if activation.get("protected_false_positives") is not None
             else None
         ),
-        "false_validation_or_lost_blocker": len(retention.get(CANDIDATE, {}).get("forbidden", [])),
+        "false_validation_or_lost_blocker": len(retention.get(candidate, {}).get("forbidden", [])),
+        "winner_coding_failures": (
+            None if candidate_coding is None
+            else candidate_coding["total"] - candidate_coding["passed"]
+        ),
         "retention_equal_or_better_than_A": (
             None
             if candidate_retention is None or baseline_retention is None
             else candidate_retention >= baseline_retention
         ),
-        "blind_wins_minus_losses_vs_A": margin(f"{CANDIDATE}-vs-{BASELINE}", BASELINE),
-        "blind_wins_minus_losses_vs_G": margin(f"{CANDIDATE}-vs-{GENERIC}", GENERIC),
-        "median_output_reduction_vs_N": reduction(CONTROL),
-        "bootstrap_95_lower_bound_vs_N": lower_bound(CONTROL),
-        "median_output_reduction_vs_G": reduction(GENERIC),
+        "blind_wins_minus_losses_vs_A": margin(f"{candidate}-vs-{baseline}", baseline),
+        "blind_wins_minus_losses_vs_G": margin(f"{candidate}-vs-{generic}", generic),
+        "median_output_reduction_vs_N": reduction(control),
+        "bootstrap_95_lower_bound_vs_N": lower_bound(control),
+        "median_output_reduction_vs_G": reduction(generic),
     }
 
 
 def evaluate(prereg: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
-    measured = measure(summary)
+    measured = measure(summary, prereg)
     results = []
     for gate in prereg["gates"]:
         value = measured.get(gate["name"])
@@ -135,15 +150,17 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=ROOT / "evals" / "releases" / "v0.3.0" / "preregistration.json",
     )
-    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/bench-output.jsonl")
-    parser.add_argument(
-        "--activation-cases", type=Path, default=ROOT / "evals/cases/bench-activation.jsonl"
-    )
+    parser.add_argument("--output-cases", type=Path, action="append", dest="output_cases")
+    parser.add_argument("--activation-cases", type=Path, action="append", dest="activation_cases")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
     prereg = json.loads(args.preregistration.read_text())
-    summary = bench_report.build(args.run_dir, args.output_cases, args.activation_cases)
+    summary = bench_report.build(
+        args.run_dir,
+        args.output_cases or bench_report.DEFAULT_OUTPUT_CASES,
+        args.activation_cases or bench_report.DEFAULT_ACTIVATION_CASES,
+    )
     outcome = evaluate(prereg, summary)
 
     if args.json:

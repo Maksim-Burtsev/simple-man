@@ -10,12 +10,53 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PREREG = ROOT / "evals" / "releases" / "v0.3.0" / "preregistration.json"
+RELEASES = ROOT / "evals" / "releases"
+PREREGISTRATIONS = sorted(RELEASES.glob("v*/preregistration.json"))
 
 
 class PreregistrationTests(unittest.TestCase):
+    """Every preregistration stays enforceable, including superseded ones.
+
+    A superseded run must keep verifying: its published numbers are only
+    meaningful while the inputs it pinned are still exactly what was measured.
+    """
+
     def setUp(self):
-        self.prereg = json.loads(PREREG.read_text())
+        self.assertTrue(PREREGISTRATIONS, "no preregistration found")
+        self.prereg = json.loads(PREREGISTRATIONS[0].read_text())
+
+    def _each(self):
+        for path in PREREGISTRATIONS:
+            yield path, json.loads(path.read_text())
+
+    def test_every_release_pins_inputs_that_still_hash_the_same(self):
+        for path, prereg in self._each():
+            for relative, expected in prereg["input_sha256"].items():
+                with self.subTest(release=path.parent.name, path=relative):
+                    target = ROOT / relative
+                    self.assertTrue(target.is_file(), f"{relative} is gone")
+                    self.assertEqual(
+                        hashlib.sha256(target.read_bytes()).hexdigest(),
+                        expected,
+                        f"{relative} changed after {path.parent.name} was registered; "
+                        "that run is no longer described by its own contract",
+                    )
+
+    def test_each_release_names_its_candidate_and_pins_that_policy(self):
+        for path, prereg in self._each():
+            with self.subTest(release=path.parent.name):
+                candidate = prereg.get("candidate_arm", "B")
+                policy = prereg["arms"][candidate]["policy"]
+                self.assertIsNotNone(policy)
+                self.assertIn(policy, prereg["input_sha256"])
+
+    def test_no_candidate_is_ever_the_shipped_policy(self):
+        shipped = (ROOT / "AGENTS.md.snippet").read_bytes()
+        for path, prereg in self._each():
+            candidate = prereg.get("candidate_arm", "B")
+            policy = prereg["arms"][candidate]["policy"]
+            with self.subTest(release=path.parent.name):
+                self.assertNotEqual((ROOT / policy).read_bytes(), shipped)
 
     def test_every_pinned_input_still_hashes_to_its_registered_value(self):
         for relative, expected in self.prereg["input_sha256"].items():
