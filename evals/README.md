@@ -47,6 +47,16 @@ orderings is recorded as a tie.
 The report is always recomputed from the raw JSONL. `make bench-v3-check` fails
 if a published number cannot be rebuilt from the evidence.
 
+## Historical Codex skill comparison
+
+The earlier captured comparison
+([`evals/reports/codex-skill-comparison.md`](./reports/codex-skill-comparison.md))
+is kept as historical evidence only, not as current release evidence. It was a
+single run per arm, measured in characters rather than tokens, and the arms did
+not always do the same amount of work — in the auth scenario the baseline added
+a boundary test the Simple Man arm did not. It therefore cannot support a
+headline claim.
+
 ## Lessons for the next preregistration
 
 Recorded here so the next gate table is written before any results exist:

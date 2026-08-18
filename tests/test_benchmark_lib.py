@@ -359,8 +359,10 @@ class BenchmarkLibTests(unittest.TestCase):
 
     def test_readme_does_not_publish_historical_headline_examples(self):
         readme = (ROOT / "README.md").read_text()
+        evals_readme = (ROOT / "evals" / "README.md").read_text()
 
-        self.assertIn("## Historical examples", readme)
+        self.assertIn("## Historical Codex skill comparison", evals_readme)
+        self.assertIn("historical evidence only", evals_readme)
         self.assertNotIn("63% shorter", readme)
         self.assertNotIn("49% shorter", readme)
         self.assertNotIn("56% shorter", readme)
