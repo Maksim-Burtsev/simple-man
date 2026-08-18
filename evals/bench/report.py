@@ -23,6 +23,13 @@ sys.path.insert(0, str(ROOT / "evals"))
 
 import eval_v2_lib as lib  # noqa: E402
 
+CASES = ROOT / "evals" / "cases"
+DEFAULT_OUTPUT_CASES = [CASES / "bench-output.jsonl", CASES / "bench-output-holdout.jsonl"]
+DEFAULT_ACTIVATION_CASES = [
+    CASES / "bench-activation.jsonl",
+    CASES / "bench-activation-holdout.jsonl",
+]
+
 BOOTSTRAP_SEED = 20260817
 BOOTSTRAP_ITERATIONS = 10000
 
@@ -36,7 +43,33 @@ def load_run(directory: Path) -> dict[str, list[dict[str, Any]]]:
         "output": _read(directory / "output.jsonl"),
         "activation": _read(directory / "activation.jsonl"),
         "judge": _read(directory / "judge.jsonl"),
+        "coding": _read(directory / "coding.jsonl"),
     }
+
+
+def load_cases(paths: list[Path]) -> list[dict[str, Any]]:
+    combined: list[dict[str, Any]] = []
+    for path in paths:
+        for case in _read(path):
+            case.setdefault("wave", "dev")
+            combined.append(case)
+    return combined
+
+
+def coding_results(records: list[dict]) -> dict[str, dict[str, Any]]:
+    per_arm: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"passed": 0, "total": 0, "failures": []}
+    )
+    for record in records:
+        bucket = per_arm[record["arm"]]
+        bucket["total"] += 1
+        if record.get("passed"):
+            bucket["passed"] += 1
+        else:
+            bucket["failures"].append(record["case_id"])
+    for bucket in per_arm.values():
+        bucket["rate"] = bucket["passed"] / bucket["total"] if bucket["total"] else None
+    return dict(per_arm)
 
 
 def arm_output_tokens(records: list[dict]) -> dict[str, list[int]]:
@@ -348,6 +381,52 @@ def render(summary: dict[str, Any]) -> str:
             )
             add("")
 
+    if summary.get("coding"):
+        add("## Coding tasks")
+        add("")
+        add("Three fixtures with failing test suites. The arm edits production files,")
+        add("then the patch is replayed against a pristine copy and against hidden")
+        add("cases the model never saw. This is the only measurement here that does")
+        add("not depend on anyone's opinion.")
+        add("")
+        add("| Arm | Passed | Failed fixtures |")
+        add("| --- | ---: | --- |")
+        for arm, bucket in sorted(summary["coding"].items()):
+            failed = ", ".join(bucket["failures"]) or "none"
+            add(f"| {arm} | {bucket['passed']}/{bucket['total']} | {failed} |")
+        add("")
+
+    waves = summary.get("waves") or {}
+    if len(waves) > 1:
+        add("## Dev and holdout separately")
+        add("")
+        add("The holdout wave was written after the first run, by authors who saw")
+        add("neither its results nor any candidate policy. If a policy were tuned to")
+        add("the dev corpus, the two slices would disagree.")
+        add("")
+        add("| Wave | Cases | Comparison | Median reduction | Facts kept |")
+        add("| --- | ---: | --- | ---: | ---: |")
+        for wave, bucket in sorted(waves.items()):
+            for row in bucket["pairwise"]:
+                arm = row["candidate"]
+                facts = bucket["retention"].get(arm, {}).get("facts_rate")
+                add(
+                    f"| {wave} | {bucket['cases']} | {row['candidate']} vs {row['baseline']} "
+                    f"| {_pct(row['median_reduction'])} | {_rate(facts)} |"
+                )
+        add("")
+
+    if summary.get("by_category"):
+        add("## By category")
+        add("")
+        add("Candidate against no policy, per case category.")
+        add("")
+        add("| Category | n | Median reduction |")
+        add("| --- | ---: | ---: |")
+        for row in summary["by_category"]:
+            add(f"| {row['category']} | {row['n']} | {_pct(row['median_reduction'])} |")
+        add("")
+
     add("## Limits")
     add("")
     add(f"- One model (`{meta['model']}`), one CLI version, one run per case. No repeats.")
@@ -364,10 +443,32 @@ def _rate(value: float | None) -> str:
     return "n/a" if value is None else f"{100 * value:.1f}%"
 
 
-def build(directory: Path, cases_path: Path, activation_path: Path) -> dict[str, Any]:
+def by_category(cases: list[dict], records: list[dict], left: str, right: str) -> list[dict]:
+    """Median reduction of ``right`` against ``left`` within each category."""
+    category = {case["id"]: case["category"] for case in cases}
+    rows = []
+    for name in sorted({c for c in category.values()}):
+        subset = [r for r in records if category.get(r["case_id"]) == name]
+        row = pairwise(subset, left, right)
+        if row:
+            row["category"] = name
+            rows.append(row)
+    return rows
+
+
+def build(
+    directory: Path,
+    cases_path: Path | list[Path],
+    activation_path: Path | list[Path],
+) -> dict[str, Any]:
     run = load_run(directory)
-    output_cases = lib.strict_jsonl(cases_path)
-    activation_cases = lib.strict_jsonl(activation_path)
+    output_cases = load_cases(
+        cases_path if isinstance(cases_path, list) else [cases_path]
+    )
+    activation_cases = load_cases(
+        activation_path if isinstance(activation_path, list) else [activation_path]
+    )
+    wave_of = {case["id"]: case.get("wave", "dev") for case in output_cases}
 
     arms = sorted(arm_output_tokens(run["output"]))
     comparisons = [(b, c) for b in ("N", "A", "G") for c in ("B",) if b in arms and c in arms]
@@ -381,7 +482,26 @@ def build(directory: Path, cases_path: Path, activation_path: Path) -> dict[str,
     judge_model = next((r["model"] for r in run["judge"]), "unknown")
     cli = next((r["cli"] for group in run.values() for r in group), "unknown")
 
+    waves: dict[str, Any] = {}
+    for wave in sorted({w for w in wave_of.values()}):
+        subset = [r for r in run["output"] if wave_of.get(r["case_id"]) == wave]
+        wave_cases = [c for c in output_cases if c.get("wave", "dev") == wave]
+        if not subset:
+            continue
+        waves[wave] = {
+            "cases": len({r["case_id"] for r in subset}),
+            "pairwise": [
+                row
+                for row in (pairwise(subset, b, c) for b, c in comparisons)
+                if row
+            ],
+            "retention": retention(wave_cases, subset),
+        }
+
     return {
+        "waves": waves,
+        "coding": coding_results(run["coding"]),
+        "by_category": by_category(output_cases, run["output"], "N", "B"),
         "meta": {
             "model": model,
             "judge_model": judge_model,
@@ -401,15 +521,19 @@ def build(directory: Path, cases_path: Path, activation_path: Path) -> dict[str,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--output-cases", type=Path, default=ROOT / "evals/cases/bench-output.jsonl")
+    parser.add_argument("--output-cases", type=Path, action="append", dest="output_cases")
     parser.add_argument(
-        "--activation-cases", type=Path, default=ROOT / "evals/cases/bench-activation.jsonl"
+        "--activation-cases", type=Path, action="append", dest="activation_cases"
     )
     parser.add_argument("--write", type=Path, help="write the rendered report here")
     parser.add_argument("--check", type=Path, help="fail unless this file matches a fresh rebuild")
     args = parser.parse_args(argv)
 
-    summary = build(args.run_dir, args.output_cases, args.activation_cases)
+    summary = build(
+        args.run_dir,
+        args.output_cases or DEFAULT_OUTPUT_CASES,
+        args.activation_cases or DEFAULT_ACTIVATION_CASES,
+    )
     rendered = render(summary)
 
     if args.check:
