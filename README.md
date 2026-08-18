@@ -11,10 +11,18 @@
 [![Release](https://img.shields.io/github/v/release/Maksim-Burtsev/simple-man)](https://github.com/Maksim-Burtsev/simple-man/releases)
 [![Output tokens](https://img.shields.io/badge/output_tokens-%E2%88%9232%25-2ea44f)](#benchmark-simple-man-vs-no-policy)
 
-A measured communication policy for coding agents. It strips narration, filler
-and recap from agent answers and keeps every fact you act on. Not a persona,
-not a token trick — tested on 1,793 preregistered live calls, raw records
-committed.
+You spend the day *reading* agents, not just running them — and most of what
+they write is not work: praise for your question, apologies, recaps of what
+just happened, suggestions nobody asked for, three paragraphs around one test.
+
+Simple Man is the other voice at the helm — a captain who has run ships for
+decades and tells the crew exactly what they need: the blocker, the fix, the
+risk. Nothing else. Less to read, zero flattery, and nothing you act on gets
+lost.
+
+The captain is the character; under the hood it is a measured policy of
+professional communication — short, factual, to the point — tested on 1,793
+preregistered live calls, raw records committed.
 
 Same model (`claude-sonnet-5`), same prompt. Left is what you read today:
 
