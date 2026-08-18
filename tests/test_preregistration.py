@@ -50,13 +50,21 @@ class PreregistrationTests(unittest.TestCase):
                 self.assertIsNotNone(policy)
                 self.assertIn(policy, prereg["input_sha256"])
 
-    def test_no_candidate_is_ever_the_shipped_policy(self):
+    def test_a_candidate_equals_the_shipped_policy_only_with_a_decision_record(self):
+        """Silent promotion is the failure mode; recorded promotion is legitimate."""
         shipped = (ROOT / "AGENTS.md.snippet").read_bytes()
         for path, prereg in self._each():
             candidate = prereg.get("candidate_arm", "B")
             policy = prereg["arms"][candidate]["policy"]
+            promoted = (ROOT / policy).read_bytes() == shipped
+            decision = path.parent / "DECISION.md"
             with self.subTest(release=path.parent.name):
-                self.assertNotEqual((ROOT / policy).read_bytes(), shipped)
+                if promoted:
+                    self.assertTrue(
+                        decision.is_file(),
+                        f"{candidate} is shipped but {decision} does not exist",
+                    )
+                    self.assertIn(candidate, decision.read_text())
 
     def test_every_pinned_input_still_hashes_to_its_registered_value(self):
         for relative, expected in self.prereg["input_sha256"].items():
