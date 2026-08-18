@@ -41,7 +41,9 @@ Either way, it's an unhandled-error-as-crash pattern that should never be reacha
 ```rust
 let canonical = Path::new(&filename)
     .canonicalize()
-    .map_err(|e| AppError::BadRequest(format!("invalid file path: {e}")))?;
+    .map_err(|e| AppError::BadRequest(
+        format!("invalid file path: {e}")
+    ))?;
 ```
 
 Return a 400/404 to the client instead of panicking. Add a test case covering a non-existent filename.
@@ -220,10 +222,7 @@ Both endpoints need an ownership check (`order.userId === req.session.userId`, r
 <details>
 <summary><b>Dockerfile + run commands — 2,045 → 443 tokens</b></summary>
 
-<table>
-<tr><th width="50%">No policy — 2,045 tokens</th><th width="50%">Simple Man — 443 tokens</th></tr>
-<tr valign="top">
-<td>
+**No policy — 2,045 tokens**
 
 Here's a complete, production-ready Dockerfile plus the commands to build and run it.
 
@@ -288,8 +287,7 @@ docker run -d \
 - **Env file alternative**: instead of `-e` flags, you can use `--env-file .env.production` if you keep a local (gitignored) env file with `DATABASE_URL=...` and `JWT_SECRET=...`.
 - **Permissions**: `chown -R node:node` walks the whole app directory at build time; fine for typical API codebases, but if your image is very large consider a multi-stage build to keep the final image lean.
 
-</td>
-<td>
+**Simple Man — 443 tokens**
 
 ```dockerfile
 FROM node:20-alpine
@@ -328,10 +326,6 @@ Notes:
 - `CMD ["node", "index.js"]` — replace `index.js` with your actual entrypoint (e.g. `dist/main.js` if compiled, or `npm start` if you prefer that instead of a direct node call).
 - `npm ci --omit=dev` skips devDependencies; drop `--omit=dev` if the app needs a build step post-copy.
 - `alpine` lacks `bash`/many glibc-dependent native modules; if any dependency needs native compilation, add `RUN apk add --no-cache python3 make g++` before `npm ci`.
-
-</td>
-</tr>
-</table>
 
 </details>
 
