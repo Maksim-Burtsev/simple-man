@@ -467,3 +467,48 @@ class CodingPromptTests(unittest.TestCase):
         prompt = bench.system_prompt("B", tools=True)
         self.assertIn("Simple Man", prompt)
         self.assertNotIn("Simple Man", bench.system_prompt("N", tools=True))
+
+
+class PublishedReportsTests(unittest.TestCase):
+    """Every published report must still rebuild from its own raw records.
+
+    Changing report.py can silently invalidate an older release's numbers. That
+    is exactly the failure this project claims to have designed out, so it is
+    checked for all releases rather than only the newest.
+    """
+
+    RELEASES = sorted((ROOT / "evals" / "releases").glob("v*/report.md"))
+
+    #: Releases measured before the holdout wave existed were scored against the
+    #: dev corpus only, so they must be rebuilt against the corpus they used.
+    CORPUS = {
+        "v0.3.0": (["bench-output.jsonl"], ["bench-activation.jsonl"]),
+    }
+
+    def test_at_least_one_release_is_published(self):
+        self.assertTrue(self.RELEASES)
+
+    def test_every_published_report_rebuilds_from_raw_records(self):
+        cases_dir = ROOT / "evals" / "cases"
+        for report_path in self.RELEASES:
+            release = report_path.parent.name
+            with self.subTest(release=release):
+                run_dir = report_path.parent / "run"
+                self.assertTrue(run_dir.is_dir(), f"{release} has no raw records")
+                outputs, activations = self.CORPUS.get(
+                    release,
+                    (
+                        [p.name for p in bench_report.DEFAULT_OUTPUT_CASES],
+                        [p.name for p in bench_report.DEFAULT_ACTIVATION_CASES],
+                    ),
+                )
+                summary = bench_report.build(
+                    run_dir,
+                    [cases_dir / name for name in outputs],
+                    [cases_dir / name for name in activations],
+                )
+                self.assertEqual(
+                    bench_report.render(summary),
+                    report_path.read_text(),
+                    f"{release}/report.md no longer matches its raw records",
+                )

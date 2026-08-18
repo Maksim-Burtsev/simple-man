@@ -51,6 +51,25 @@ Each case judged in both orderings; a win requires winning both.
 
 Judge chose the left position in 35.2% of 233 decided judgments. Far from 50% would indicate position bias rather than a real preference.
 
+## By category
+
+Candidate against no policy, per case category.
+
+| Category | n | Median reduction |
+| --- | ---: | ---: |
+| creative_override | 5 | +20.9% |
+| destructive_risk | 5 | +47.3% |
+| detailed_override | 5 | -30.5% |
+| diagnosis | 5 | +61.5% |
+| failed_validation | 5 | +62.9% |
+| final | 5 | +34.8% |
+| plan | 5 | +65.8% |
+| review | 5 | +71.6% |
+| security | 5 | +79.4% |
+| setup | 5 | +67.7% |
+| status | 5 | +42.2% |
+| teaching_override | 5 | +22.8% |
+
 ## Limits
 
 - One model (`claude-sonnet-5`), one CLI version, one run per case. No repeats.

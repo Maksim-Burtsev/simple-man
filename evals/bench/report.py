@@ -471,8 +471,15 @@ def build(
     wave_of = {case["id"]: case.get("wave", "dev") for case in output_cases}
 
     arms = sorted(arm_output_tokens(run["output"]))
-    comparisons = [(b, c) for b in ("N", "A", "G") for c in ("B",) if b in arms and c in arms]
-    comparisons += [(b, c) for b, c in (("N", "A"), ("N", "C"), ("N", "G")) if b in arms and c in arms]
+    # Reference arms are the fixed points; anything else present is a candidate
+    # and gets compared against each of them. Hardcoding a candidate name here
+    # silently produced "n/a" for a run whose candidate was named differently.
+    references = [name for name in ("N", "A", "G") if name in arms]
+    candidates = [name for name in arms if name not in ("N", "A", "G", "C")]
+    comparisons = [(ref, cand) for cand in candidates for ref in references]
+    comparisons += [
+        (b, c) for b, c in (("N", "A"), ("N", "C"), ("N", "G")) if b in arms and c in arms
+    ]
 
     pairwise_rows = [row for row in (pairwise(run["output"], b, c) for b, c in comparisons) if row]
 
@@ -501,7 +508,12 @@ def build(
     return {
         "waves": waves,
         "coding": coding_results(run["coding"]),
-        "by_category": by_category(output_cases, run["output"], "N", "B"),
+        "by_category": (
+            by_category(output_cases, run["output"], "N", candidates[0])
+            if candidates
+            else []
+        ),
+        "candidate_arm": candidates[0] if candidates else None,
         "meta": {
             "model": model,
             "judge_model": judge_model,
