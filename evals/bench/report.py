@@ -58,7 +58,13 @@ def load_cases(paths: list[Path]) -> list[dict[str, Any]]:
 
 def coding_results(records: list[dict]) -> dict[str, dict[str, Any]]:
     per_arm: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"passed": 0, "total": 0, "failures": []}
+        lambda: {
+            "passed": 0,
+            "total": 0,
+            "failures": [],
+            "session_input_tokens": 0,
+            "session_output_tokens": 0,
+        }
     )
     for record in records:
         bucket = per_arm[record["arm"]]
@@ -67,6 +73,10 @@ def coding_results(records: list[dict]) -> dict[str, dict[str, Any]]:
             bucket["passed"] += 1
         else:
             bucket["failures"].append(record["case_id"])
+        # Whole-session usage of the real agentic run, tools included. This is
+        # where actual spend lives, unlike the single-turn answer phases.
+        bucket["session_input_tokens"] += int(record.get("input_tokens") or 0)
+        bucket["session_output_tokens"] += int(record.get("output_tokens") or 0)
     for bucket in per_arm.values():
         bucket["rate"] = bucket["passed"] / bucket["total"] if bucket["total"] else None
     return dict(per_arm)
@@ -389,11 +399,20 @@ def render(summary: dict[str, Any]) -> str:
         add("cases the model never saw. This is the only measurement here that does")
         add("not depend on anyone's opinion.")
         add("")
-        add("| Arm | Passed | Failed fixtures |")
-        add("| --- | ---: | --- |")
+        add("| Arm | Passed | Failed fixtures | Session output tokens |")
+        add("| --- | ---: | --- | ---: |")
         for arm, bucket in sorted(summary["coding"].items()):
             failed = ", ".join(bucket["failures"]) or "none"
-            add(f"| {arm} | {bucket['passed']}/{bucket['total']} | {failed} |")
+            add(
+                f"| {arm} | {bucket['passed']}/{bucket['total']} | {failed} | "
+                f"{bucket['session_output_tokens']:,} |"
+            )
+        add("")
+        add("Session totals cover the whole agentic run with tools, which is where")
+        add("real spend lives — unlike the single-turn answer phases above. At three")
+        add("sessions per arm this is an illustration, not a claim; it is consistent")
+        add("with public measurements that terseness policies change real session")
+        add("cost by single-digit percentages, not headline output ratios.")
         add("")
 
     waves = summary.get("waves") or {}

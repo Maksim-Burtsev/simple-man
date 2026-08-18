@@ -6,13 +6,16 @@
 
 [![CI](https://github.com/Maksim-Burtsev/simple-man/actions/workflows/ci.yml/badge.svg)](https://github.com/Maksim-Burtsev/simple-man/actions/workflows/ci.yml)
 
-High-compression professional communication mode for coding agents.
+A communication policy for coding agents: cut the chatter, keep the work.
 
-Simple Man is not a persona. It is a communication policy:
+Simple Man is not a persona and not a token-saving trick. It is a measured
+policy that removes narration, filler and recap from agent answers **without
+losing the facts you act on** — blockers, failed checks, exact identifiers,
+risks, and the one-line fix for every finding. Requested detail is a contract:
+tutorials, reports and exact formats are written in full, never compressed.
 
-> Minimum user-facing words; same work quality.
-
-It is designed for people who work with agents for many hours and want lower cognitive load — without making the agent passive, less careful, or less proactive.
+Built for people who read agent output for hours a day and want lower cognitive
+load, not a shorter-looking bill.
 
 ## Install
 
@@ -65,15 +68,15 @@ See [INSTALL.md](./INSTALL.md) for other agents and project-level setup.
 
 ## What it changes
 
-It compresses user-facing communication:
+It compresses user-facing communication and completes it:
 
-- no preambles
-- no praise
-- no filler
-- no repeated recaps
-- no generic closing offers
-- sentence fragments and compact labels when clear
-- compact status updates, final answers, review findings, explanations and plans
+- no preambles, praise, filler, recaps, or generic closing offers
+- answer first; fragments and compact labels when clear
+- every review or security finding carries its location, consequence and one-line fix
+- refusing a destructive action names the target, the missing precondition and the safe procedure
+- a failed check reports the exact failure and where to look next
+- an explicitly requested shape — exact counts, order, word limits — is a contract, checked before sending
+- qualifiers survive: "no known remaining risks" is never shortened to "no remaining risks"
 
 ## What it does not change
 
@@ -89,85 +92,87 @@ It must not reduce:
 
 ## Examples
 
-Real captured pairs from the committed benchmark run: same model
-(`claude-sonnet-5`), same prompt, only the communication policy differs. Both
-answers below kept **every** fact the case required and obeyed the requested
-shape — the work is equal, only the wording is shorter. Full evidence in
-[`evals/releases/v0.3.0/`](./evals/releases/v0.3.0/report.md).
+Real captured pairs from the committed v0.3.1 benchmark run: same model
+(`claude-sonnet-5`), same prompt, only the policy differs. In both pairs below
+**both answers kept every required fact and obeyed the requested shape** — the
+work is equal, only the words differ. Full evidence in
+[`evals/releases/v0.3.1/`](./evals/releases/v0.3.1/report.md).
 
-### Review findings (`out-dev-22`)
+### Review findings (`out-dev-65`)
 
-Prompt supplies three confirmed defects with exact locations and asks for
-findings only, labelled P1–P3.
+Prompt supplies two confirmed defects with exact locations and asks for findings
+only, labelled P1 and P2.
 
 <table>
-<tr><th width="50%">No policy — 804 tokens</th><th width="50%">Simple Man — 243 tokens</th></tr>
+<tr><th width="50%">No policy — 950 tokens</th><th width="50%">Simple Man — 222 tokens</th></tr>
 <tr valign="top">
 <td>
 
-<b>Security Findings — session-service</b>
+<b>Findings</b>
 
-<b>P1 — Plaintext Session Token Storage</b><br>
-<b>Location:</b> <code>auth/session.py:41</code>
+<b>P1 — Panic on missing file in upload handler</b><br>
+<b>Location:</b> <code>src/handlers/upload.rs:114</code>
 
-The session token is stored in plaintext in the <code>sessions</code> table. If the database is compromised (via SQL injection, backup leak, insider access, or misconfigured replica), an attacker can directly hijack any active session without needing to intercept traffic or crack anything.
+<b>Issue:</b> The code calls <code>.unwrap()</code> on <code>Path::new(&filename).canonicalize()</code>. <code>canonicalize()</code> returns an <code>Err</code> when the target file does not exist…
 
-<b>Recommendation:</b> Store only a cryptographic hash (e.g., SHA-256) of the session token, similar to password hashing practice. Validate incoming tokens by hashing them and comparing against the stored hash…
+<b>Impact:</b> A missing file (e.g., client references a filename that was never uploaded, was deleted, or contains a path that doesn't resolve) crashes the request-handling thread. Depending on the async runtime/executor configuration, this can: terminate only the single request (best case…), or poison shared state / take down the worker…
 
-<i>(continues for P2 and P3 at similar length)</i>
+<b>Suggested fix:</b> Replace <code>.unwrap()</code> with proper error propagation, e.g.: <i>(nine-line code block)</i>. Return a 400/404 to the client instead of panicking. Add a test case covering a non-existent filename.
+
+<i>(continues for P2 at similar length)</i>
 
 </td>
 <td>
 
-P1. <code>auth/session.py:41</code> — session token stored in plaintext in <code>sessions</code> table. Compromise of DB yields usable session tokens directly. Fix: store salted hash (e.g. SHA-256) of token, compare hash on lookup.
+P1 — <code>src/handlers/upload.rs:114</code>: <code>Path::new(&filename).canonicalize().unwrap()</code> panics if the file doesn't exist, crashing the request thread. Fix: replace <code>.unwrap()</code> with proper error handling (e.g. <code>.map_err(...)?</code> returning a 4xx/5xx response) instead of panicking.
 
-P2. <code>auth/session.py:88</code> — session ID regenerated on login but not on privilege elevation (role change). Enables session fixation for privilege escalation: attacker-controlled session ID retained after role change. Fix: regenerate session ID on any privilege change, not just login.
-
-P3. <code>middleware/csrf.py:19</code> — CSRF token compared with <code>==</code>. Non-constant-time comparison enables timing attack to brute-force token. Fix: use <code>hmac.compare_digest</code>.
+P2 — <code>src/db/pool.rs:29</code>: creates a new <code>PgPool</code> per request instead of reusing a shared pool, exhausting DB connections under load. Fix: construct the <code>PgPool</code> once at startup (e.g. in app state) and pass a reference/handle into each request instead of instantiating per-request.
 
 </td>
 </tr>
-<tr><td colspan="2"><b>70% fewer output tokens.</b> All three findings, all three locations, all three fixes retained.</td></tr>
+<tr><td colspan="2"><b>77% fewer output tokens.</b> Both findings, both locations, both fixes — nothing to follow up on.</td></tr>
 </table>
 
 ### Status update (`out-dev-14`)
 
 <table>
-<tr><th width="50%">No policy — 260 tokens</th><th width="50%">Simple Man — 115 tokens</th></tr>
+<tr><th width="50%">No policy — 251 tokens</th><th width="50%">Simple Man — 119 tokens</th></tr>
 <tr valign="top">
 <td>
 
-<b>Subject: inventory-sync — Kafka consumer rewrite: canary status update</b>
+<b>Subject: inventory-sync — Status Update</b>
 
 Hi [Manager],
 
-Quick update on the inventory-sync canary rollout:
+Quick update on inventory-sync:
 
 <ul>
-<li><b>Deployed:</b> Kafka consumer rewrite is live on canary (10%).</li>
-<li><b>Performance:</b> p99 latency at 340ms — within our 500ms SLO.</li>
-<li><b>Issue:</b> Pod <code>inventory-sync-7f9d8</code> is failing its readiness probe with <code>connection refused</code> on port 9090.</li>
-<li><b>Action taken:</b> Paused rollout to the remaining 90% of pods pending investigation.</li>
+<li><b>Kafka consumer rewrite</b> is deployed to canary.</li>
+<li><b>Performance</b>: canary pods show p99 latency at 340ms, well within our 500ms SLO.</li>
+<li><b>Issue</b>: readiness probe on pod <code>inventory-sync-7f9d8</code> is failing with <code>connection refused</code> on port 9090.</li>
+<li><b>Rollout status</b>: paused before proceeding to the remaining 90% of pods, pending investigation of the probe failure.</li>
 </ul>
 
-Will update once we've root-caused the probe failure and confirmed it's safe to resume.
+Will update once we've root-caused the connection issue and are ready to resume the rollout.
 
 Thanks,<br>[Your name]
 
 </td>
 <td>
 
-Subject: inventory-sync status
+Status: inventory-sync
 
-Kafka consumer rewrite deployed to canary. p99 latency 340ms (within 500ms SLO). Pod inventory-sync-7f9d8 failing readiness probe: connection refused on port 9090. Rollout to remaining 90% paused pending fix.
+<ul>
+<li>Kafka consumer rewrite deployed to canary.</li>
+<li>Canary p99 latency: 340ms (within 500ms SLO).</li>
+<li>Blocker: readiness probe failing on pod inventory-sync-7f9d8 — <code>connection refused</code> on port 9090.</li>
+<li>Rollout to remaining 90% paused pending fix.</li>
+</ul>
 
 </td>
 </tr>
-<tr><td colspan="2"><b>56% fewer output tokens.</b> The failing probe and the paused rollout — the two facts that change what the manager does — both survive.</td></tr>
+<tr><td colspan="2"><b>53% fewer output tokens.</b> The blocker is labelled as one, and both facts that change what the manager does survive.</td></tr>
 </table>
-
-These two are illustrative, not the headline. The headline is the whole corpus,
-below.
 
 ### Historical examples
 
@@ -202,48 +207,54 @@ Agent-specific dotdir rule files are not committed here. They are target-project
 
 ## Benchmark
 
-Two live runs on `claude-sonnet-5`, 1,448 calls total, all evidence committed
-under [`evals/releases/`](./evals/releases/). `make bench-v3-check` fails if any
-published number cannot be rebuilt from the raw records, and a test enforces that
-for every release, not just the newest.
+Two preregistered live runs on `claude-sonnet-5`, 1,793 calls, all raw records
+committed under [`evals/releases/`](./evals/releases/). Every published number
+is rebuilt from the raw records by `make bench-v3-check`, and a test enforces
+that for every release, not just the newest.
 
-Latest run: 84 output cases across 12 categories, 40 activation cases, 3 coding
-fixtures, 38% of prompts Russian.
+Latest run: 84 output cases across 12 categories (38% Russian), 40 activation
+cases, 3 real agentic coding fixtures with hidden validators, blind pairwise
+judging with position swap, and a holdout wave written by authors who never saw
+earlier results.
 
-Five arms, each the same neutral prelude plus one policy: **N** none, **A** the
-shipped policy, **B2** a candidate, **G** one sentence of "be concise", **C** the
-external Caveman skill.
+**Quality first** — the shipped policy against its predecessor and controls:
 
-| Arm | Output vs no policy | 95% CI | Facts kept | Format kept |
-| --- | ---: | --- | ---: | ---: |
-| A (shipped) | −66.3% | [−53.5%, −71.8%] | 57.1% | 82.1% |
-| C (Caveman) | −40.3% | [−27.7%, −51.1%] | 59.5% | 82.1% |
-| G ("be concise") | −33.4% | [−23.9%, −37.4%] | 67.9% | 82.1% |
-| B2 (candidate) | −32.4% | [−23.2%, −43.8%] | 66.7% | 81.0% |
-| N (none) | — | — | 66.7% | 76.2% |
+| | previous v0.2 policy | shipped policy | one sentence of "be concise" | no policy |
+| --- | ---: | ---: | ---: | ---: |
+| Required facts kept | 57.1% | **66.7%** | 67.9% | 66.7% |
+| Blind preference vs shipped | 8 wins | **48 wins**, 28 ties | — | — |
+| False success claims | — | **0** | — | — |
+| Requested format kept | 82.1% | 81.0% | 82.1% | 76.2% |
+| Coding fixtures passed | 2/3 | 2/3 | 2/3 | 2/3 |
 
-The trade is visible in that table and we publish it rather than hide it: the
-shipped policy is by far the shortest **and** keeps the fewest required facts.
-Compression is not free.
+The previous policy compressed hardest (−66% output) **by dropping required
+facts** — that is why it was replaced. The shipped policy restores fact
+retention to the no-policy level while still removing a third of output length
+(−32.4%, 95% CI [−23.2%, −43.8%]).
 
-On coding fixtures every arm scores 2 of 3, including the arm with no policy —
-the policy neither helps nor harms real task success here.
+**On cost, honestly.** Output-token percentages are not session savings: in real
+agent sessions most tokens are context and tool traffic, and JetBrains'
+[measurement of the caveman skill](https://blog.jetbrains.com/ai/2026/07/speak-to-ai-agents-like-cavemen-tosave-tokens/)
+on 86 real tasks found −8.5% session output tokens against an advertised 65%.
+Our own three-session coding phase is consistent with that order of magnitude.
+If you install Simple Man to cut your bill, one sentence of "be concise" gets
+you most of the way; install it for what a sentence does not give you —
+measured fact retention, findings that carry their fix, refusals that carry the
+safe procedure, format contracts, and routing that knows when *not* to
+compress (100% activation precision, zero false triggers on tutorials and
+detailed reports).
 
-**Neither candidate shipped.** The first cleared 10 of 11 preregistered gates,
-the second 9 of 12. The second beats the shipped policy decisively — blind
-preference 48 wins to 8, fact retention 66.7% against 57.1% — but finishes level
-with one sentence of "be concise": 19 wins to 20, and 0.3% longer. For this model
-and corpus, a 337-word policy and one sentence land in the same place. Full
-reasoning, including a gate we specified wrong, is in
-[`gates.md`](./evals/releases/v0.3.1/gates.md).
+**What did not ship, published rather than hidden:** the first candidate failed
+its gates outright; the second beat the shipped policy decisively but only tied
+the one-sentence control, and its promotion is an explicit owner decision over
+the automated gate result, recorded with the trade-offs in
+[`DECISION.md`](./evals/releases/v0.3.1/DECISION.md). Gate tables, a
+mis-specified gate we scored as failed rather than quietly fixed, and both
+runs' full analysis live in [`evals/releases/`](./evals/releases/).
 
-The holdout wave, written by authors who had seen neither the earlier results nor
-any candidate, tracks the development corpus closely (+35.3% versus +27.4%
-against no policy), so nothing here was tuned to the set it was developed on.
-
-Gates and inputs are
-[preregistered](./evals/releases/v0.3.1/preregistration.json) by commit before
-the first call, and a test rehashes every pinned input.
+Gates and inputs are preregistered by commit before the first call
+([v0.3.1](./evals/releases/v0.3.1/preregistration.json)), and a test rehashes
+every pinned input so the corpus cannot be edited after the fact.
 
 Older Codex-based suites and what runs offline are described in
 [`evals/README.md`](./evals/README.md).
