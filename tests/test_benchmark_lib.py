@@ -400,7 +400,10 @@ class BenchmarkLibTests(unittest.TestCase):
             self.assertEqual(agents.count("simple-man-always-on-begin"), 1)
             self.assertEqual(agents.count("simple-man-always-on-end"), 1)
             self.assertIn("# Existing instructions", agents)
-            self.assertIn("Apply Simple Man to user-facing responses by default.", agents)
+            snippet_first_line = (
+                (ROOT / "AGENTS.md.snippet").read_text().strip().splitlines()[2]
+            )
+            self.assertIn(snippet_first_line, agents)
 
     def test_installer_rejects_malformed_managed_block_without_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -453,7 +456,7 @@ class BenchmarkLibTests(unittest.TestCase):
 
             self.assertTrue(agents_file.is_symlink())
             self.assertIn(
-                "Apply Simple Man to user-facing responses by default.",
+                (ROOT / "AGENTS.md.snippet").read_text().strip().splitlines()[2],
                 agents_target.read_text(),
             )
 

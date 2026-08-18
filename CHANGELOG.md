@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the shipped policy
+
+- The shipped policy is now the measured v0.3.1 candidate (`B2`), promoted by an
+  explicit owner decision recorded in `evals/releases/v0.3.1/DECISION.md`. The
+  automated gate decision was KEEP_SHIPPED_POLICY, because the candidate does
+  not beat a one-sentence control; the owner redefined the product goal as
+  quality-first de-chattering, under which the candidate beats the previous
+  policy 48–8 on blind preference and restores fact retention to the no-policy
+  level (66.7% vs 57.1%) while still removing a third of output length.
+- The skill description now carries a negative trigger ("do not use for
+  tutorials, teaching explanations, detailed reports…"). Measured on the harder
+  activation corpus: precision 90% → 100%, protected-category false activations
+  2 → 0.
+- Answers are moderately longer than under the previous policy (−32% vs −66%
+  against no policy): the previous policy achieved its extra compression by
+  dropping required facts, which is the defect this release removes.
+
 ### Added
 
 - Lean Claude Code benchmark under `evals/bench/`: a runner, a blind pairwise
