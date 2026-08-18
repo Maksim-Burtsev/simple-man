@@ -382,7 +382,7 @@ The policy on every turn, without invoking the skill. The installer writes
 updates that block in place:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.2.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
 ```
 
 For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
@@ -394,7 +394,7 @@ into your global `~/.claude/CLAUDE.md`.
 ### Codex Plugin
 
 ```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.2.0
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
 codex plugin add simple-man@simple-man
 ```
 
