@@ -5,15 +5,15 @@ the plugin, or the installer — these are evaluation inputs only.
 
 | Directory | What it is |
 | --- | --- |
-| `v0.2/` | Frozen copy of the currently shipped policy. Arm `A`. |
-| `v0.3/` | Candidate policy under evaluation. Arm `B`, plus controls. Not shipped. |
+| `v0.2/` | Frozen copy of the policy shipped before v0.3.1. Arm `A`. |
+| `v0.3/` | Candidates and controls. `B2` was promoted in v0.3.1; `B` failed its gates. |
 | `external/` | Vendored third-party policies, hash-pinned. |
 
-## `v0.2/` — arm A, the shipped baseline
+## `v0.2/` — arm A, the previous shipped policy
 
-Byte-identical copies of what the repository ships today, so a benchmark run can
-compare against a fixed reference even after the shipped files change.
-`tests/test_policies.py` fails if they drift apart.
+Byte-identical copies of the policy the repository shipped before the v0.3.1
+promotion, so a benchmark run can compare against a fixed reference even after
+the shipped files change. `tests/test_policies.py` guards that reference.
 
 | File | Copy of |
 | --- | --- |
@@ -21,12 +21,23 @@ compare against a fixed reference even after the shipped files change.
 | `simple_man_skill.md` | `skills/simple-man/SKILL.md` |
 | `description.txt` | the `description:` field of `skills/simple-man/SKILL.md` |
 
-## `v0.3/` — candidates, not shipped
+## `v0.3/` — candidates and controls
 
-`B-runtime.md` and `B-skill.md` are the candidate successors to the v0.2 pair.
-They are promoted into the shipped surfaces **only** if they clear the release
-gates on a live run. Until then the shipped policy is unchanged, and
-`tests/test_policies.py` fails if a candidate is silently promoted.
+`B-runtime.md` and `B-skill.md` are the first candidate successors to the v0.2
+pair. They **failed their gates and were never shipped**; they are kept as
+evidence, not as a staging area.
+
+`B2-runtime.md` and `B2-skill.md` are the second candidate, and this one **is
+the policy the repository ships since v0.3.1** — `B2-runtime.md` is byte-identical
+to `AGENTS.md.snippet`. The promotion was an explicit owner decision over the
+automated gate result, recorded in
+[`../releases/v0.3.1/DECISION.md`](../releases/v0.3.1/DECISION.md).
+
+A candidate reaches the shipped surfaces only through that recorded route, and
+`tests/test_policies.py` fails if one is promoted silently.
+
+The changes below are the ones `B` introduced against v0.2; `B2` refines the
+same line of work.
 
 Changes from v0.2, each tracing to a specific defect in the shipped text:
 

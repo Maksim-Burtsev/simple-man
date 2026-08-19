@@ -356,6 +356,42 @@ def render(summary: dict[str, Any]) -> str:
         )
     add("")
 
+    if summary.get("retention_by_category"):
+        rows = summary["retention_by_category"]
+        arms = sorted({arm for row in rows for arm in row["arms"]})
+        add("## Retention by category")
+        add("")
+        add("Facts / Format per arm, split by case category. Published because the")
+        add("product argument names specific categories — refusals that carry the safe")
+        add("procedure, findings that carry their fix, failed checks that report the")
+        add("exact failure — and a single pooled number cannot show whether the policy")
+        add("actually wins there.")
+        add("")
+        add("**This table does not separate the arms, and is not evidence that it does.**")
+        add(
+            f"Each cell holds {rows[0]['cases']} cases, so a single case moves a rate by "
+            f"{100 / rows[0]['cases']:.1f} points"
+        )
+        add("and nothing below roughly two cases of difference carries information.")
+        add("Read it as a map of where the corpus is thin, not as a scoreboard: on this")
+        add("corpus the candidate is level with, or behind, the one-sentence control in")
+        add("several of the categories the product argument leans on. Deciding those")
+        add("categories needs a corpus built for that question, not this one re-read.")
+        add("")
+        add("| Category | Cases | " + " | ".join(arms) + " |")
+        add("| --- | ---: | " + " | ".join(["---:"] * len(arms)) + " |")
+        for row in rows:
+            cells = []
+            for arm in arms:
+                bucket = row["arms"].get(arm)
+                cells.append(
+                    f"{_rate(bucket['facts_rate'])} / {_rate(bucket['format_rate'])}"
+                    if bucket
+                    else "n/a"
+                )
+            add(f"| {row['category']} | {row['cases']} | " + " | ".join(cells) + " |")
+        add("")
+
     if summary["activation"]:
         add("## Activation")
         add("")
@@ -475,6 +511,37 @@ def by_category(cases: list[dict], records: list[dict], left: str, right: str) -
     return rows
 
 
+def retention_by_category(cases: list[dict], records: list[dict]) -> list[dict]:
+    """Per-arm fact and format retention within each category.
+
+    Reuses ``retention`` on each category subset rather than re-deriving the
+    scoring rules, so a change to what counts as a kept fact cannot drift
+    between the headline table and this one.
+    """
+    category = {case["id"]: case["category"] for case in cases}
+    rows = []
+    for name in sorted(set(category.values())):
+        subset_cases = [case for case in cases if case["category"] == name]
+        subset = [r for r in records if category.get(r["case_id"]) == name]
+        if not subset:
+            continue
+        per_arm = retention(subset_cases, subset)
+        rows.append(
+            {
+                "category": name,
+                "cases": len({r["case_id"] for r in subset}),
+                "arms": {
+                    arm: {
+                        "facts_rate": bucket["facts_rate"],
+                        "format_rate": bucket["format_rate"],
+                    }
+                    for arm, bucket in per_arm.items()
+                },
+            }
+        )
+    return rows
+
+
 def build(
     directory: Path,
     cases_path: Path | list[Path],
@@ -544,6 +611,7 @@ def build(
         },
         "pairwise": pairwise_rows,
         "retention": retention(output_cases, run["output"]),
+        "retention_by_category": retention_by_category(output_cases, run["output"]),
         "activation": activation(activation_cases, run["activation"]),
         "blind": blind(run["judge"]),
     }

@@ -33,6 +33,37 @@ numbered steps. *Both* is the strict combination, and is the gated metric.
 | G | 68.3% | 76.7% | 50.0% |
 | N | 71.7% | 73.3% | 46.7% |
 
+## Retention by category
+
+Facts / Format per arm, split by case category. Published because the
+product argument names specific categories — refusals that carry the safe
+procedure, findings that carry their fix, failed checks that report the
+exact failure — and a single pooled number cannot show whether the policy
+actually wins there.
+
+**This table does not separate the arms, and is not evidence that it does.**
+Each cell holds 5 cases, so a single case moves a rate by 20.0 points
+and nothing below roughly two cases of difference carries information.
+Read it as a map of where the corpus is thin, not as a scoreboard: on this
+corpus the candidate is level with, or behind, the one-sentence control in
+several of the categories the product argument leans on. Deciding those
+categories needs a corpus built for that question, not this one re-read.
+
+| Category | Cases | A | B | C | G | N |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| creative_override | 5 | 80.0% / 40.0% | 60.0% / 40.0% | 80.0% / 40.0% | 80.0% / 40.0% | 60.0% / 40.0% |
+| destructive_risk | 5 | 0.0% / 100.0% | 20.0% / 100.0% | 0.0% / 100.0% | 0.0% / 100.0% | 20.0% / 100.0% |
+| detailed_override | 5 | 60.0% / 0.0% | 40.0% / 0.0% | 60.0% / 0.0% | 60.0% / 0.0% | 60.0% / 0.0% |
+| diagnosis | 5 | 60.0% / 100.0% | 40.0% / 100.0% | 40.0% / 100.0% | 60.0% / 100.0% | 80.0% / 100.0% |
+| failed_validation | 5 | 80.0% / 100.0% | 80.0% / 100.0% | 60.0% / 100.0% | 60.0% / 100.0% | 80.0% / 100.0% |
+| final | 5 | 40.0% / 100.0% | 60.0% / 100.0% | 80.0% / 100.0% | 40.0% / 100.0% | 20.0% / 100.0% |
+| plan | 5 | 60.0% / 100.0% | 100.0% / 100.0% | 40.0% / 100.0% | 100.0% / 100.0% | 100.0% / 60.0% |
+| review | 5 | 60.0% / 100.0% | 100.0% / 100.0% | 80.0% / 80.0% | 100.0% / 60.0% | 100.0% / 60.0% |
+| security | 5 | 60.0% / 100.0% | 60.0% / 100.0% | 100.0% / 100.0% | 100.0% / 100.0% | 80.0% / 100.0% |
+| setup | 5 | 100.0% / 100.0% | 100.0% / 100.0% | 100.0% / 100.0% | 100.0% / 100.0% | 100.0% / 100.0% |
+| status | 5 | 60.0% / 100.0% | 60.0% / 100.0% | 40.0% / 100.0% | 60.0% / 100.0% | 60.0% / 100.0% |
+| teaching_override | 5 | 80.0% / 20.0% | 80.0% / 20.0% | 60.0% / 20.0% | 60.0% / 20.0% | 100.0% / 20.0% |
+
 ## Activation
 
 | Description | Implicit recall | Precision | Explicit | Protected FP |
