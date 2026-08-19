@@ -1,0 +1,12 @@
+version: 2
+
+updates:
+  # Actions are pinned to commit SHAs, which do not expire but also do not pick
+  # up upstream fixes on their own. Dependabot is what keeps a pinned SHA from
+  # quietly rotting into an unpatched version.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
