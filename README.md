@@ -456,10 +456,19 @@ real agent sessions most tokens are context and tool traffic, and JetBrains'
 on 86 real tasks found −8.5% session output tokens against an advertised 65%.
 Our own three-session coding phase is consistent with that order of magnitude.
 If you install Simple Man to cut your bill, one sentence of "be concise" gets
-you most of the way; install it for what a sentence does not give you —
-measured fact retention, findings that carry their fix, refusals that carry
-the safe procedure, format contracts, and routing that knows when *not* to
-compress.
+you most of the way — and on this corpus it finishes level with the shipped
+policy, which is why that comparison is reported as a tie and not a win.
+
+What a sentence does not give you is a specification: findings that must carry
+their location, consequence and one-line fix; refusals that must name the
+target, the missing precondition and the safe procedure; failed checks that
+must report the exact failure; requested shapes treated as contracts; and a
+description that routes away from tutorials and detailed reports. That is the
+part you can read, and hold the policy to, in
+[`AGENTS.md.snippet`](./AGENTS.md.snippet). Whether it beats a sentence
+*category by category* is not settled here: at 7 cases per category this run
+cannot decide it, and the "Retention by category" table in the report says so
+in the open rather than picking the flattering cells.
 
 **What did not ship, published rather than hidden:** the first candidate
 failed its gates outright; the second beat the shipped policy decisively but
