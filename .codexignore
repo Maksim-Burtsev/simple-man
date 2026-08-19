@@ -1,0 +1,12 @@
+# Local state and generated artifacts that a packaged plugin never needs.
+__pycache__/
+*.pyc
+.local-fixtures/
+.hol-plugin-scanner-dist/
+evals/snapshots/*.json
+
+# Never package credential-shaped files, even if one is created locally.
+.env
+.env.*
+*.pem
+*.key

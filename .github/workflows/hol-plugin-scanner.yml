@@ -1,0 +1,39 @@
+name: HOL Plugin Scanner
+
+# Required by hashgraph-online/awesome-codex-plugins, which mirrors this
+# bundle and redistributes it through its marketplace.
+#
+# plugin_dir is the repository root, not plugins/simple-man: the bundle holds
+# the manifest, but marketplace.json and the repository-level operational
+# security checks live at the root, and scanning the bundle alone scores those
+# categories 0/0 instead of evaluating them.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned to a commit rather than the upstream template's floating @v1:
+      # this action runs on every push, and the catalog's own rules require
+      # SHA-pinned actions. This commit is the v1.2.527 bundle, which carries
+      # plugin-scanner 2.2.114 — the version the local audit was run against.
+      - name: HOL Plugin Scanner
+        uses: hashgraph-online/ai-plugin-scanner-action@19b40ecd28deeb603cfeb788f4def5f1c19d8ff4 # v1.2.527
+        with:
+          plugin_dir: "."
+          mode: scan
+          min_score: 80
+          fail_on_severity: high
+          format: sarif
+          upload_sarif: true
