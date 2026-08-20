@@ -24,6 +24,80 @@ The captain is the character; under the hood it is a measured policy of
 professional communication — short, factual, to the point — tested on 1,793
 preregistered live calls, raw records committed.
 
+<p align="center">
+  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
+</p>
+
+| **−32.4% output** | **0 facts lost** |
+| --- | --- |
+| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
+
+## What you get
+
+- **Answers a third shorter.** −32.4% output tokens across 84 real cases —
+  measured, not advertised.
+- **Zero lost facts.** Every benchmark case ships a checklist of facts the
+  reader acts on — blockers, failed checks, exact identifiers, risks. Simple
+  Man keeps every required fact in exactly as many cases as answers written
+  with no length pressure at all.
+- **Findings that carry their fix.** Location, consequence, one-line fix —
+  nothing to follow up on.
+- **It knows when *not* to compress.** A requested format is a contract:
+  exact counts, order and shape are checked before sending. Tutorials,
+  teaching explanations and detailed reports are written in full — the
+  shipped skill description triggered with zero false activations on them.
+
+## Install
+
+**Claude Code** — global, for every project:
+
+```bash
+npx skills add Maksim-Burtsev/simple-man -g -a claude-code -s simple-man -y
+```
+
+Project-level only — drop the `-g`. Invoke it explicitly with `$simple-man`,
+or let the agent activate it from the request.
+
+### Portable Agent Skill
+
+The same skill installs into any supported agent by changing `-a`:
+
+```bash
+npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
+```
+
+### Always-on Codex policy
+
+The policy on every turn, without invoking the skill. The installer writes
+`${CODEX_HOME:-$HOME/.codex}/AGENTS.md` and installs the skill; rerunning it
+updates that block in place:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
+```
+
+For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
+into your global `~/.claude/CLAUDE.md`.
+
+<details>
+<summary>Codex plugin and other agents</summary>
+
+### Codex Plugin
+
+```bash
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
+codex plugin add simple-man@simple-man
+```
+
+Installing the skill or the plugin makes Simple Man *available*; it
+does not enable the always-on policy — only the installer or a copied
+snippet does that. See [INSTALL.md](./INSTALL.md) for other agents and
+project-level setup.
+
+</details>
+
+## See it
+
 Same model (`claude-sonnet-5`), same prompt. Left is what you read today:
 
 <table>
@@ -81,6 +155,9 @@ P2 — `src/db/pool.rs:29`: creates a new `PgPool` per request instead of reusin
 </tr>
 <tr><td colspan="2">Both findings, both locations, both fixes — nothing to follow up on. Every required fact kept on both sides.</td></tr>
 </table>
+
+<details>
+<summary><b>Status update — 251 → 119 tokens, and root-cause diagnosis — 840 → 338 tokens</b></summary>
 
 <table>
 <tr><th width="50%">No policy — 251 tokens</th><th width="50%">Simple Man — 119 tokens</th></tr>
@@ -154,6 +231,8 @@ Not yet diagnosed (would need code to confirm): whether pricing.Calculate derive
 </tr>
 <tr><td colspan="2">Same root cause, same exact failure location — and what is still unproven stays explicitly unproven.</td></tr>
 </table>
+
+</details>
 
 <details>
 <summary><b>Security review with fixes — 1,215 → 276 tokens</b></summary>
@@ -341,79 +420,7 @@ All pairs above are real captured answers from the committed benchmark run —
 nothing is hand-written for this README. Raw records:
 [`evals/releases/v0.3.1/`](./evals/releases/v0.3.1/report.md).
 
-## What you get
-
-- **Answers a third shorter.** −32.4% output tokens across 84 real cases —
-  measured, not advertised.
-- **Zero lost facts.** Every benchmark case ships a checklist of facts the
-  reader acts on — blockers, failed checks, exact identifiers, risks. Simple
-  Man keeps every required fact in exactly as many cases as answers written
-  with no length pressure at all.
-- **Findings that carry their fix.** Location, consequence, one-line fix —
-  nothing to follow up on.
-- **It knows when *not* to compress.** A requested format is a contract:
-  exact counts, order and shape are checked before sending. Tutorials,
-  teaching explanations and detailed reports are written in full — the
-  shipped skill description triggered with zero false activations on them.
-
-## Install
-
-**Claude Code** — global, for every project:
-
-```bash
-npx skills add Maksim-Burtsev/simple-man -g -a claude-code -s simple-man -y
-```
-
-Project-level only — drop the `-g`. Invoke it explicitly with `$simple-man`,
-or let the agent activate it from the request.
-
-### Portable Agent Skill
-
-The same skill installs into any supported agent by changing `-a`:
-
-```bash
-npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
-```
-
-### Always-on Codex policy
-
-The policy on every turn, without invoking the skill. The installer writes
-`${CODEX_HOME:-$HOME/.codex}/AGENTS.md` and installs the skill; rerunning it
-updates that block in place:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
-```
-
-For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
-into your global `~/.claude/CLAUDE.md`.
-
-<details>
-<summary>Codex plugin and other agents</summary>
-
-### Codex Plugin
-
-```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
-codex plugin add simple-man@simple-man
-```
-
-Installing the skill or the plugin makes Simple Man *available*; it
-does not enable the always-on policy — only the installer or a copied
-snippet does that. See [INSTALL.md](./INSTALL.md) for other agents and
-project-level setup.
-
-</details>
-
 ## Benchmark: Simple Man vs no policy
-
-<p align="center">
-  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
-</p>
-
-| **−32.4% output** | **0 facts lost** |
-| --- | --- |
-| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
 
 This is not a vibe check — every step of the pipeline is built so the numbers
 cannot be massaged:
