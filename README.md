@@ -2,6 +2,12 @@
   <img src="assets/icon.png" alt="Simple Man icon" width="160">
 </p>
 
+<p align="center">
+  <em>The more general actualities of the day required no comment —<br>
+  because facts can speak for themselves with overwhelming precision.</em><br>
+  <sub>Joseph Conrad, <em>Typhoon</em> (1902) — himself a master mariner</sub>
+</p>
+
 # Simple Man
 
 > Cut the chatter. Keep the work.
@@ -23,6 +29,14 @@ lost.
 The captain is the character; under the hood it is a measured policy of
 professional communication — short, factual, to the point — tested on 1,793
 preregistered live calls, raw records committed.
+
+Brevity at sea was never a pose — it was priced. At Trafalgar, Nelson dictated
+*England confides that every man will do his duty*; his signal lieutenant asked
+to substitute `expects` for `confides`, because `expects` stood in the signal
+book as a single hoist while `confides` had to be spelled out letter by letter.
+Nelson agreed on the spot. The most quoted order in naval history reads the way
+it does because someone cut the cost of sending it without touching what it
+said.
 
 <p align="center">
   <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
