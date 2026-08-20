@@ -112,6 +112,10 @@ project-level setup.
 
 ## See it
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Two panes streaming the same security review at the same rate: the no-policy answer runs to 1,215 tokens and keeps scrolling, Simple Man finishes at 276 tokens with the same two findings, locations and fixes." width="900">
+</p>
+
 Same model (`claude-sonnet-5`), same prompt. Left is what you read today:
 
 <table>
