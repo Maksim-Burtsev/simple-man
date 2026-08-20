@@ -2,6 +2,12 @@
   <img src="assets/icon.png" alt="Simple Man icon" width="160">
 </p>
 
+<p align="center">
+  <em>The more general actualities of the day required no comment —<br>
+  because facts can speak for themselves with overwhelming precision.</em><br>
+  <sub>Joseph Conrad, <em>Typhoon</em> (1902) — himself a master mariner</sub>
+</p>
+
 # Simple Man
 
 > Cut the chatter. Keep the work.
@@ -17,12 +23,35 @@ just happened, suggestions nobody asked for, three paragraphs around one test.
 
 Simple Man is the other voice at the helm — a captain who has run ships for
 decades and tells the crew exactly what they need: the blocker, the fix, the
-risk. Nothing else. Less to read, zero flattery, and nothing you act on gets
-lost.
+risk. Nothing else. The captain is the character; under the hood it is a
+measured policy of professional communication — short, factual, to the point —
+tested on 1,793 preregistered live calls, raw records committed.
 
-The captain is the character; under the hood it is a measured policy of
-professional communication — short, factual, to the point — tested on 1,793
-preregistered live calls, raw records committed.
+At Trafalgar, Nelson dictated *England confides that every man will do his
+duty*; his signal lieutenant swapped `expects` for `confides` — one hoist of
+flags instead of nine, the order untouched. That is the whole trade this skill
+makes, priced in tokens instead of flags.
+
+## What you get
+
+- **Answers a third shorter.** −32.4% output tokens across 84 real cases —
+  measured, not advertised.
+- **Zero lost facts.** Every benchmark case ships a checklist of facts the
+  reader acts on — blockers, failed checks, exact identifiers, risks. Simple
+  Man keeps every required fact in exactly as many cases as answers written
+  with no length pressure at all.
+- **Findings that carry their fix.** Location, consequence, one-line fix —
+  nothing to follow up on.
+- **It knows when *not* to compress.** A requested format is a contract:
+  exact counts, order and shape are checked before sending. Tutorials,
+  teaching explanations and detailed reports are written in full — the
+  shipped skill description triggered with zero false activations on them.
+
+## See it
+
+<p align="center">
+  <img src="assets/demo.gif" alt="Two panes streaming the same security review at the same rate: the no-policy answer runs to 1,215 tokens and keeps scrolling, Simple Man finishes at 276 tokens with the same two findings, locations and fixes." width="900">
+</p>
 
 Same model (`claude-sonnet-5`), same prompt. Left is what you read today:
 
@@ -340,21 +369,6 @@ Notes:
 All pairs above are real captured answers from the committed benchmark run —
 nothing is hand-written for this README. Raw records:
 [`evals/releases/v0.3.1/`](./evals/releases/v0.3.1/report.md).
-
-## What you get
-
-- **Answers a third shorter.** −32.4% output tokens across 84 real cases —
-  measured, not advertised.
-- **Zero lost facts.** Every benchmark case ships a checklist of facts the
-  reader acts on — blockers, failed checks, exact identifiers, risks. Simple
-  Man keeps every required fact in exactly as many cases as answers written
-  with no length pressure at all.
-- **Findings that carry their fix.** Location, consequence, one-line fix —
-  nothing to follow up on.
-- **It knows when *not* to compress.** A requested format is a contract:
-  exact counts, order and shape are checked before sending. Tutorials,
-  teaching explanations and detailed reports are written in full — the
-  shipped skill description triggered with zero false activations on them.
 
 ## Install
 
