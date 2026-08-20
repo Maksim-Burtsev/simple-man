@@ -23,28 +23,14 @@ just happened, suggestions nobody asked for, three paragraphs around one test.
 
 Simple Man is the other voice at the helm — a captain who has run ships for
 decades and tells the crew exactly what they need: the blocker, the fix, the
-risk. Nothing else. Less to read, zero flattery, and nothing you act on gets
-lost.
+risk. Nothing else. The captain is the character; under the hood it is a
+measured policy of professional communication — short, factual, to the point —
+tested on 1,793 preregistered live calls, raw records committed.
 
-The captain is the character; under the hood it is a measured policy of
-professional communication — short, factual, to the point — tested on 1,793
-preregistered live calls, raw records committed.
-
-Brevity at sea was never a pose — it was priced. At Trafalgar, Nelson dictated
-*England confides that every man will do his duty*; his signal lieutenant asked
-to substitute `expects` for `confides`, because `expects` stood in the signal
-book as a single hoist while `confides` had to be spelled out letter by letter.
-Nelson agreed on the spot. The most quoted order in naval history reads the way
-it does because someone cut the cost of sending it without touching what it
-said.
-
-<p align="center">
-  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
-</p>
-
-| **−32.4% output** | **0 facts lost** |
-| --- | --- |
-| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
+At Trafalgar, Nelson dictated *England confides that every man will do his
+duty*; his signal lieutenant swapped `expects` for `confides` — one hoist of
+flags instead of nine, the order untouched. That is the whole trade this skill
+makes, priced in tokens instead of flags.
 
 ## What you get
 
@@ -60,55 +46,6 @@ said.
   exact counts, order and shape are checked before sending. Tutorials,
   teaching explanations and detailed reports are written in full — the
   shipped skill description triggered with zero false activations on them.
-
-## Install
-
-**Claude Code** — global, for every project:
-
-```bash
-npx skills add Maksim-Burtsev/simple-man -g -a claude-code -s simple-man -y
-```
-
-Project-level only — drop the `-g`. Invoke it explicitly with `$simple-man`,
-or let the agent activate it from the request.
-
-### Portable Agent Skill
-
-The same skill installs into any supported agent by changing `-a`:
-
-```bash
-npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
-```
-
-### Always-on Codex policy
-
-The policy on every turn, without invoking the skill. The installer writes
-`${CODEX_HOME:-$HOME/.codex}/AGENTS.md` and installs the skill; rerunning it
-updates that block in place:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
-```
-
-For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
-into your global `~/.claude/CLAUDE.md`.
-
-<details>
-<summary>Codex plugin and other agents</summary>
-
-### Codex Plugin
-
-```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
-codex plugin add simple-man@simple-man
-```
-
-Installing the skill or the plugin makes Simple Man *available*; it
-does not enable the always-on policy — only the installer or a copied
-snippet does that. See [INSTALL.md](./INSTALL.md) for other agents and
-project-level setup.
-
-</details>
 
 ## See it
 
@@ -438,7 +375,64 @@ All pairs above are real captured answers from the committed benchmark run —
 nothing is hand-written for this README. Raw records:
 [`evals/releases/v0.3.1/`](./evals/releases/v0.3.1/report.md).
 
+## Install
+
+**Claude Code** — global, for every project:
+
+```bash
+npx skills add Maksim-Burtsev/simple-man -g -a claude-code -s simple-man -y
+```
+
+Project-level only — drop the `-g`. Invoke it explicitly with `$simple-man`,
+or let the agent activate it from the request.
+
+### Portable Agent Skill
+
+The same skill installs into any supported agent by changing `-a`:
+
+```bash
+npx skills add Maksim-Burtsev/simple-man -g -a codex -s simple-man -y
+```
+
+### Always-on Codex policy
+
+The policy on every turn, without invoking the skill. The installer writes
+`${CODEX_HOME:-$HOME/.codex}/AGENTS.md` and installs the skill; rerunning it
+updates that block in place:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
+```
+
+For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
+into your global `~/.claude/CLAUDE.md`.
+
+<details>
+<summary>Codex plugin and other agents</summary>
+
+### Codex Plugin
+
+```bash
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
+codex plugin add simple-man@simple-man
+```
+
+Installing the skill or the plugin makes Simple Man *available*; it
+does not enable the always-on policy — only the installer or a copied
+snippet does that. See [INSTALL.md](./INSTALL.md) for other agents and
+project-level setup.
+
+</details>
+
 ## Benchmark: Simple Man vs no policy
+
+<p align="center">
+  <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
+</p>
+
+| **−32.4% output** | **0 facts lost** |
+| --- | --- |
+| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
 
 This is not a vibe check — every step of the pipeline is built so the numbers
 cannot be massaged:
