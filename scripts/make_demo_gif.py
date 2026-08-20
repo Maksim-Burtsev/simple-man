@@ -18,8 +18,8 @@ import textwrap
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GIF = os.path.join(ROOT, "assets", "demo.gif")
 
-BG = "#0f1728"; CARD = "#131d31"; BORD = "#2c3b57"; MUT = "#c2b49a"
-GOLD = "#e0a72e"; CREAM = "#f2e6cc"; DIM = "#8a8168"
+BG = "#091324"; CARD = "#0e1a2e"; BORD = "#26364f"; MUT = "#c2b49a"
+GOLD = "#dfa83d"; CREAM = "#f8de8c"; DIM = "#7f7053"
 
 LEFT_RAW = """**Security Review Findings**
 

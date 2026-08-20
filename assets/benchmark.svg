@@ -1,36 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="230" viewBox="0 0 960 230" role="img" aria-label="Simple Man benchmark: median answer length 520 tokens vs 833 without a policy; 66.7% of cases keep every required fact in both arms">
   <style>
     text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
-    .h { font-size: 13px; font-weight: 600; fill: #f2e6cc; }
+    .h { font-size: 13px; font-weight: 600; fill: #f8de8c; }
     .l { font-size: 11.5px; fill: #c2b49a; }
     .v { font-size: 11.5px; font-weight: 600; fill: #c2b49a; }
-    .vg { font-size: 11.5px; font-weight: 600; fill: #e0a72e; }
+    .vg { font-size: 11.5px; font-weight: 600; fill: #dfa83d; }
   </style>
-  <rect x="0" y="0" width="960" height="230" rx="16" fill="#0f1728"/>
-  <rect x="0.75" y="0.75" width="958.5" height="228.5" rx="15.25" fill="none" stroke="#2c3b57" stroke-width="1.5"/>
+  <rect x="0" y="0" width="960" height="230" rx="16" fill="#091324"/>
+  <rect x="0.75" y="0.75" width="958.5" height="228.5" rx="15.25" fill="none" stroke="#26364f" stroke-width="1.5"/>
 
   <g transform="translate(36,34)">
     <text x="0" y="0" class="h">Median answer length, tokens (84 cases)</text>
     <text x="0" y="34" class="l">no policy</text>
-    <rect x="98" y="24" width="300" height="13" rx="3" fill="#3a4a6b"/>
+    <rect x="98" y="24" width="300" height="13" rx="3" fill="#2e3d59"/>
     <text x="406" y="35" class="v">833</text>
     <text x="0" y="62" class="l">Simple Man</text>
-    <rect x="98" y="52" width="187" height="13" rx="3" fill="#e0a72e"/>
+    <rect x="98" y="52" width="187" height="13" rx="3" fill="#dfa83d"/>
     <text x="293" y="63" class="vg">520&#160;&#160;(−32.4%)</text>
   </g>
 
   <g transform="translate(520,34)">
     <text x="0" y="0" class="h">Cases keeping every required fact</text>
     <text x="0" y="34" class="l">no policy</text>
-    <rect x="98" y="24" width="240" height="13" rx="3" fill="#3a4a6b"/>
+    <rect x="98" y="24" width="240" height="13" rx="3" fill="#2e3d59"/>
     <text x="346" y="35" class="v">66.7%</text>
     <text x="0" y="62" class="l">Simple Man</text>
-    <rect x="98" y="52" width="240" height="13" rx="3" fill="#e0a72e"/>
+    <rect x="98" y="52" width="240" height="13" rx="3" fill="#dfa83d"/>
     <text x="346" y="63" class="vg">66.7%</text>
   </g>
 
   <text x="36" y="146" class="l">A third fewer tokens to read — with fact retention at the level of answers written under no length pressure at all.</text>
 
-  <line x1="36" y1="172" x2="924" y2="172" stroke="#2c3b57" stroke-width="1"/>
-  <text x="36" y="200" style="font-size:10.5px;fill:#8a8168;">claude-sonnet-5 · preregistered run v0.3.1 · every number is rebuilt from the committed raw records by make bench-v3-check</text>
+  <line x1="36" y1="172" x2="924" y2="172" stroke="#26364f" stroke-width="1"/>
+  <text x="36" y="200" style="font-size:10.5px;fill:#7f7053;">claude-sonnet-5 · preregistered run v0.3.1 · every number is rebuilt from the committed raw records by make bench-v3-check</text>
 </svg>
