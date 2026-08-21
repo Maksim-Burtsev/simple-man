@@ -132,7 +132,7 @@
   ],
   "seed": "simple-man-session-v1",
   "batch_size": 20,
-  "n_concurrent": 4,
+  "n_concurrent": 2,
   "k": 1,
   "max_trials": 281,
   "budget": {
