@@ -477,12 +477,15 @@ class PublishedReportsTests(unittest.TestCase):
     checked for all releases rather than only the newest.
     """
 
-    RELEASES = sorted((ROOT / "evals" / "releases").glob("v*/report.md"))
+    RELEASES = sorted((ROOT / "evals" / "releases").glob("v*/report.md")) + sorted(
+        (ROOT / "evals" / "releases").glob("scout-*/report.md")
+    )
 
     #: Releases measured before the holdout wave existed were scored against the
     #: dev corpus only, so they must be rebuilt against the corpus they used.
     CORPUS = {
         "v0.3.0": (["bench-output.jsonl"], ["bench-activation.jsonl"]),
+        "scout-categories": (["scout-categories.jsonl"], []),
     }
 
     def test_at_least_one_release_is_published(self):
