@@ -125,6 +125,8 @@ def harbor_command(
         "1",
         "-k",
         "1",
+        "--agent-setup-timeout-multiplier",
+        "3",
         "-y",
         "-q",
     ]
