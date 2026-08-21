@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import stat
@@ -17,6 +18,25 @@ SNIPPET = ROOT / "AGENTS.md.snippet"
 SURFACES = tuple(ROOT / name for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md"))
 CANONICAL_SKILL = ROOT / "skills" / "simple-man"
 PLUGIN_SKILL = ROOT / "plugins" / "simple-man" / "skills" / "simple-man"
+#: What a user actually installs, so a release can be checked byte for byte.
+SUMS = ROOT / "SHA256SUMS.txt"
+SUMMED = (
+    ROOT / "skills" / "simple-man" / "SKILL.md",
+    ROOT / "AGENTS.md.snippet",
+    ROOT / "evals" / "policies" / "v0.3" / "B2-runtime.md",
+)
+
+
+def sums_content() -> bytes:
+    lines = ["# sha256  bytes  words  path"]
+    for path in SUMMED:
+        if not path.exists():  # synthetic repos in tests; the real tree is asserted elsewhere
+            continue
+        data = path.read_bytes()
+        lines.append(
+            f"{hashlib.sha256(data).hexdigest()}  {len(data)}  {len(data.decode('utf-8').split())}  {path.relative_to(ROOT).as_posix()}"
+        )
+    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def object_entry(path: Path) -> tuple[object, ...]:
@@ -52,6 +72,8 @@ def drifted_paths() -> list[Path]:
     ]
     if tree_entries(PLUGIN_SKILL) != tree_entries(CANONICAL_SKILL):
         drift.append(PLUGIN_SKILL)
+    if object_entry(SUMS) != ("file", 0o644, sums_content()):
+        drift.append(SUMS)
     return drift
 
 
@@ -72,6 +94,7 @@ def write_surfaces() -> None:
     content = SNIPPET.read_bytes()
     for surface in SURFACES:
         replace_file(surface, content)
+    replace_file(SUMS, sums_content())
 
     PLUGIN_SKILL.parent.mkdir(parents=True, exist_ok=True)
     stage_parent = Path(tempfile.mkdtemp(prefix=".simple-man-sync.", dir=PLUGIN_SKILL.parent))
