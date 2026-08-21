@@ -1,0 +1,31 @@
+{
+  "schema": "scout-prereg-v1",
+  "registered_on": "2026-08-22",
+  "question": "In the three categories where v0.3.1 could not separate the shipped policy from a one-sentence 'be concise' control (destructive_risk, security, status), does B2 keep at least the control's fact retention and win or tie the blind pairwise judgement, at 20 cases per category instead of 7?",
+  "corpus": "evals/cases/scout-categories.jsonl",
+  "corpus_sha256": "d9965bf10768c20aa7bb9eef74985435dce31616f3ec7e02ce9e57cdc6e4ece7",
+  "cases": 60,
+  "arms": {
+    "N": null,
+    "B2": "evals/policies/v0.3/B2-runtime.md",
+    "G": "evals/policies/v0.3/generic-terse.md"
+  },
+  "payload_sha256": {
+    "B2": "c8150a131319f7789d87102659a9b1044c956c6034e2a9c0c27a70175f6650e5",
+    "G": "f7cfda62d9bd4ca5497a007559965d7a474f581ce6bd75c1b02334e01e6a3972"
+  },
+  "model": "claude-sonnet-5",
+  "judge_model": "claude-haiku-4-5",
+  "seed": "simple-man-scout-categories",
+  "comparisons": [
+    "B2:G",
+    "B2:N"
+  ],
+  "planned_calls": {
+    "output": 180,
+    "judge": 240
+  },
+  "max_calls": 600,
+  "gates": "informative only — no shipping decision rests on this scout; the question is published either way",
+  "read_as": "per category: facts retained (B2 vs G vs N), blind wins/losses/ties B2 vs G with both orderings; a B2 loss on facts or on the blind judgement in any category is reported as such in the README"
+}
