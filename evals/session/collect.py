@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,9 @@ def collect_trial(trial_dir: Path, job: str, payload_sha: dict[str, str | None])
     event = stream_result(trial_dir / "agent" / "claude-code.txt")
     arm = arm_of(job)
     payload = lock_payload(lock)
+    if payload:
+        parts = shlex.split(payload)  # run_ab hands Harbor a shell-quoted value
+        payload = parts[0] if len(parts) == 1 else payload
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest() if payload else None
     agent = result.get("agent_result") or {}
     usage = event.get("usage") or {}

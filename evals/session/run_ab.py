@@ -132,7 +132,10 @@ def harbor_command(
     ]
     payload = prereg["arms"][arm]
     if payload is not None:
-        cmd += ["--ak", "append_system_prompt=" + (ROOT / payload).read_text(encoding="utf-8")]
+        # Harbor splices the value into a shell command verbatim, so it is
+        # handed over already shell-quoted; collect.py unquotes it before hashing.
+        text = (ROOT / payload).read_text(encoding="utf-8")
+        cmd += ["--ak", "append_system_prompt=" + shlex.quote(text)]
     for skill in task_skills(skillsbench, task):
         cmd += ["--skill", str(skill)]
     return cmd
