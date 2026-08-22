@@ -25,7 +25,8 @@ Simple Man is the other voice at the helm — a captain who has run ships for
 decades and tells the crew exactly what they need: the blocker, the fix, the
 risk. Nothing else. The captain is the character; under the hood it is a
 measured policy of professional communication — short, factual, to the point —
-tested on 1,793 preregistered live calls, raw records committed.
+tested on 2,479 preregistered live calls — 266 of them real Claude Code
+sessions — raw records committed.
 
 At Trafalgar, Nelson dictated *England confides that every man will do his
 duty*; his signal lieutenant swapped `expects` for `confides` — one hoist of
@@ -396,7 +397,7 @@ The policy on every turn, without invoking the skill. The installer writes
 updates that block in place:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.2/install.sh | bash
 ```
 
 For always-on Claude Code, copy [`AGENTS.md.snippet`](./AGENTS.md.snippet)
@@ -408,7 +409,7 @@ into your global `~/.claude/CLAUDE.md`.
 ### Codex Plugin
 
 ```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.2
 codex plugin add simple-man@simple-man
 ```
 
@@ -425,9 +426,9 @@ project-level setup.
   <img src="assets/benchmark.svg" alt="Median answer length: 833 tokens without a policy vs 520 with Simple Man (−32.4%). Cases keeping every required fact: 66.7% in both arms.">
 </p>
 
-| **−32.4% output** | **0 facts lost** |
-| --- | --- |
-| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline |
+| **−32.4% output** | **0 facts lost** | **0% in sessions** |
+| --- | --- | --- |
+| Median answer drops from 833 to 520 tokens (95% CI [−23.2%, −43.8%]) | Keeps every required fact in 66.7% of cases — identical to the no-policy baseline | 81 real Claude Code sessions on SkillsBench: cost +2.8% median, CI [−7.2%, +10.7%], p = 0.71 — no saving, and the README says so |
 
 This is not a vibe check — every step of the pipeline is built so the numbers
 cannot be massaged:
@@ -436,10 +437,11 @@ cannot be massaged:
   <img src="assets/pipeline.svg" alt="How the benchmark works: preregistered gates and corpus, hidden validators and a blind holdout wave, five arms on the same model and prompt, blind pairwise judging in both orderings, every number rebuilt from raw records in CI, and failures published rather than hidden.">
 </p>
 
-Two preregistered live runs on `claude-sonnet-5`, 1,793 calls, all raw records
+Four preregistered live runs on `claude-sonnet-5`, 2,479 calls, all raw records
 committed under [`evals/releases/`](./evals/releases/) — preregistered by
-commit ([v0.3.1](./evals/releases/v0.3.1/preregistration.json)), rebuilt by
-`make bench-v3-check`.
+commit ([v0.3.1](./evals/releases/v0.3.1/preregistration.json),
+[session-v1](./evals/releases/session-v1/preregistration.json)), rebuilt by
+`make bench-v3-check` and `make session-check`.
 
 <details>
 <summary>Full comparison table, controls, methodology, and what did not ship</summary>
@@ -464,14 +466,27 @@ facts** — that is why it was replaced. The shipped policy restores fact
 retention to the no-policy level while still removing a third of output
 length.
 
-**On cost, honestly.** Output-token percentages are not session savings: in
-real agent sessions most tokens are context and tool traffic, and JetBrains'
-[measurement of the caveman skill](https://blog.jetbrains.com/ai/2026/07/speak-to-ai-agents-like-cavemen-tosave-tokens/)
-on 86 real tasks found −8.5% session output tokens against an advertised 65%.
-Our own three-session coding phase is consistent with that order of magnitude.
-If you install Simple Man to cut your bill, one sentence of "be concise" gets
-you most of the way — and on this corpus it finishes level with the shipped
-policy, which is why that comparison is reported as a tie and not a win.
+**On cost, honestly.** Output-token percentages are not session savings, so
+we measured sessions: 266 real Claude Code runs on
+[SkillsBench](./evals/releases/session-v1/README.md) through Harbor — the
+protocol JetBrains used for caveman and benjamin-plus — same model, low
+effort, each task verified by its own tests.
+
+| 81 paired sessions, policy vs none | median paired delta | 95% CI | p |
+| --- | ---: | ---: | ---: |
+| cost | +2.8% | [−7.2%, +10.7%] | 0.71 |
+| total tokens | +2.1% | [−6.4%, +15.8%] | 0.71 |
+| turns | 0.0% | [−5.9%, +10.0%] | 0.99 |
+| task reward | 8 better / 14 worse / 59 tie | — | sign 0.29 |
+
+Nothing moves. In a tool-using session the visible answer is about one
+percent of the tokens, and the policy does not touch the other ninety-nine.
+If you install Simple Man to cut your bill, you will not: the one sentence
+"be concise" is in fact *cheaper* in sessions than the policy (+13.1% cost for
+the policy against it, p = 0.036) at the same task reward. What the policy
+buys is a shorter, fact-complete answer for the person reading it — nothing
+else, and the reward column above leans the wrong way (not significant; the
+[run notes](./evals/releases/session-v1/README.md) show where it went).
 
 What a sentence does not give you is a specification: findings that must carry
 their location, consequence and one-line fix; refusals that must name the
@@ -479,18 +494,25 @@ target, the missing precondition and the safe procedure; failed checks that
 must report the exact failure; requested shapes treated as contracts; and a
 description that routes away from tutorials and detailed reports. That is the
 part you can read, and hold the policy to, in
-[`AGENTS.md.snippet`](./AGENTS.md.snippet). Whether it beats a sentence
-*category by category* is not settled here: at 7 cases per category this run
-cannot decide it, and the "Retention by category" table in the report says so
-in the open rather than picking the flattering cells.
+[`AGENTS.md.snippet`](./AGENTS.md.snippet). Whether that specification beats
+a sentence *category by category* was tested on
+[60 new cases](./evals/releases/scout-categories/README.md) concentrated in
+`destructive_risk`, `security` and `status`: facts kept are level (71.7% vs
+73.3% for the sentence), `status` is the policy's best category (100%), and
+the blind judge **prefers the sentence** 23–15 and even no policy 23–11 —
+because it rewards the volunteered alternative or extra verification step that
+the policy tells the agent to leave out. That is the trade you make, stated
+in the open rather than in the flattering cells.
 
 **What did not ship, published rather than hidden:** the first candidate
 failed its gates outright; the second beat the shipped policy decisively but
 only tied the one-sentence control, and its promotion is an explicit owner
 decision over the automated gate result, recorded with the trade-offs in
-[`DECISION.md`](./evals/releases/v0.3.1/DECISION.md). Gate tables, a
-mis-specified gate we scored as failed rather than quietly fixed, and both
-runs' full analysis live in [`evals/releases/`](./evals/releases/).
+[`DECISION.md`](./evals/releases/v0.3.1/DECISION.md). The session run found
+no savings and a reward lean against the policy; the category scout found the
+judge prefers longer answers. Gate tables, a mis-specified gate we scored as
+failed rather than quietly fixed, and every run's full analysis live in
+[`evals/releases/`](./evals/releases/).
 
 Older Codex-based suites and what runs offline are described in
 [`evals/README.md`](./evals/README.md).

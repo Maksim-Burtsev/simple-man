@@ -509,7 +509,7 @@ class BenchmarkLibTests(unittest.TestCase):
         marketplace = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text())
 
         self.assertEqual(manifest["name"], "simple-man")
-        self.assertEqual(manifest["version"], "0.3.1")
+        self.assertEqual(manifest["version"], "0.3.2")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertEqual(marketplace["name"], "simple-man")
         self.assertEqual(marketplace["plugins"][0]["name"], "simple-man")

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-22
+
+Benchmark-only release. The policy text, the skill description and every
+install surface are byte-identical to 0.3.1 (`SHA256SUMS.txt`).
+
+### Added — the session benchmark
+
+- `evals/session/`: real Claude Code sessions on SkillsBench through Harbor,
+  the protocol JetBrains used for caveman and benjamin-plus. One Harbor job per
+  task with the task's own skills injected for every arm; arms, tasks, model,
+  effort and payload hashes read from a preregistration; stdlib statistics
+  (Wilcoxon signed-rank, exact sign test, seeded bootstrap); report and gates
+  rebuild from `trials.jsonl` (`make session-check`). Subscription billing
+  only: API credentials are refused, `CLAUDE_CODE_OAUTH_TOKEN` from
+  `claude setup-token` is required because a container cannot see the
+  Keychain login.
+- `evals/releases/session-v1/`: 266 sessions, `claude-sonnet-5` low effort,
+  Claude Code 2.1.235, SkillsBench `aafac12f`, $129.96. **No measurable
+  session-level effect of the policy**: cost +2.8 % median (p = 0.71), tokens
+  and turns flat. Task reward 8 better / 14 worse / 59 tie (sign p = 0.29),
+  reported with the trajectories it came from. The one-sentence "be concise"
+  control is cheaper in sessions than the policy (+13.1 % cost for the policy,
+  p = 0.036). All four preregistered gates pass; decision
+  `KEEP_SHIPPED_POLICY`. Session transcripts ship as
+  `session-v1-trajectories.tar.zst` on the GitHub Release.
+- `evals/releases/scout-categories/`: 60 new cases in `destructive_risk`,
+  `security` and `status` (20 each), arms N / B2 / G. Facts kept level
+  (71.7 / 73.3 / 71.7 %); the blind judge prefers the control 23–15 and no
+  policy 23–11 because it pays for volunteered alternatives the policy omits.
+  A labelled post-hoc re-scoring of an over-narrow `refuse` stem is published
+  beside the registered numbers.
+- `SHA256SUMS.txt` for the installed payloads, generated and checked by
+  `scripts/sync_surfaces.py`.
+
+### Changed — the README
+
+- Session-level savings are stated as zero, with the run's own table instead
+  of JetBrains' caveman figure; the "be concise" comparison moves from "tie"
+  to "cheaper in sessions"; the category question is answered with the scout
+  rather than left open; negative results are listed under "what did not
+  ship".
+
 ## [0.3.1] - 2026-08-18
 
 ### Changed — the shipped policy
