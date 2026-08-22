@@ -1,0 +1,190 @@
+{
+  "by_day": {
+    "2026-08-21": {
+      "B2": 3,
+      "N": 3
+    }
+  },
+  "cli_versions": [
+    "2.1.235"
+  ],
+  "comparisons": [
+    {
+      "baseline": "N",
+      "candidate": "B2",
+      "dropped": [],
+      "metrics": [
+        {
+          "baseline_median": 0.6107085,
+          "candidate_median": 0.6359208,
+          "ci_high": 0.24302461812796144,
+          "ci_low": -0.26103212505172546,
+          "median_rel_delta": -0.13258886653472524,
+          "metric": "cost_usd",
+          "n": 3,
+          "totals_rel_delta": -0.07098092728851882,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 893878,
+          "candidate_median": 842978,
+          "ci_high": -0.006703207440852976,
+          "ci_low": -0.26434418372415813,
+          "median_rel_delta": -0.05694289377297573,
+          "metric": "total_tokens",
+          "n": 3,
+          "totals_rel_delta": -0.16426136420347362,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 5839.0,
+          "candidate_median": 8069.0,
+          "ci_high": 0.3819147114231889,
+          "ci_low": -0.2789438050101557,
+          "median_rel_delta": -0.23334506216279616,
+          "metric": "output_tokens",
+          "n": 3,
+          "totals_rel_delta": -0.10925261693873069,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 842985.0,
+          "candidate_median": 766889.0,
+          "ci_high": -0.03287994880966054,
+          "ci_low": -0.26404692039890976,
+          "median_rel_delta": -0.09026969637656661,
+          "metric": "cache_read_tokens",
+          "n": 3,
+          "totals_rel_delta": -0.17991756140509735,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 32.0,
+          "candidate_median": 32.0,
+          "ci_high": 0.0,
+          "ci_low": -0.05263157894736842,
+          "median_rel_delta": 0.0,
+          "metric": "input_tokens",
+          "n": 3,
+          "totals_rel_delta": -0.02564102564102564,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 20.0,
+          "candidate_median": 19.0,
+          "ci_high": 0.30434782608695654,
+          "ci_low": -0.05,
+          "median_rel_delta": 0.0,
+          "metric": "turns",
+          "n": 3,
+          "totals_rel_delta": 0.11764705882352941,
+          "wilcoxon_p": null
+        },
+        {
+          "baseline_median": 164994.0,
+          "candidate_median": 154476.0,
+          "ci_high": 0.9250093942810041,
+          "ci_low": -0.274297499355504,
+          "median_rel_delta": -0.19995856747028512,
+          "metric": "wall_ms",
+          "n": 3,
+          "totals_rel_delta": 0.25529260283270283,
+          "wilcoxon_p": null
+        }
+      ],
+      "n_pairs": 3,
+      "one_sided": [],
+      "quality": {
+        "baseline_mean": 0.61,
+        "baseline_pass": 1,
+        "better": 1,
+        "candidate_mean": 0.8333333333333334,
+        "candidate_pass": 2,
+        "n": 3,
+        "sign_p": 1.0,
+        "tie": 1,
+        "worse": 1
+      },
+      "tasks": [
+        "manufacturing-codebook-normalization",
+        "setup-fuzzing-py",
+        "spring-boot-jakarta-migration"
+      ]
+    },
+    {
+      "baseline": "N",
+      "candidate": "G",
+      "dropped": [],
+      "metrics": [],
+      "n_pairs": 0,
+      "one_sided": [],
+      "quality": {
+        "baseline_mean": null,
+        "baseline_pass": 0,
+        "better": 0,
+        "candidate_mean": null,
+        "candidate_pass": 0,
+        "n": 0,
+        "sign_p": null,
+        "tie": 0,
+        "worse": 0
+      },
+      "tasks": []
+    },
+    {
+      "baseline": "G",
+      "candidate": "B2",
+      "dropped": [],
+      "metrics": [],
+      "n_pairs": 0,
+      "one_sided": [],
+      "quality": {
+        "baseline_mean": null,
+        "baseline_pass": 0,
+        "better": 0,
+        "candidate_mean": null,
+        "candidate_pass": 0,
+        "n": 0,
+        "sign_p": null,
+        "tie": 0,
+        "worse": 0
+      },
+      "tasks": []
+    }
+  ],
+  "delivery": {
+    "B2": {
+      "delivered": 3,
+      "trials": 3
+    },
+    "G": {
+      "delivered": 0,
+      "trials": 0
+    },
+    "N": {
+      "delivered": 0,
+      "trials": 3
+    }
+  },
+  "model": [
+    "claude-sonnet-5"
+  ],
+  "per_arm": {
+    "B2": 3,
+    "G": 0,
+    "N": 3
+  },
+  "registered": {
+    "agent": {
+      "name": "claude-code",
+      "version": "2.1.235"
+    },
+    "model": "anthropic/claude-sonnet-5",
+    "reasoning_effort": "low",
+    "seed": "simple-man-session-v1"
+  },
+  "schema": "session-report-v1",
+  "skillsbench_commit": "aafac12f5dc6aa18dd9675b714f52d0926188867",
+  "total_cost_usd": 3.72,
+  "trials": 6
+}

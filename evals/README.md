@@ -73,7 +73,8 @@ Recorded here so the next gate table is written before any results exist:
    shipping gate: it measures marketing claims, not user benefit.
 4. The next measurement leg worth paying for is real-agent sessions at scale:
    SkillsBench via the open Harbor harness, same protocol JetBrains used for
-   caveman (86 tasks, A/B, 3 runs). Deferred by owner decision, not forgotten.
+   caveman (86 tasks, A/B, 3 runs). Now run — see "Session benchmark" below and
+   `evals/releases/session-v1/`.
 5. **Size the corpus for the claim, not just for the pooled number.** The product
    argument names specific categories — refusals that carry the safe procedure,
    findings that carry their fix, failed checks that report the exact failure —
@@ -81,6 +82,47 @@ Recorded here so the next gate table is written before any results exist:
    14.3 points. The "Retention by category" table in each release report shows
    this directly. A run meant to settle those claims needs its cases concentrated
    in the categories under test, not spread evenly for coverage.
+
+## Session benchmark: real Claude Code sessions on SkillsBench (`evals/session/`)
+
+The output benchmark above measures one answer at a time with tools off. This
+leg measures what the shipped policy does to a whole agent session: Claude Code
+in a Docker sandbox, solving a SkillsBench task with tools, verified by the
+task's own tests. It follows the protocol JetBrains used for caveman and
+benjamin-plus — paired tasks, same model and effort, Wilcoxon signed-rank on the
+paired deltas, an exact sign test on the verifier reward, and a mechanical
+check that the payload reached every treated session and no control session.
+
+| | |
+|---|---|
+| Tasks | SkillsBench at `aafac12f` (last commit in Harbor `task.toml` format, 87 tasks); each task's own skills are injected for every arm |
+| Arms | `N` Claude Code with no policy; `B2` the shipped policy (`evals/policies/v0.3/B2-runtime.md`, byte-identical to `AGENTS.md.snippet`) appended to the system prompt; `G` the one-sentence "be concise" control |
+| Agent | `claude-code` pinned, `anthropic/claude-sonnet-5`, effort `low`, k=1 |
+| Delivery | `--append-system-prompt`, i.e. always-on. JetBrains measured that a skill folder alone saves nothing because the agent spends turns finding it; always-on is the treatment users actually get from the `AGENTS.md`/`CLAUDE.md` snippet |
+| Order | tasks shuffled by a registered seed and run in batches of 20, both arms per batch, so a budget stop still leaves a balanced sample |
+| Retries | a trial that errors on one arm only is retried once for that arm; a task that errors on both arms is dropped symmetrically; nothing is retried because of its result |
+| Gates | declared in `preregistration.json` before the first trial: payload delivered 100 % / 0 %, at least 60 clean pairs, and reward not significantly worse (sign test). Cost and token deltas are informative, not gates — B2 is already shipped, the question is whether it breaks real sessions |
+
+Billing is the claude.ai subscription only, as everywhere in this repo. The
+container cannot see the macOS Keychain login, so the runner requires
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` (a subscription token, not
+an API key) and refuses to start if any `ANTHROPIC_*` credential is set.
+
+```bash
+uv tool install harbor
+git clone https://github.com/benchflow-ai/skillsbench ~/.cache/simple-man/skillsbench
+git -C ~/.cache/simple-man/skillsbench checkout aafac12f
+set -a; . ~/.config/simple-man/bench.env; set +a   # CLAUDE_CODE_OAUTH_TOKEN=...
+make session-dry-run ARM=B2 BATCH=0                # prints the harbor commands, no calls
+make session-pilot ARM=N SESSION_RUN=pilot && make session-pilot ARM=B2 SESSION_RUN=pilot
+make session-run ARM=N BATCH=0 && make session-run ARM=B2 BATCH=0
+make session-collect && make session-report && make session-check
+```
+
+`session-collect` flattens Harbor's job directories into `trials.jsonl` (one
+row per trial: reward, cost, tokens, turns, wall-clock, error, delivery flag);
+`session-report` and `session-check` rebuild `report.md` and `gates.md` from it.
+Full trajectories are not committed (tens of MB); they ship as a release asset.
 
 ## Status: what you can actually run today
 

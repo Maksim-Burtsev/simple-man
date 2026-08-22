@@ -1,0 +1,187 @@
+{
+  "schema": "session-prereg-v1",
+  "registered_on": "2026-08-21",
+  "question": "Does the shipped Simple Man policy (B2), delivered always-on as a system-prompt append, change what a real Claude Code session costs and whether it still solves the task?",
+  "skillsbench": {
+    "git_url": "https://github.com/benchflow-ai/skillsbench",
+    "commit": "aafac12f5dc6aa18dd9675b714f52d0926188867",
+    "note": "last commit in Harbor task.toml format (v1.1); each task's own skills are injected for every arm"
+  },
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.235"
+  },
+  "model": "anthropic/claude-sonnet-5",
+  "reasoning_effort": "low",
+  "arms": {
+    "N": null,
+    "B2": "evals/policies/v0.3/B2-runtime.md",
+    "G": "evals/policies/v0.3/generic-terse.md"
+  },
+  "payload_sha256": {
+    "N": null,
+    "B2": "c8150a131319f7789d87102659a9b1044c956c6034e2a9c0c27a70175f6650e5",
+    "G": "f7cfda62d9bd4ca5497a007559965d7a474f581ce6bd75c1b02334e01e6a3972"
+  },
+  "comparisons": [
+    [
+      "N",
+      "B2"
+    ],
+    [
+      "N",
+      "G"
+    ],
+    [
+      "G",
+      "B2"
+    ]
+  ],
+  "primary_comparison": [
+    "N",
+    "B2"
+  ],
+  "tasks": [
+    "3d-scan-calc",
+    "ada-bathroom-plan-repair",
+    "adaptive-cruise-control",
+    "azure-bgp-oscillation-route-leak",
+    "bike-rebalance",
+    "citation-check",
+    "civ6-adjacency-optimizer",
+    "court-form-filling",
+    "crystallographic-wyckoff-position-analysis",
+    "dapt-intrusion-detection",
+    "data-to-d3",
+    "debug-trl-grpo",
+    "dialogue-parser",
+    "drone-planning-control",
+    "dynamic-object-aware-egomotion",
+    "earthquake-phase-association",
+    "earthquake-plate-calculation",
+    "econ-detrending-correlation",
+    "edit-pdf",
+    "energy-ac-optimal-power-flow",
+    "energy-market-pricing",
+    "energy-unit-commitment",
+    "enterprise-information-search",
+    "exam-block-sequencing",
+    "exceltable-in-ppt",
+    "exoplanet-detection-period",
+    "financial-modeling-qa",
+    "fix-build-agentops",
+    "fix-build-google-auto",
+    "fix-druid-loophole-cve",
+    "fix-erlang-ssh-cve",
+    "fix-visual-stability",
+    "flink-query",
+    "flood-risk-analysis",
+    "glm-lake-mendota",
+    "gravitational-wave-detection",
+    "grid-dispatch-operator",
+    "hvac-control",
+    "invoice-fraud-detection",
+    "jax-computing-basics",
+    "jpg-ocr-stat",
+    "lab-unit-harmonization",
+    "lake-warming-attribution",
+    "latex-formula-extraction",
+    "lean4-proof",
+    "llm-prefix-cache-replay",
+    "manufacturing-codebook-normalization",
+    "manufacturing-equipment-maintenance",
+    "manufacturing-fjsp-optimization",
+    "mario-coin-counting",
+    "mars-clouds-clustering",
+    "multilingual-video-dubbing",
+    "offer-letter-generator",
+    "organize-messy-files",
+    "paper-anonymizer",
+    "parallel-tfidf-search",
+    "paratransit-routing",
+    "pddl-airport-planning",
+    "pddl-tpp-planning",
+    "pdf-excel-diff",
+    "powerlifting-coef-calc",
+    "pptx-reference-formatting",
+    "protein-expression-analysis",
+    "python-scala-translation",
+    "quantum-numerical-simulation",
+    "r2r-mpc-control",
+    "radar-vital-signs",
+    "react-performance-debugging",
+    "reserves-at-risk-calc",
+    "sales-pivot-analysis",
+    "sec-financial-report",
+    "seismic-phase-picking",
+    "setup-fuzzing-py",
+    "shock-analysis-demand",
+    "shock-analysis-supply",
+    "simpo-code-reproduction",
+    "software-dependency-audit",
+    "spring-boot-jakarta-migration",
+    "suricata-custom-exfil",
+    "syzkaller-ppdev-syzlang",
+    "threejs-structure-parser",
+    "threejs-to-obj",
+    "tictoc-unnecessary-abort-detection",
+    "travel-planning",
+    "video-silence-remover",
+    "weighted-gdp-calc",
+    "xlsx-recover-data"
+  ],
+  "seed": "simple-man-session-v1",
+  "batch_size": 20,
+  "n_concurrent": 2,
+  "k": 1,
+  "max_trials": 281,
+  "budget": {
+    "unit": "share of the weekly claude.ai Max limit",
+    "ceiling": "30% of the week, 10% kept in reserve",
+    "order": [
+      "pilot 3x2",
+      "N and B2 in batches of 20",
+      "G only if the remaining limit allows",
+      "category scout only if the limit still allows"
+    ]
+  },
+  "retry_rule": "a trial that errors on one arm only (timeout, RuntimeError, auth/rate-limit) is retried once for that arm under a -retry- job; a task that errors on both arms is dropped symmetrically; nothing is ever retried because of its reward or cost",
+  "gates": [
+    {
+      "name": "delivery_treated",
+      "metric": "delivery.B2.fraction",
+      "op": "eq",
+      "threshold": 1.0,
+      "why": "the payload must reach every treated session"
+    },
+    {
+      "name": "delivery_control",
+      "metric": "delivery.N.fraction",
+      "op": "eq",
+      "threshold": 0.0,
+      "why": "and none of the control sessions"
+    },
+    {
+      "name": "enough_pairs",
+      "metric": "quality.N:B2.n",
+      "op": "gte",
+      "threshold": 60,
+      "why": "below 60 clean pairs the run is reported as underpowered, not as a result"
+    },
+    {
+      "name": "reward_not_worse",
+      "metric": "quality.N:B2.worse_significant",
+      "op": "eq",
+      "threshold": false,
+      "why": "the only shipping gate: B2 is already shipped, so the question is whether it breaks real sessions (sign test, two-sided p<0.05 with more losses than wins)"
+    }
+  ],
+  "informative": [
+    "metric.N:B2.cost_usd.median_rel_delta",
+    "metric.N:B2.output_tokens.median_rel_delta",
+    "metric.N:B2.turns.median_rel_delta",
+    "metric.G:B2.*",
+    "metric.N:G.*"
+  ],
+  "what_changes_the_policy": "nothing by default; a failed reward_not_worse gate opens a candidate revision (B3) with its own preregistration before any release; a cost or token result in either direction is published as measured"
+}
