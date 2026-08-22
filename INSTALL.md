@@ -13,18 +13,18 @@ Invoke it explicitly with `$simple-man`, or let the agent activate it from the r
 ## Codex Plugin
 
 ```bash
-codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.1
+codex plugin marketplace add Maksim-Burtsev/simple-man --ref v0.3.2
 codex plugin add simple-man@simple-man
 ```
 
-The pinned v0.3.1 plugin makes the skill available in Codex; it does not enable the always-on policy.
+The pinned v0.3.2 plugin makes the skill available in Codex; it does not enable the always-on policy.
 
 ## Always-on Codex policy
 
-Released v0.3.1 installer:
+Released v0.3.2 installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.1/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Maksim-Burtsev/simple-man/v0.3.2/install.sh | bash
 ```
 
 Installer contract:
