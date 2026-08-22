@@ -21,7 +21,10 @@ decision `KEEP_SHIPPED_POLICY`.
 
 Full tables: `run/report.md`; gates: `run/gates.md`; every number rebuilds
 from `run/trials.jsonl` with `make session-check`. Pilot (3 tasks, not part
-of the run): `pilot/`.
+of the run): `pilot/`. Full Harbor job directories with every Claude Code
+session transcript (100 MB, `artifacts/` excluded) ship as
+`session-v1-trajectories.tar.zst` on the v0.3.2 GitHub Release,
+sha256 `3ca56925dec37a56cc41b88adb07f21ff6876a5a8064096066092cb4759655f4`.
 
 ## Headline, B2 vs N (81 pairs)
 
