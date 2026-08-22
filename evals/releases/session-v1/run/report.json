@@ -1,0 +1,732 @@
+{
+  "by_day": {
+    "2026-08-21": {
+      "B2": 26,
+      "N": 40
+    },
+    "2026-08-22": {
+      "B2": 64,
+      "G": 89,
+      "N": 47
+    }
+  },
+  "cli_versions": [
+    "2.1.235"
+  ],
+  "comparisons": [
+    {
+      "baseline": "N",
+      "candidate": "B2",
+      "dropped": [
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "bike-rebalance"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "earthquake-phase-association"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "multilingual-video-dubbing"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "python-scala-translation"
+        },
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "radar-vital-signs"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "seismic-phase-picking"
+        }
+      ],
+      "metrics": [
+        {
+          "baseline_median": 0.3691335,
+          "candidate_median": 0.4086393,
+          "ci_high": 0.10702306888971058,
+          "ci_low": -0.07232496878805415,
+          "median_rel_delta": 0.028174737817157798,
+          "metric": "cost_usd",
+          "n": 81,
+          "totals_rel_delta": -0.02941788044138458,
+          "wilcoxon_p": 0.7134355855842871
+        },
+        {
+          "baseline_median": 572100,
+          "candidate_median": 550307,
+          "ci_high": 0.15833310738446105,
+          "ci_low": -0.06412305707469086,
+          "median_rel_delta": 0.020863276526817694,
+          "metric": "total_tokens",
+          "n": 81,
+          "totals_rel_delta": -0.06047476207401961,
+          "wilcoxon_p": 0.7099269450918225
+        },
+        {
+          "baseline_median": 4898.0,
+          "candidate_median": 4779.0,
+          "ci_high": 0.08969398522687302,
+          "ci_low": -0.10119555935098207,
+          "median_rel_delta": -0.01866065432217212,
+          "metric": "output_tokens",
+          "n": 81,
+          "totals_rel_delta": -0.03829610850588402,
+          "wilcoxon_p": 0.7667553351825325
+        },
+        {
+          "baseline_median": 554073.0,
+          "candidate_median": 525748.0,
+          "ci_high": 0.16275254201290254,
+          "ci_low": -0.07540430077088188,
+          "median_rel_delta": 0.015194603426877505,
+          "metric": "cache_read_tokens",
+          "n": 81,
+          "totals_rel_delta": -0.06187870090699139,
+          "wilcoxon_p": 0.7631628744094532
+        },
+        {
+          "baseline_median": 26.0,
+          "candidate_median": 26.0,
+          "ci_high": 0.14285714285714285,
+          "ci_low": -0.058823529411764705,
+          "median_rel_delta": 0.0,
+          "metric": "input_tokens",
+          "n": 81,
+          "totals_rel_delta": -0.008988764044943821,
+          "wilcoxon_p": 0.8050271539977042
+        },
+        {
+          "baseline_median": 16.0,
+          "candidate_median": 16.0,
+          "ci_high": 0.1,
+          "ci_low": -0.058823529411764705,
+          "median_rel_delta": 0.0,
+          "metric": "turns",
+          "n": 81,
+          "totals_rel_delta": -0.01852995676343422,
+          "wilcoxon_p": 0.993127725709095
+        },
+        {
+          "baseline_median": 79568.0,
+          "candidate_median": 86652.0,
+          "ci_high": 0.10447136317963604,
+          "ci_low": -0.0977374759534178,
+          "median_rel_delta": -0.009416979598157254,
+          "metric": "wall_ms",
+          "n": 81,
+          "totals_rel_delta": -0.11847551785353118,
+          "wilcoxon_p": 0.7667553351825325
+        }
+      ],
+      "n_pairs": 81,
+      "one_sided": [],
+      "quality": {
+        "baseline_mean": 0.5533497901234569,
+        "baseline_pass": 41,
+        "better": 8,
+        "candidate_mean": 0.4694897160493827,
+        "candidate_pass": 35,
+        "n": 81,
+        "sign_p": 0.28627872467041016,
+        "tie": 59,
+        "worse": 14
+      },
+      "tasks": [
+        "3d-scan-calc",
+        "ada-bathroom-plan-repair",
+        "adaptive-cruise-control",
+        "azure-bgp-oscillation-route-leak",
+        "citation-check",
+        "civ6-adjacency-optimizer",
+        "court-form-filling",
+        "crystallographic-wyckoff-position-analysis",
+        "dapt-intrusion-detection",
+        "data-to-d3",
+        "debug-trl-grpo",
+        "dialogue-parser",
+        "drone-planning-control",
+        "dynamic-object-aware-egomotion",
+        "earthquake-plate-calculation",
+        "econ-detrending-correlation",
+        "edit-pdf",
+        "energy-ac-optimal-power-flow",
+        "energy-market-pricing",
+        "energy-unit-commitment",
+        "enterprise-information-search",
+        "exam-block-sequencing",
+        "exceltable-in-ppt",
+        "exoplanet-detection-period",
+        "financial-modeling-qa",
+        "fix-build-agentops",
+        "fix-build-google-auto",
+        "fix-druid-loophole-cve",
+        "fix-erlang-ssh-cve",
+        "fix-visual-stability",
+        "flink-query",
+        "flood-risk-analysis",
+        "glm-lake-mendota",
+        "gravitational-wave-detection",
+        "grid-dispatch-operator",
+        "hvac-control",
+        "invoice-fraud-detection",
+        "jax-computing-basics",
+        "jpg-ocr-stat",
+        "lab-unit-harmonization",
+        "lake-warming-attribution",
+        "latex-formula-extraction",
+        "lean4-proof",
+        "llm-prefix-cache-replay",
+        "manufacturing-codebook-normalization",
+        "manufacturing-equipment-maintenance",
+        "manufacturing-fjsp-optimization",
+        "mario-coin-counting",
+        "mars-clouds-clustering",
+        "offer-letter-generator",
+        "organize-messy-files",
+        "paper-anonymizer",
+        "parallel-tfidf-search",
+        "paratransit-routing",
+        "pddl-airport-planning",
+        "pddl-tpp-planning",
+        "pdf-excel-diff",
+        "powerlifting-coef-calc",
+        "pptx-reference-formatting",
+        "protein-expression-analysis",
+        "quantum-numerical-simulation",
+        "r2r-mpc-control",
+        "react-performance-debugging",
+        "reserves-at-risk-calc",
+        "sales-pivot-analysis",
+        "sec-financial-report",
+        "setup-fuzzing-py",
+        "shock-analysis-demand",
+        "shock-analysis-supply",
+        "simpo-code-reproduction",
+        "software-dependency-audit",
+        "spring-boot-jakarta-migration",
+        "suricata-custom-exfil",
+        "syzkaller-ppdev-syzlang",
+        "threejs-structure-parser",
+        "threejs-to-obj",
+        "tictoc-unnecessary-abort-detection",
+        "travel-planning",
+        "video-silence-remover",
+        "weighted-gdp-calc",
+        "xlsx-recover-data"
+      ]
+    },
+    {
+      "baseline": "N",
+      "candidate": "G",
+      "dropped": [
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "bike-rebalance"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "earthquake-phase-association"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "multilingual-video-dubbing"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "python-scala-translation"
+        },
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "radar-vital-signs"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "seismic-phase-picking"
+        }
+      ],
+      "metrics": [
+        {
+          "baseline_median": 0.36660824999999997,
+          "candidate_median": 0.3318699,
+          "ci_high": 0.03683262499852817,
+          "ci_low": -0.13164845794498684,
+          "median_rel_delta": -0.00669644354680657,
+          "metric": "cost_usd",
+          "n": 80,
+          "totals_rel_delta": -0.13035447457640856,
+          "wilcoxon_p": 0.12307205482092601
+        },
+        {
+          "baseline_median": 570730.0,
+          "candidate_median": 446937.0,
+          "ci_high": 0.027218006563714318,
+          "ci_low": -0.11930955550884077,
+          "median_rel_delta": -0.0102644713807846,
+          "metric": "total_tokens",
+          "n": 80,
+          "totals_rel_delta": -0.16846976750013015,
+          "wilcoxon_p": 0.19449507627357618
+        },
+        {
+          "baseline_median": 4916.0,
+          "candidate_median": 4518.5,
+          "ci_high": 0.05532574974146846,
+          "ci_low": -0.1252428082508556,
+          "median_rel_delta": -0.01975624893805811,
+          "metric": "output_tokens",
+          "n": 80,
+          "totals_rel_delta": -0.1644287082518697,
+          "wilcoxon_p": 0.2370927175004188
+        },
+        {
+          "baseline_median": 548371.5,
+          "candidate_median": 426537.5,
+          "ci_high": 0.027623803299931856,
+          "ci_low": -0.12181508707471377,
+          "median_rel_delta": -0.017351635097738807,
+          "metric": "cache_read_tokens",
+          "n": 80,
+          "totals_rel_delta": -0.16993093306872914,
+          "wilcoxon_p": 0.2011752019190067
+        },
+        {
+          "baseline_median": 26.0,
+          "candidate_median": 24.0,
+          "ci_high": 0.0,
+          "ci_low": -0.08333333333333333,
+          "median_rel_delta": 0.0,
+          "metric": "input_tokens",
+          "n": 80,
+          "totals_rel_delta": -0.12215477996965099,
+          "wilcoxon_p": 0.28695083705705654
+        },
+        {
+          "baseline_median": 15.5,
+          "candidate_median": 14.5,
+          "ci_high": 0.00980392156862745,
+          "ci_low": -0.09545454545454546,
+          "median_rel_delta": 0.0,
+          "metric": "turns",
+          "n": 80,
+          "totals_rel_delta": -0.12343358395989974,
+          "wilcoxon_p": 0.16925881644054444
+        },
+        {
+          "baseline_median": 78378.0,
+          "candidate_median": 72403.0,
+          "ci_high": 0.006176109958977309,
+          "ci_low": -0.13850900393223278,
+          "median_rel_delta": -0.03507514060749693,
+          "metric": "wall_ms",
+          "n": 80,
+          "totals_rel_delta": -0.1401537593360106,
+          "wilcoxon_p": 0.12542036455989575
+        }
+      ],
+      "n_pairs": 80,
+      "one_sided": [
+        {
+          "error": "ApiRateLimitError",
+          "failed_arm": "G",
+          "task": "latex-formula-extraction"
+        }
+      ],
+      "quality": {
+        "baseline_mean": 0.5602666625,
+        "baseline_pass": 41,
+        "better": 11,
+        "candidate_mean": 0.5295,
+        "candidate_pass": 40,
+        "n": 80,
+        "sign_p": 1.0,
+        "tie": 57,
+        "worse": 12
+      },
+      "tasks": [
+        "3d-scan-calc",
+        "ada-bathroom-plan-repair",
+        "adaptive-cruise-control",
+        "azure-bgp-oscillation-route-leak",
+        "citation-check",
+        "civ6-adjacency-optimizer",
+        "court-form-filling",
+        "crystallographic-wyckoff-position-analysis",
+        "dapt-intrusion-detection",
+        "data-to-d3",
+        "debug-trl-grpo",
+        "dialogue-parser",
+        "drone-planning-control",
+        "dynamic-object-aware-egomotion",
+        "earthquake-plate-calculation",
+        "econ-detrending-correlation",
+        "edit-pdf",
+        "energy-ac-optimal-power-flow",
+        "energy-market-pricing",
+        "energy-unit-commitment",
+        "enterprise-information-search",
+        "exam-block-sequencing",
+        "exceltable-in-ppt",
+        "exoplanet-detection-period",
+        "financial-modeling-qa",
+        "fix-build-agentops",
+        "fix-build-google-auto",
+        "fix-druid-loophole-cve",
+        "fix-erlang-ssh-cve",
+        "fix-visual-stability",
+        "flink-query",
+        "flood-risk-analysis",
+        "glm-lake-mendota",
+        "gravitational-wave-detection",
+        "grid-dispatch-operator",
+        "hvac-control",
+        "invoice-fraud-detection",
+        "jax-computing-basics",
+        "jpg-ocr-stat",
+        "lab-unit-harmonization",
+        "lake-warming-attribution",
+        "lean4-proof",
+        "llm-prefix-cache-replay",
+        "manufacturing-codebook-normalization",
+        "manufacturing-equipment-maintenance",
+        "manufacturing-fjsp-optimization",
+        "mario-coin-counting",
+        "mars-clouds-clustering",
+        "offer-letter-generator",
+        "organize-messy-files",
+        "paper-anonymizer",
+        "parallel-tfidf-search",
+        "paratransit-routing",
+        "pddl-airport-planning",
+        "pddl-tpp-planning",
+        "pdf-excel-diff",
+        "powerlifting-coef-calc",
+        "pptx-reference-formatting",
+        "protein-expression-analysis",
+        "quantum-numerical-simulation",
+        "r2r-mpc-control",
+        "react-performance-debugging",
+        "reserves-at-risk-calc",
+        "sales-pivot-analysis",
+        "sec-financial-report",
+        "setup-fuzzing-py",
+        "shock-analysis-demand",
+        "shock-analysis-supply",
+        "simpo-code-reproduction",
+        "software-dependency-audit",
+        "spring-boot-jakarta-migration",
+        "suricata-custom-exfil",
+        "syzkaller-ppdev-syzlang",
+        "threejs-structure-parser",
+        "threejs-to-obj",
+        "tictoc-unnecessary-abort-detection",
+        "travel-planning",
+        "video-silence-remover",
+        "weighted-gdp-calc",
+        "xlsx-recover-data"
+      ]
+    },
+    {
+      "baseline": "G",
+      "candidate": "B2",
+      "dropped": [
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "bike-rebalance"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "earthquake-phase-association"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "multilingual-video-dubbing"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "python-scala-translation"
+        },
+        {
+          "errors": [
+            "NonZeroAgentExitCodeError",
+            "NonZeroAgentExitCodeError"
+          ],
+          "task": "radar-vital-signs"
+        },
+        {
+          "errors": [
+            "RuntimeError",
+            "RuntimeError"
+          ],
+          "task": "seismic-phase-picking"
+        }
+      ],
+      "metrics": [
+        {
+          "baseline_median": 0.3318699,
+          "candidate_median": 0.40959465,
+          "ci_high": 0.19372152107173463,
+          "ci_low": 0.018249074162403473,
+          "median_rel_delta": 0.1313907404234435,
+          "metric": "cost_usd",
+          "n": 80,
+          "totals_rel_delta": 0.11652594079248546,
+          "wilcoxon_p": 0.03587197485556134
+        },
+        {
+          "baseline_median": 446937.0,
+          "candidate_median": 534417.0,
+          "ci_high": 0.32613405645408194,
+          "ci_low": 0.00936913657890243,
+          "median_rel_delta": 0.13203285006835572,
+          "metric": "total_tokens",
+          "n": 80,
+          "totals_rel_delta": 0.12991488816902183,
+          "wilcoxon_p": 0.048419030516802096
+        },
+        {
+          "baseline_median": 4518.5,
+          "candidate_median": 4929.0,
+          "ci_high": 0.22235698403072568,
+          "ci_low": 0.009399477806788513,
+          "median_rel_delta": 0.14177646791780413,
+          "metric": "output_tokens",
+          "n": 80,
+          "totals_rel_delta": 0.15150695992557356,
+          "wilcoxon_p": 0.09181603517283303
+        },
+        {
+          "baseline_median": 426537.5,
+          "candidate_median": 507523.0,
+          "ci_high": 0.34500769974939255,
+          "ci_low": 0.00948442409479937,
+          "median_rel_delta": 0.13454426662288588,
+          "metric": "cache_read_tokens",
+          "n": 80,
+          "totals_rel_delta": 0.130188449580749,
+          "wilcoxon_p": 0.0529532615307836
+        },
+        {
+          "baseline_median": 24.0,
+          "candidate_median": 26.0,
+          "ci_high": 0.2857142857142857,
+          "ci_low": 0.0,
+          "median_rel_delta": 0.10416666666666666,
+          "metric": "input_tokens",
+          "n": 80,
+          "totals_rel_delta": 0.12964563526361278,
+          "wilcoxon_p": 0.04824154492564851
+        },
+        {
+          "baseline_median": 14.5,
+          "candidate_median": 16.0,
+          "ci_high": 0.24404761904761904,
+          "ci_low": 0.0,
+          "median_rel_delta": 0.10818713450292397,
+          "metric": "turns",
+          "n": 80,
+          "totals_rel_delta": 0.12008577555396711,
+          "wilcoxon_p": 0.04538527152857016
+        },
+        {
+          "baseline_median": 72403.0,
+          "candidate_median": 85277.5,
+          "ci_high": 0.17508653338492908,
+          "ci_low": -0.014389125408997309,
+          "median_rel_delta": 0.03582044429013678,
+          "metric": "wall_ms",
+          "n": 80,
+          "totals_rel_delta": 0.028895224102217346,
+          "wilcoxon_p": 0.26685233366441397
+        }
+      ],
+      "n_pairs": 80,
+      "one_sided": [
+        {
+          "error": "ApiRateLimitError",
+          "failed_arm": "G",
+          "task": "latex-formula-extraction"
+        }
+      ],
+      "quality": {
+        "baseline_mean": 0.5295,
+        "baseline_pass": 40,
+        "better": 8,
+        "candidate_mean": 0.4753583375,
+        "candidate_pass": 35,
+        "n": 80,
+        "sign_p": 0.21003961563110352,
+        "tie": 57,
+        "worse": 15
+      },
+      "tasks": [
+        "3d-scan-calc",
+        "ada-bathroom-plan-repair",
+        "adaptive-cruise-control",
+        "azure-bgp-oscillation-route-leak",
+        "citation-check",
+        "civ6-adjacency-optimizer",
+        "court-form-filling",
+        "crystallographic-wyckoff-position-analysis",
+        "dapt-intrusion-detection",
+        "data-to-d3",
+        "debug-trl-grpo",
+        "dialogue-parser",
+        "drone-planning-control",
+        "dynamic-object-aware-egomotion",
+        "earthquake-plate-calculation",
+        "econ-detrending-correlation",
+        "edit-pdf",
+        "energy-ac-optimal-power-flow",
+        "energy-market-pricing",
+        "energy-unit-commitment",
+        "enterprise-information-search",
+        "exam-block-sequencing",
+        "exceltable-in-ppt",
+        "exoplanet-detection-period",
+        "financial-modeling-qa",
+        "fix-build-agentops",
+        "fix-build-google-auto",
+        "fix-druid-loophole-cve",
+        "fix-erlang-ssh-cve",
+        "fix-visual-stability",
+        "flink-query",
+        "flood-risk-analysis",
+        "glm-lake-mendota",
+        "gravitational-wave-detection",
+        "grid-dispatch-operator",
+        "hvac-control",
+        "invoice-fraud-detection",
+        "jax-computing-basics",
+        "jpg-ocr-stat",
+        "lab-unit-harmonization",
+        "lake-warming-attribution",
+        "lean4-proof",
+        "llm-prefix-cache-replay",
+        "manufacturing-codebook-normalization",
+        "manufacturing-equipment-maintenance",
+        "manufacturing-fjsp-optimization",
+        "mario-coin-counting",
+        "mars-clouds-clustering",
+        "offer-letter-generator",
+        "organize-messy-files",
+        "paper-anonymizer",
+        "parallel-tfidf-search",
+        "paratransit-routing",
+        "pddl-airport-planning",
+        "pddl-tpp-planning",
+        "pdf-excel-diff",
+        "powerlifting-coef-calc",
+        "pptx-reference-formatting",
+        "protein-expression-analysis",
+        "quantum-numerical-simulation",
+        "r2r-mpc-control",
+        "react-performance-debugging",
+        "reserves-at-risk-calc",
+        "sales-pivot-analysis",
+        "sec-financial-report",
+        "setup-fuzzing-py",
+        "shock-analysis-demand",
+        "shock-analysis-supply",
+        "simpo-code-reproduction",
+        "software-dependency-audit",
+        "spring-boot-jakarta-migration",
+        "suricata-custom-exfil",
+        "syzkaller-ppdev-syzlang",
+        "threejs-structure-parser",
+        "threejs-to-obj",
+        "tictoc-unnecessary-abort-detection",
+        "travel-planning",
+        "video-silence-remover",
+        "weighted-gdp-calc",
+        "xlsx-recover-data"
+      ]
+    }
+  ],
+  "delivery": {
+    "B2": {
+      "delivered": 90,
+      "trials": 90
+    },
+    "G": {
+      "delivered": 89,
+      "trials": 89
+    },
+    "N": {
+      "delivered": 0,
+      "trials": 87
+    }
+  },
+  "model": [
+    "claude-sonnet-5"
+  ],
+  "per_arm": {
+    "B2": 90,
+    "G": 89,
+    "N": 87
+  },
+  "registered": {
+    "agent": {
+      "name": "claude-code",
+      "version": "2.1.235"
+    },
+    "model": "anthropic/claude-sonnet-5",
+    "reasoning_effort": "low",
+    "seed": "simple-man-session-v1"
+  },
+  "schema": "session-report-v1",
+  "skillsbench_commit": "aafac12f5dc6aa18dd9675b714f52d0926188867",
+  "total_cost_usd": 129.96,
+  "trials": 266
+}
