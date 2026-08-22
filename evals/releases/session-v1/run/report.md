@@ -5,7 +5,7 @@ Generated from `trials.jsonl` by `evals/session/session_report.py` (schema `sess
 - SkillsBench commit: `aafac12f5dc6aa18dd9675b714f52d0926188867`
 - Registered: model `anthropic/claude-sonnet-5`, effort `low`, agent `claude-code@2.1.235`
 - Observed: model `claude-sonnet-5`; CLI `2.1.235`
-- Trials: 264 (N 87, B2 90, G 87); metered cost $129.05 (Claude Code's own estimate; billed to the subscription)
+- Trials: 266 (N 87, B2 90, G 89); metered cost $129.96 (Claude Code's own estimate; billed to the subscription)
 
 ## Delivery (mechanical)
 
@@ -13,12 +13,12 @@ Generated from `trials.jsonl` by `evals/session/session_report.py` (schema `sess
 |---|--:|--:|
 | N | 87 | 0/87 |
 | B2 | 90 | 90/90 |
-| G | 87 | 87/87 |
+| G | 89 | 89/89 |
 
 ## Trials by day
 
 - 2026-08-21: B2 26, N 40
-- 2026-08-22: B2 64, G 87, N 47
+- 2026-08-22: B2 64, G 89, N 47
 
 ## B2 vs N — 81 clean pairs
 
@@ -35,37 +35,37 @@ Generated from `trials.jsonl` by `evals/session/session_report.py` (schema `sess
 
 Dropped symmetrically (failed on both arms): `bike-rebalance`, `earthquake-phase-association`, `multilingual-video-dubbing`, `python-scala-translation`, `radar-vital-signs`, `seismic-phase-picking`
 
-## G vs N — 79 clean pairs
+## G vs N — 80 clean pairs
 
 | metric | median paired delta | 95% CI (bootstrap) | Wilcoxon p | totals delta | median N → G |
 |---|--:|--:|--:|--:|--:|
-| cost | +0.4% | [-11.7%, +3.7%] | 0.164 | -12.1% | 0.3641 → 0.3268 |
-| total tokens | -0.7% | [-11.9%, +4.7%] | 0.256 | -15.9% | 5.694e+05 → 4.37e+05 |
-| output tokens | -1.0% | [-12.5%, +6.5%] | 0.313 | -15.5% | 4898 → 4418 |
-| cache reads | -1.7% | [-12.2%, +4.7%] | 0.264 | -16.0% | 5.427e+05 → 4.174e+05 |
-| fresh input | +0.0% | [-8.3%, +0.0%] | 0.370 | -11.6% | 26 → 24 |
-| turns | +0.0% | [-9.5%, +2.0%] | 0.230 | -11.7% | 15 → 14 |
-| wall-clock | -3.2% | [-13.9%, +1.5%] | 0.166 | -13.2% | 7.719e+04 → 7.165e+04 |
-| quality (reward) | 11↑ / 11↓ / 57 tie | — | sign 1.000 | — | mean 0.555 → 0.536; pass 40 → 40 |
+| cost | -0.7% | [-13.2%, +3.7%] | 0.123 | -13.0% | 0.3666 → 0.3319 |
+| total tokens | -1.0% | [-11.9%, +2.7%] | 0.194 | -16.8% | 5.707e+05 → 4.469e+05 |
+| output tokens | -2.0% | [-12.5%, +5.5%] | 0.237 | -16.4% | 4916 → 4518 |
+| cache reads | -1.7% | [-12.2%, +2.8%] | 0.201 | -17.0% | 5.484e+05 → 4.265e+05 |
+| fresh input | +0.0% | [-8.3%, +0.0%] | 0.287 | -12.2% | 26 → 24 |
+| turns | +0.0% | [-9.5%, +1.0%] | 0.169 | -12.3% | 15.5 → 14.5 |
+| wall-clock | -3.5% | [-13.9%, +0.6%] | 0.125 | -14.0% | 7.838e+04 → 7.24e+04 |
+| quality (reward) | 11↑ / 12↓ / 57 tie | — | sign 1.000 | — | mean 0.560 → 0.529; pass 41 → 40 |
 
-One-sided failures (pending retry, not counted): `energy-unit-commitment` (G: AgentTimeoutError), `latex-formula-extraction` (G: RuntimeError)
+One-sided failures (pending retry, not counted): `latex-formula-extraction` (G: ApiRateLimitError)
 
 Dropped symmetrically (failed on both arms): `bike-rebalance`, `earthquake-phase-association`, `multilingual-video-dubbing`, `python-scala-translation`, `radar-vital-signs`, `seismic-phase-picking`
 
-## B2 vs G — 79 clean pairs
+## B2 vs G — 80 clean pairs
 
 | metric | median paired delta | 95% CI (bootstrap) | Wilcoxon p | totals delta | median G → B2 |
 |---|--:|--:|--:|--:|--:|
-| cost | +12.4% | [+0.7%, +22.3%] | 0.045 | +11.6% | 0.3268 → 0.4086 |
-| total tokens | +10.4% | [+0.2%, +32.3%] | 0.062 | +12.7% | 4.37e+05 → 5.185e+05 |
-| output tokens | +14.4% | [+0.5%, +22.7%] | 0.105 | +15.6% | 4418 → 4779 |
-| cache reads | +10.7% | [+0.1%, +33.7%] | 0.067 | +12.7% | 4.174e+05 → 4.893e+05 |
-| fresh input | +8.3% | [+0.0%, +28.6%] | 0.061 | +12.7% | 24 → 26 |
-| turns | +10.5% | [+0.0%, +25.0%] | 0.057 | +11.8% | 14 → 16 |
-| wall-clock | +3.1% | [-2.3%, +16.1%] | 0.337 | +2.2% | 7.165e+04 → 8.39e+04 |
-| quality (reward) | 8↑ / 15↓ / 56 tie | — | sign 0.210 | — | mean 0.536 → 0.481; pass 40 → 35 |
+| cost | +13.1% | [+1.8%, +19.4%] | 0.036 | +11.7% | 0.3319 → 0.4096 |
+| total tokens | +13.2% | [+0.9%, +32.6%] | 0.048 | +13.0% | 4.469e+05 → 5.344e+05 |
+| output tokens | +14.2% | [+0.9%, +22.2%] | 0.092 | +15.2% | 4518 → 4929 |
+| cache reads | +13.5% | [+0.9%, +34.5%] | 0.053 | +13.0% | 4.265e+05 → 5.075e+05 |
+| fresh input | +10.4% | [+0.0%, +28.6%] | 0.048 | +13.0% | 24 → 26 |
+| turns | +10.8% | [+0.0%, +24.4%] | 0.045 | +12.0% | 14.5 → 16 |
+| wall-clock | +3.6% | [-1.4%, +17.5%] | 0.267 | +2.9% | 7.24e+04 → 8.528e+04 |
+| quality (reward) | 8↑ / 15↓ / 57 tie | — | sign 0.210 | — | mean 0.529 → 0.475; pass 40 → 35 |
 
-One-sided failures (pending retry, not counted): `energy-unit-commitment` (G: AgentTimeoutError), `latex-formula-extraction` (G: RuntimeError)
+One-sided failures (pending retry, not counted): `latex-formula-extraction` (G: ApiRateLimitError)
 
 Dropped symmetrically (failed on both arms): `bike-rebalance`, `earthquake-phase-association`, `multilingual-video-dubbing`, `python-scala-translation`, `radar-vital-signs`, `seismic-phase-picking`
 
