@@ -29,7 +29,7 @@ jobs:
       # SHA-pinned actions. This commit is the v1.2.527 bundle, which carries
       # plugin-scanner 2.2.114 — the version the local audit was run against.
       - name: HOL Plugin Scanner
-        uses: hashgraph-online/ai-plugin-scanner-action@19b40ecd28deeb603cfeb788f4def5f1c19d8ff4 # v1.2.527
+        uses: hashgraph-online/ai-plugin-scanner-action@7e420247177d5beebbd3747ed16e4b29a1e41f57 # v1.2.551
         with:
           plugin_dir: "."
           mode: scan
