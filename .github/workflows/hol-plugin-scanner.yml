@@ -30,7 +30,7 @@ jobs:
       # plugin-scanner 3.0.17. The local audit was run against 2.2.114
       # (v1.2.527); the CI scan passes on 3.0.17.
       - name: HOL Plugin Scanner
-        uses: hashgraph-online/ai-plugin-scanner-action@7e420247177d5beebbd3747ed16e4b29a1e41f57 # v1.2.551
+        uses: hashgraph-online/ai-plugin-scanner-action@2d86c226ed36a19a78668ef6c14a01b1c7751ae2 # v1.2.718
         with:
           plugin_dir: "."
           mode: scan
